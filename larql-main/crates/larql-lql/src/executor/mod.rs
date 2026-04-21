@@ -40,13 +40,13 @@ pub(crate) enum Backend {
     Weight {
         model_id: String,
         weights: larql_inference::ModelWeights,
-        tokenizer: larql_inference::tokenizers::Tokenizer,
+        tokenizer: std::sync::Arc<dyn larql_tokenizer::Tokenizer>,
     },
     /// Remote server backend — queries forwarded via HTTP.
     /// Local patches can be applied for client-side overlay.
     Remote {
         url: String,
-        client: reqwest::blocking::Client,
+        client: larql_core::Client,
         local_patches: Vec<larql_vindex::VindexPatch>,
         session_id: String,
     },
@@ -260,6 +260,9 @@ impl Session {
             Statement::ShowPatches => self.remote_show_patches(),
             Statement::RemovePatch { path } => self.remote_remove_local_patch(path),
             Statement::ShowModels => self.remote_show_models(),
+            Statement::ShowTokens { layer, conditions, verbose, group_by, order_by, limit, export_format } => {
+                self.remote_show_tokens(*layer, conditions, *verbose, *group_by, *order_by, *limit, *export_format)
+            }
             Statement::Pipe { left, right } => {
                 let mut out = self.execute(left)?;
                 out.extend(self.execute(right)?);
@@ -268,7 +271,7 @@ impl Session {
             _ => Err(LqlError::Execution(
                 "this statement is not supported on a remote backend. \
                  Supported: DESCRIBE, WALK, INFER, EXPLAIN INFER, EXPLAIN WALK, SELECT, STATS, \
-                 SHOW RELATIONS, SHOW MODELS, SHOW LAYERS, SHOW FEATURES, SHOW ENTITIES, INSERT, DELETE, UPDATE, \
+                 SHOW RELATIONS, SHOW MODELS, SHOW TOKENS, INSERT, DELETE, UPDATE, \
                  APPLY PATCH, SHOW PATCHES, REMOVE PATCH, USE. \
                  TRACE requires a local vindex (USE \"path.vindex\")."
                     .into(),

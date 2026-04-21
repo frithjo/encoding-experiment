@@ -4,7 +4,7 @@
 //! Falls back to embedding-direction heuristics if no clusters are available.
 
 use larql_inference::ndarray::{Array1, Array2};
-use larql_inference::tokenizers::Tokenizer;
+use larql_inference::larql_tokenizer::Tokenizer;
 use larql_vindex::clustering::ClusterResult;
 
 /// Classifies edges into relation types using discovered clusters
@@ -231,10 +231,10 @@ pub fn token_embedding_pub(
     text: &str,
     embed: &Array2<f32>,
     embed_scale: f32,
-    tokenizer: &Tokenizer,
+    tokenizer: &dyn Tokenizer,
 ) -> Option<Array1<f32>> {
     let encoding = tokenizer.encode(text, false).ok()?;
-    let ids = encoding.get_ids();
+    let ids = encoding.ids.as_slice();
     if ids.is_empty() {
         return None;
     }

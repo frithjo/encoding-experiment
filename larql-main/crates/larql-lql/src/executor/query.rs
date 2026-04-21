@@ -32,7 +32,7 @@ impl Session {
         let encoding = tokenizer
             .encode(prompt, true)
             .map_err(|e| LqlError::exec("tokenize error", e))?;
-        let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+        let token_ids: Vec<u32> = encoding.ids.clone();
 
         if token_ids.is_empty() {
             return Err(LqlError::Execution("empty prompt".into()));
@@ -127,10 +127,10 @@ impl Session {
             let encoding = tokenizer
                 .encode(prompt, true)
                 .map_err(|e| LqlError::exec("tokenize error", e))?;
-            let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+            let token_ids: Vec<u32> = encoding.ids.clone();
 
             let start = std::time::Instant::now();
-            let result = larql_inference::predict(weights, tokenizer, &token_ids, top_k);
+            let result = larql_inference::predict(weights, tokenizer.as_ref(), &token_ids, top_k);
             let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
 
             let mut out = Vec::new();
@@ -170,7 +170,7 @@ impl Session {
         let encoding = tokenizer
             .encode(prompt, true)
             .map_err(|e| LqlError::exec("tokenize error", e))?;
-        let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+        let token_ids: Vec<u32> = encoding.ids.clone();
 
         // Unlimited top_k: use every feature at each layer, matching
         // the dense FFN path exactly. The 8092 default dropped half
@@ -187,7 +187,7 @@ impl Session {
         let start = std::time::Instant::now();
         let result = larql_inference::predict_with_ffn(
             &weights,
-            &tokenizer,
+            tokenizer.as_ref(),
             &token_ids,
             top_k,
             &walk_ffn,
@@ -293,7 +293,7 @@ impl Session {
 
         if compare {
             let start = std::time::Instant::now();
-            let dense = larql_inference::predict(&weights, &tokenizer, &token_ids, top_k);
+            let dense = larql_inference::predict(&weights, tokenizer.as_ref(), &token_ids, top_k);
             let dense_ms = start.elapsed().as_secs_f64() * 1000.0;
 
             out.push(String::new());
@@ -530,7 +530,7 @@ impl Session {
             let encoding = tokenizer
                 .encode(entity, false)
                 .map_err(|e| LqlError::exec("tokenize error", e))?;
-            let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+            let token_ids: Vec<u32> = encoding.ids.clone();
 
             if !token_ids.is_empty() {
                 let hidden = embed.shape()[1];
@@ -763,7 +763,7 @@ impl Session {
         let encoding = tokenizer
             .encode(nc.entity.as_str(), false)
             .map_err(|e| LqlError::exec("tokenize error", e))?;
-        let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+        let token_ids: Vec<u32> = encoding.ids.clone();
 
         if token_ids.is_empty() {
             return Ok(vec!["  (entity not found)".into()]);
@@ -1218,7 +1218,7 @@ impl Session {
         let encoding = tokenizer
             .encode(prompt, true)
             .map_err(|e| LqlError::exec("tokenize error", e))?;
-        let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+        let token_ids: Vec<u32> = encoding.ids.clone();
 
         if token_ids.is_empty() {
             return Err(LqlError::Execution("empty prompt".into()));
@@ -1281,7 +1281,7 @@ impl Session {
         // Weight backend has no feature labels — short-circuit to a
         // dense-only summary.
         if let super::Backend::Weight { weights, tokenizer, .. } = &self.backend {
-            return self.exec_infer_trace_dense(weights, tokenizer, prompt, top_k);
+            return self.exec_infer_trace_dense(weights, tokenizer.as_ref(), prompt, top_k);
         }
 
         // ── Phase 1: load model weights and tokenise ──
@@ -1299,12 +1299,12 @@ impl Session {
         let encoding = tokenizer
             .encode(prompt, true)
             .map_err(|e| LqlError::exec("tokenize error", e))?;
-        let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+        let token_ids: Vec<u32> = encoding.ids.clone();
 
         let token_strs: Vec<Option<String>> = if with_attention {
             token_ids
                 .iter()
-                .map(|&id| larql_inference::decode_token(&tokenizer, id))
+                .map(|&id| larql_inference::decode_token(tokenizer.as_ref(), id))
                 .collect()
         } else {
             Vec::new()
@@ -1321,12 +1321,12 @@ impl Session {
         let start = std::time::Instant::now();
         let (predictions, attention_captures, lens_residuals) = if with_attention {
             let r = larql_inference::predict_with_ffn_attention(
-                &weights, &tokenizer, &token_ids, top_k, &walk_ffn,
+                &weights, tokenizer.as_ref(), &token_ids, top_k, &walk_ffn,
             );
             (r.predictions, r.attention, r.residuals)
         } else {
             let r = larql_inference::predict_with_ffn(
-                &weights, &tokenizer, &token_ids, top_k, &walk_ffn,
+                &weights, tokenizer.as_ref(), &token_ids, top_k, &walk_ffn,
             );
             (r.predictions, Vec::new(), Vec::new())
         };
@@ -1334,7 +1334,7 @@ impl Session {
 
         // ── Phase 3: side-tables for the rendering loop ──
         let attention_map = build_attention_map(&attention_captures, &token_strs, with_attention);
-        let lens_map = build_lens_map(&lens_residuals, &weights, &tokenizer, with_attention);
+        let lens_map = build_lens_map(&lens_residuals, &weights, tokenizer.as_ref(), with_attention);
 
         let trace = walk_ffn.take_trace();
         let classifier = self.relation_classifier();
@@ -1391,14 +1391,14 @@ impl Session {
     fn exec_infer_trace_dense(
         &self,
         weights: &larql_inference::ModelWeights,
-        tokenizer: &larql_inference::tokenizers::Tokenizer,
+        tokenizer: &dyn larql_tokenizer::Tokenizer,
         prompt: &str,
         top_k: usize,
     ) -> Result<Vec<String>, LqlError> {
         let encoding = tokenizer
             .encode(prompt, true)
             .map_err(|e| LqlError::exec("tokenize error", e))?;
-        let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+        let token_ids: Vec<u32> = encoding.ids.clone();
 
         let start = std::time::Instant::now();
         let result = larql_inference::predict(weights, tokenizer, &token_ids, top_k);
@@ -1448,7 +1448,7 @@ impl Session {
 
         let encoding = tokenizer.encode(entity, false)
             .map_err(|e| LqlError::exec("tokenize error", e))?;
-        let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+        let token_ids: Vec<u32> = encoding.ids.clone();
         if token_ids.is_empty() {
             return Ok(Some(vec![format!("{entity}\n  (not found)")]));
         }
@@ -1585,7 +1585,7 @@ fn describe_build_query(
     let encoding = tokenizer
         .encode(entity, false)
         .map_err(|e| LqlError::exec("tokenize error", e))?;
-    let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+    let token_ids: Vec<u32> = encoding.ids.clone();
 
     if token_ids.is_empty() {
         return Ok(None);
@@ -1699,7 +1699,11 @@ fn describe_collect_edges(
     trace: &larql_vindex::WalkTrace,
     entity: &str,
 ) -> Vec<DescribeEdge> {
-    larql_vindex::collect_describe_edges_from_trace(trace, entity, 5.0)
+    larql_vindex::collect_describe_edges_from_trace(
+        trace,
+        entity,
+        larql_vindex::DESCRIBE_GATE_FLOOR_DEFAULT,
+    )
 }
 
 /// Resolve relation labels from the optional `RelationClassifier`, apply
@@ -1886,7 +1890,7 @@ fn build_attention_map(
 fn build_lens_map(
     lens_residuals: &[(usize, Vec<f32>)],
     weights: &larql_inference::ModelWeights,
-    tokenizer: &larql_inference::tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     with_attention: bool,
 ) -> std::collections::HashMap<usize, (String, f64)> {
     if !with_attention {

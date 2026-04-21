@@ -21,7 +21,7 @@ impl super::Session {
         if let super::Backend::Weight { weights, tokenizer, .. } = &self.backend {
             let ffn = larql_inference::WeightFfn { weights };
             return self.exec_trace_with_ffn(
-                weights, tokenizer, &ffn, prompt, answer, decompose, layers, positions, save,
+                weights, tokenizer.as_ref(), &ffn, prompt, answer, decompose, layers, positions, save,
             );
         }
 
@@ -48,7 +48,7 @@ impl super::Session {
         let walk_ffn = larql_inference::vindex::WalkFfn::new_unlimited(&weights, patched);
 
         self.exec_trace_with_ffn(
-            &weights, &tokenizer, &walk_ffn, prompt, answer, decompose, layers, positions, save,
+            &weights, tokenizer.as_ref(), &walk_ffn, prompt, answer, decompose, layers, positions, save,
         )
     }
 
@@ -56,7 +56,7 @@ impl super::Session {
     fn exec_trace_with_ffn(
         &self,
         weights: &larql_inference::ModelWeights,
-        tokenizer: &larql_inference::tokenizers::Tokenizer,
+        tokenizer: &dyn larql_tokenizer::Tokenizer,
         ffn: &dyn larql_inference::FfnBackend,
         prompt: &str,
         answer: Option<&str>,
@@ -68,7 +68,7 @@ impl super::Session {
         let encoding = tokenizer
             .encode(prompt, true)
             .map_err(|e| LqlError::exec("tokenize error", e))?;
-        let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+        let token_ids: Vec<u32> = encoding.ids.clone();
 
         let pos = match positions {
             Some(TracePositionMode::All) => larql_inference::TracePositions::All,
@@ -101,9 +101,9 @@ impl super::Session {
         // If ANSWER specified: show answer trajectory
         if let Some(answer_str) = answer {
             let answer_tok = tokenizer
-                .encode(format!(" {}", answer_str), true)
+                .encode(format!(" {}", answer_str).as_str(), true)
                 .map_err(|e| LqlError::exec("tokenize answer", e))?;
-            let answer_id = *answer_tok.get_ids().last().unwrap_or(&0);
+            let answer_id = *answer_tok.ids.last().unwrap_or(&0);
 
             let traj = trace.answer_trajectory(weights, answer_id);
 

@@ -6,7 +6,8 @@ use crate::ast::*;
 use crate::error::LqlError;
 use super::Session;
 use super::helpers::{format_number, format_bytes, dir_size, is_content_token};
-use super::helpers::{classify_token_shape, entity_token_kind, token_shape_name, TokenShape};
+use super::helpers::{token_shape_name, TokenShape};
+use super::helpers::{collect_token_hits, KindInfo, ShapeInfo, TokenFilters, TokenHit};
 
 impl Session {
     pub(crate) fn exec_show_relations(
@@ -234,7 +235,7 @@ impl Session {
         let token_filter = conditions.iter().find(|c| c.field == "relation" || c.field == "token").and_then(|c| {
             if let Value::String(ref s) = c.value { Some(s.as_str()) } else { None }
         });
-        let min_score = conditions.iter().find(|c| c.field == "confidence" || c.field == "c_score").and_then(|c| {
+        let confidence_floor = conditions.iter().find(|c| c.field == "confidence" || c.field == "c_score").and_then(|c| {
             match &c.value {
                 Value::Number(n) => Some(*n as f32),
                 Value::Integer(n) => Some(*n as f32),
@@ -266,7 +267,7 @@ impl Session {
                         continue;
                     }
                 }
-                if let Some(ms) = min_score {
+                if let Some(ms) = confidence_floor {
                     if meta.c_score < ms {
                         continue;
                     }
@@ -525,39 +526,9 @@ impl Session {
     }
 }
 
-#[derive(Default)]
-struct ShapeInfo {
-    distinct: usize,
-    feature_hits: usize,
-    entity_like: usize,
-    examples: Vec<String>,
-}
-
-#[derive(Default)]
-struct KindInfo {
-    distinct: usize,
-    feature_hits: usize,
-    examples: Vec<String>,
-}
-
-#[derive(Clone, Default)]
-struct TokenFilters {
-    token_filter: Option<String>,
-    shape_filter: Option<String>,
-    type_filter: Option<String>,
-    band_filter: Option<String>,
-}
-
-#[derive(Clone, Copy)]
-struct TokenHit {
-    shape: TokenShape,
-    kind: Option<&'static str>,
-    hits: usize,
-    syntax_hits: usize,
-    knowledge_hits: usize,
-    output_hits: usize,
-    max_score: f32,
-}
+// `TokenFilters`, `TokenHit`, `ShapeInfo`, `KindInfo` now live in
+// `larql_vindex::token_summary`; see `executor::helpers` for the re-exports
+// that keep existing `pub(crate)` call sites unchanged.
 
 fn parse_token_filters(conditions: &[Condition]) -> TokenFilters {
     TokenFilters {
@@ -579,82 +550,10 @@ fn parse_token_filters(conditions: &[Condition]) -> TokenFilters {
     }
 }
 
-fn band_name_for_layer(layer: usize, bands: &larql_vindex::LayerBands) -> &'static str {
-    if layer >= bands.knowledge.0 && layer <= bands.knowledge.1 {
-        "knowledge"
-    } else if layer >= bands.output.0 && layer <= bands.output.1 {
-        "output"
-    } else {
-        "syntax"
-    }
-}
+// `band_name_for_layer` and `collect_token_hits` now live in
+// `larql_vindex::token_summary`; see `executor::helpers`.
 
-fn collect_token_hits(
-    patched: &larql_vindex::PatchedVindex,
-    scan_layers: &[usize],
-    bands: &larql_vindex::LayerBands,
-    filters: &TokenFilters,
-) -> HashMap<String, TokenHit> {
-    let mut token_hits: HashMap<String, TokenHit> = HashMap::new();
-
-    for layer in scan_layers {
-        let nf = patched.num_features(*layer);
-        for feat in 0..nf {
-            if let Some(meta) = patched.feature_meta(*layer, feat) {
-                let tok = meta.top_token.trim().to_string();
-                let shape = classify_token_shape(&tok);
-                let kind = entity_token_kind(&tok);
-                let shape_name = token_shape_name(shape);
-                let band_name = band_name_for_layer(*layer, bands);
-
-                if let Some(tf) = &filters.token_filter {
-                    if !tok.to_lowercase().contains(&tf.to_lowercase()) {
-                        continue;
-                    }
-                }
-                if let Some(sf) = &filters.shape_filter {
-                    if shape_name != sf {
-                        continue;
-                    }
-                }
-                if let Some(tf) = &filters.type_filter {
-                    let kind_name = kind.unwrap_or("none");
-                    if kind_name != tf {
-                        continue;
-                    }
-                }
-                if let Some(bf) = &filters.band_filter {
-                    if band_name != bf {
-                        continue;
-                    }
-                }
-
-                let entry = token_hits.entry(tok).or_insert(TokenHit {
-                    shape,
-                    kind,
-                    hits: 0,
-                    syntax_hits: 0,
-                    knowledge_hits: 0,
-                    output_hits: 0,
-                    max_score: 0.0,
-                });
-                entry.hits += 1;
-                if meta.c_score > entry.max_score {
-                    entry.max_score = meta.c_score;
-                }
-                match band_name {
-                    "knowledge" => entry.knowledge_hits += 1,
-                    "output" => entry.output_hits += 1,
-                    _ => entry.syntax_hits += 1,
-                }
-            }
-        }
-    }
-
-    token_hits
-}
-
-fn export_token_summary(
+pub(crate) fn export_token_summary(
     token_hits: HashMap<String, TokenHit>,
     format: crate::ast::ExportFormat,
     _verbose: bool,
@@ -675,6 +574,11 @@ fn export_token_summary(
         }
     }
 
+    // Sort examples within each shape for deterministic output
+    for shape_info in shapes.values_mut() {
+        shape_info.examples.sort();
+    }
+
     let mut shape_rows: Vec<(TokenShape, ShapeInfo)> = shapes.into_iter().collect();
     match order_by {
         Some(TokenSortBy::MaxScore) => {
@@ -686,20 +590,31 @@ fn export_token_summary(
             shape_rows.sort_by(|a, b| {
                 let score_a = shape_max_scores.get(&a.0).unwrap_or(&0.0);
                 let score_b = shape_max_scores.get(&b.0).unwrap_or(&0.0);
-                score_b.partial_cmp(score_a).unwrap_or(std::cmp::Ordering::Equal)
+                score_b.partial_cmp(score_a)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| token_shape_name(a.0).cmp(token_shape_name(b.0)))
             });
         }
         Some(TokenSortBy::Distinct) => {
-            shape_rows.sort_by(|a, b| b.1.distinct.cmp(&a.1.distinct));
+            shape_rows.sort_by(|a, b| {
+                b.1.distinct.cmp(&a.1.distinct)
+                    .then_with(|| token_shape_name(a.0).cmp(token_shape_name(b.0)))
+            });
         }
         Some(TokenSortBy::EntityLike) => {
-            shape_rows.sort_by(|a, b| b.1.entity_like.cmp(&a.1.entity_like));
+            shape_rows.sort_by(|a, b| {
+                b.1.entity_like.cmp(&a.1.entity_like)
+                    .then_with(|| token_shape_name(a.0).cmp(token_shape_name(b.0)))
+            });
         }
         Some(TokenSortBy::Shape) => {
             shape_rows.sort_by(|a, b| token_shape_name(a.0).cmp(token_shape_name(b.0)));
         }
         None => {
-            shape_rows.sort_by(|a, b| b.1.feature_hits.cmp(&a.1.feature_hits));
+            shape_rows.sort_by(|a, b| {
+                b.1.feature_hits.cmp(&a.1.feature_hits)
+                    .then_with(|| token_shape_name(a.0).cmp(token_shape_name(b.0)))
+            });
         }
     }
     if let Some(lim) = limit {
@@ -739,7 +654,7 @@ fn export_token_summary(
     }
 }
 
-fn render_token_summary(
+pub(crate) fn render_token_summary(
     scope: String,
     token_hits: HashMap<String, TokenHit>,
     verbose: bool,
@@ -771,6 +686,14 @@ fn render_token_summary(
         }
     }
 
+    // Sort examples within each shape/kind for deterministic output
+    for shape_info in shapes.values_mut() {
+        shape_info.examples.sort();
+    }
+    for kind_info in kinds.values_mut() {
+        kind_info.examples.sort();
+    }
+
     let mut out = Vec::new();
     out.push(format!(
         "Token summary {scope} ({} distinct top tokens):",
@@ -794,20 +717,31 @@ fn render_token_summary(
             shape_rows.sort_by(|a, b| {
                 let score_a = shape_max_scores.get(&a.0).unwrap_or(&0.0);
                 let score_b = shape_max_scores.get(&b.0).unwrap_or(&0.0);
-                score_b.partial_cmp(score_a).unwrap_or(std::cmp::Ordering::Equal)
+                score_b.partial_cmp(score_a)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| token_shape_name(a.0).cmp(token_shape_name(b.0)))
             });
         }
         Some(TokenSortBy::Distinct) => {
-            shape_rows.sort_by(|a, b| b.1.distinct.cmp(&a.1.distinct));
+            shape_rows.sort_by(|a, b| {
+                b.1.distinct.cmp(&a.1.distinct)
+                    .then_with(|| token_shape_name(a.0).cmp(token_shape_name(b.0)))
+            });
         }
         Some(TokenSortBy::EntityLike) => {
-            shape_rows.sort_by(|a, b| b.1.entity_like.cmp(&a.1.entity_like));
+            shape_rows.sort_by(|a, b| {
+                b.1.entity_like.cmp(&a.1.entity_like)
+                    .then_with(|| token_shape_name(a.0).cmp(token_shape_name(b.0)))
+            });
         }
         Some(TokenSortBy::Shape) => {
             shape_rows.sort_by(|a, b| token_shape_name(a.0).cmp(token_shape_name(b.0)));
         }
         None => {
-            shape_rows.sort_by(|a, b| b.1.feature_hits.cmp(&a.1.feature_hits));
+            shape_rows.sort_by(|a, b| {
+                b.1.feature_hits.cmp(&a.1.feature_hits)
+                    .then_with(|| token_shape_name(a.0).cmp(token_shape_name(b.0)))
+            });
         }
     }
     if let Some(lim) = limit {
@@ -833,7 +767,11 @@ fn render_token_summary(
         ));
         out.push("-".repeat(62));
         let mut kind_rows: Vec<(&'static str, KindInfo)> = kinds.into_iter().collect();
-        kind_rows.sort_by(|a, b| b.1.feature_hits.cmp(&a.1.feature_hits));
+        kind_rows.sort_by(|a, b| {
+            b.1.feature_hits.cmp(&a.1.feature_hits)
+                .then_with(|| b.1.distinct.cmp(&a.1.distinct))
+                .then_with(|| a.0.cmp(&b.0))
+        });
         for (kind, info) in kind_rows {
             out.push(format!(
                 "{:<12} {:>10} {:>12} {:<24}",

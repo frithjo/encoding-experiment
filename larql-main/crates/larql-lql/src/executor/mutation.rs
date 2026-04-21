@@ -77,21 +77,21 @@ impl Session {
             let spaced_target = format!(" {target}");
             let target_encoding = tokenizer.encode(spaced_target.as_str(), false)
                 .map_err(|e| LqlError::exec("tokenize error", e))?;
-            target_id = target_encoding.get_ids().first().copied().unwrap_or(0);
+            target_id = target_encoding.ids.first().copied().unwrap_or(0);
 
             // Build canonical prompt and forward pass to capture residual
             let rel_words = relation.replace(['-', '_'], " ");
             let prompt = format!("The {rel_words} of {entity} is");
             let encoding = tokenizer.encode(prompt.as_str(), true)
                 .map_err(|e| LqlError::exec("tokenize error", e))?;
-            let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+            let token_ids: Vec<u32> = encoding.ids.clone();
 
             // Capture through BASE index with unlimited top_k (matches INFER)
             let walk_ffn = larql_inference::vindex::WalkFfn::new_unlimited_with_trace(
                 &weights, patched.base(),
             );
             let _result = larql_inference::predict_with_ffn(
-                &weights, &tokenizer, &token_ids, 1, &walk_ffn,
+                &weights, tokenizer.as_ref(), &token_ids, 1, &walk_ffn,
             );
 
             // Extract residual at install layer
@@ -119,12 +119,12 @@ impl Session {
             let spaced_target = format!(" {target}");
             let target_encoding = tokenizer.encode(spaced_target.as_str(), false)
                 .map_err(|e| LqlError::exec("tokenize error", e))?;
-            target_id = target_encoding.get_ids().first().copied().unwrap_or(0);
+            target_id = target_encoding.ids.first().copied().unwrap_or(0);
 
             // Entity embedding as key
             let entity_encoding = tokenizer.encode(entity, false)
                 .map_err(|e| LqlError::exec("tokenize error", e))?;
-            let entity_ids: Vec<u32> = entity_encoding.get_ids().to_vec();
+            let entity_ids: Vec<u32> = entity_encoding.ids.clone();
             let mut ev = vec![0.0f32; hidden];
             for &tok in &entity_ids {
                 let row = embed.row(tok as usize);

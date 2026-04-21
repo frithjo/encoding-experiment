@@ -5,6 +5,8 @@ use crate::error::LqlError;
 use super::Session;
 use super::Backend;
 
+use larql_core::{Client as HttpClient, Response};
+
 /// Format `/v1/explain-infer` JSON (standalone or embedded as `followup_infer` on `/v1/describe`).
 fn format_explain_infer_json_value(
     result: &serde_json::Value,
@@ -131,7 +133,7 @@ impl Session {
     pub(crate) fn exec_use_remote(&mut self, url: &str) -> Result<Vec<String>, LqlError> {
         let url = url.trim_end_matches('/').to_string();
 
-        let client = reqwest::blocking::Client::builder()
+        let client = HttpClient::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| LqlError::exec("failed to create HTTP client", e))?;
@@ -187,7 +189,7 @@ impl Session {
     }
 
     /// Get the remote URL, client, and session ID, or error.
-    fn require_remote(&self) -> Result<(&str, &reqwest::blocking::Client, &str), LqlError> {
+    fn require_remote(&self) -> Result<(&str, &HttpClient, &str), LqlError> {
         match &self.backend {
             Backend::Remote { url, client, session_id, .. } => Ok((url, client, session_id)),
             _ => Err(LqlError::Execution("not connected to a remote server".into())),
@@ -241,7 +243,7 @@ impl Session {
     /// any failure into a tagged `LqlError`.
     fn check_and_parse(
         endpoint: &str,
-        resp: reqwest::blocking::Response,
+        resp: Response,
     ) -> Result<serde_json::Value, LqlError> {
         if !resp.status().is_success() {
             let status = resp.status();
@@ -891,10 +893,10 @@ impl Session {
                 "confidence" | "c_score" => {
                     match &cond.value {
                         crate::ast::Value::Number(n) => {
-                            body.insert("min_confidence".into(), serde_json::json!(n));
+                            body.insert("confidence_floor".into(), serde_json::json!(n));
                         }
                         crate::ast::Value::Integer(n) => {
-                            body.insert("min_confidence".into(), serde_json::json!(n));
+                            body.insert("confidence_floor".into(), serde_json::json!(n));
                         }
                         _ => {}
                     }
@@ -987,6 +989,177 @@ impl Session {
         Ok(out)
     }
 
+    pub(crate) fn remote_show_tokens(
+        &self,
+        layer: Option<u32>,
+        conditions: &[crate::ast::Condition],
+        verbose: bool,
+        group_by: Option<crate::ast::TokenGroupBy>,
+        order_by: Option<crate::ast::TokenSortBy>,
+        limit: Option<u32>,
+        export_format: Option<crate::ast::ExportFormat>,
+    ) -> Result<Vec<String>, LqlError> {
+        use std::collections::HashMap;
+        use larql_vindex::token_summary::{TokenHit, TokenShape};
+
+        // ── Build query params ──
+        let layer_s = layer.map(|l| l.to_string());
+        let group_s = match group_by {
+            Some(crate::ast::TokenGroupBy::Layer) => Some("layer"),
+            Some(crate::ast::TokenGroupBy::Band) => Some("band"),
+            None => None,
+        };
+
+        // Condition extractors mirror `parse_token_filters` in the local path.
+        fn cond_string<'a>(
+            conds: &'a [crate::ast::Condition],
+            fields: &[&str],
+            lower: bool,
+        ) -> Option<String> {
+            for c in conds {
+                if fields.contains(&c.field.as_str()) {
+                    if let crate::ast::Value::String(ref s) = c.value {
+                        return Some(if lower { s.to_lowercase() } else { s.clone() });
+                    }
+                }
+            }
+            None
+        }
+        let token_filter = cond_string(conditions, &["token", "entity"], false);
+        let shape_filter = cond_string(conditions, &["shape"], true);
+        let type_filter = cond_string(conditions, &["type", "kind"], true);
+        let band_filter = cond_string(conditions, &["band"], true);
+
+        let mut q: Vec<(String, String)> = Vec::new();
+        if let Some(ref ls) = layer_s {
+            q.push(("layer".into(), ls.clone()));
+        }
+        if let Some(gs) = group_s {
+            q.push(("group_by".into(), gs.into()));
+        }
+        if let Some(ref v) = token_filter {
+            q.push(("token_filter".into(), v.clone()));
+        }
+        if let Some(ref v) = shape_filter {
+            q.push(("shape_filter".into(), v.clone()));
+        }
+        if let Some(ref v) = type_filter {
+            q.push(("type_filter".into(), v.clone()));
+        }
+        if let Some(ref v) = band_filter {
+            q.push(("band_filter".into(), v.clone()));
+        }
+        let qref: Vec<(&str, &str)> = q.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+
+        let body = self.remote_get_json("/v1/tokens", &qref)?;
+
+        // ── Parse server response into `(label, HashMap<String, TokenHit>)` groups ──
+        fn shape_from_name(name: &str) -> TokenShape {
+            match name {
+                "empty" => TokenShape::Empty,
+                "lower" => TokenShape::LowerWord,
+                "title" => TokenShape::TitleWord,
+                "upper" => TokenShape::UpperWord,
+                "mixed" => TokenShape::MixedWord,
+                "number" => TokenShape::Number,
+                "alnum" => TokenShape::AlphaNumeric,
+                "punct" => TokenShape::Punctuation,
+                "symbol" => TokenShape::Symbolic,
+                _ => TokenShape::Other,
+            }
+        }
+        // Freeze `kind` strings to `&'static str` by interning the fixed set
+        // produced by `entity_token_kind`.
+        fn kind_from_str(s: &str) -> Option<&'static str> {
+            match s {
+                "title" => Some("title"),
+                "mixed" => Some("mixed"),
+                "acronym" => Some("acronym"),
+                _ => None,
+            }
+        }
+
+        let groups = body["groups"].as_array().cloned().unwrap_or_default();
+        let mut parsed: Vec<(String, HashMap<String, TokenHit>)> = Vec::new();
+        for g in &groups {
+            let label = g["label"].as_str().unwrap_or("").to_string();
+            let mut hits: HashMap<String, TokenHit> = HashMap::new();
+            if let Some(rows) = g["token_hits"].as_array() {
+                for r in rows {
+                    let token = r["token"].as_str().unwrap_or("").to_string();
+                    let shape = shape_from_name(r["shape"].as_str().unwrap_or("other"));
+                    let kind = r["kind"].as_str().and_then(kind_from_str);
+                    let hit = TokenHit {
+                        shape,
+                        kind,
+                        hits: r["hits"].as_u64().unwrap_or(0) as usize,
+                        syntax_hits: r["syntax_hits"].as_u64().unwrap_or(0) as usize,
+                        knowledge_hits: r["knowledge_hits"].as_u64().unwrap_or(0) as usize,
+                        output_hits: r["output_hits"].as_u64().unwrap_or(0) as usize,
+                        max_score: r["max_score"].as_f64().unwrap_or(0.0) as f32,
+                    };
+                    hits.insert(token, hit);
+                }
+            }
+            parsed.push((label, hits));
+        }
+
+        // ── Render by reusing local formatters verbatim ──
+        if let Some(fmt) = export_format {
+            // Export path: flatten all groups into a single map (export ignores
+            // grouping, matching the local behaviour).
+            let mut merged: HashMap<String, TokenHit> = HashMap::new();
+            for (_, hits) in parsed {
+                merged.extend(hits);
+            }
+            return Ok(super::introspection::export_token_summary(
+                merged, fmt, verbose, order_by, limit,
+            ));
+        }
+
+        // No groups (server could return one flat group) → single render pass.
+        if group_by.is_none() {
+            let (label, hits) = parsed
+                .into_iter()
+                .next()
+                .unwrap_or_else(|| ("across 0 layers".into(), HashMap::new()));
+            return Ok(super::introspection::render_token_summary(
+                label, hits, verbose, order_by, limit,
+            ));
+        }
+
+        // Grouped output: render each non-empty group, blank line between,
+        // then a trailing "Skipped N ..." mirror of the local path.
+        let skipped = body["skipped"].as_u64().unwrap_or(0) as usize;
+        let mut out = Vec::new();
+        let mut rendered = 0usize;
+        for (label, hits) in parsed {
+            if hits.is_empty() {
+                continue;
+            }
+            if rendered > 0 {
+                out.push(String::new());
+            }
+            out.extend(super::introspection::render_token_summary(
+                label, hits, verbose, order_by, limit,
+            ));
+            rendered += 1;
+        }
+        if rendered == 0 {
+            return Ok(vec!["  (no tokens found)".into()]);
+        }
+        if skipped > 0 {
+            out.push(String::new());
+            let kind = match group_by {
+                Some(crate::ast::TokenGroupBy::Layer) => "layer",
+                Some(crate::ast::TokenGroupBy::Band) => "band",
+                None => "group",
+            };
+            out.push(format!("Skipped {} empty {} summaries.", skipped, kind));
+        }
+        Ok(out)
+    }
+
     pub(crate) fn remote_show_models(&self) -> Result<Vec<String>, LqlError> {
         let body = self.remote_get_json("/v1/models", &[])?;
 
@@ -1060,7 +1233,7 @@ impl Session {
         let token_filter = conditions.iter().find(|c| c.field == "relation" || c.field == "token").and_then(|c| {
             if let crate::ast::Value::String(ref s) = c.value { Some(s.clone()) } else { None }
         });
-        let min_score = conditions.iter().find(|c| c.field == "confidence" || c.field == "c_score").and_then(|c| {
+        let confidence_floor = conditions.iter().find(|c| c.field == "confidence" || c.field == "c_score").and_then(|c| {
             match &c.value {
                 crate::ast::Value::Number(n) => Some(*n as f32),
                 crate::ast::Value::Integer(n) => Some(*n as f32),
@@ -1071,8 +1244,8 @@ impl Session {
         if let Some(tf) = token_filter {
             params.push(("token".to_string(), tf));
         }
-        if let Some(ms) = min_score {
-            params.push(("min_score".to_string(), ms.to_string()));
+        if let Some(ms) = confidence_floor {
+            params.push(("confidence_floor".to_string(), ms.to_string()));
         }
         if let Some(lim) = limit {
             params.push(("limit".to_string(), lim.to_string()));
@@ -1166,7 +1339,7 @@ impl Session {
                 local_patches.remove(i);
                 Ok(vec![format!("Removed local patch: {name}")])
             }
-            None => Err(LqlError::Execution(format!("local patch not found: {name}"))),
+            None => Err(LqlError::Execution(format!("local patch not found: {name}")))
         }
     }
 }

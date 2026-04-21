@@ -416,9 +416,11 @@ fn make_test_weights() -> larql_inference::ModelWeights {
 }
 
 /// Create a minimal tokenizer for testing.
-fn make_test_tokenizer() -> larql_inference::tokenizers::Tokenizer {
+fn make_test_tokenizer() -> std::sync::Arc<dyn larql_tokenizer::Tokenizer> {
     let tok_json = r#"{"version":"1.0","model":{"type":"BPE","vocab":{},"merges":[]},"added_tokens":[]}"#;
-    larql_inference::tokenizers::Tokenizer::from_bytes(tok_json.as_bytes()).unwrap()
+    std::sync::Arc::new(
+        larql_tokenizer::HfTokenizer::from_bytes(tok_json.as_bytes()).unwrap(),
+    )
 }
 
 /// Create a Session with Weight backend for testing.
@@ -1246,6 +1248,267 @@ fn knn_store_insert_at_layer_hint() {
     let entries = overlay.knn_store.entries_for_entity("Atlantis");
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].0, 0, "expected layer 0");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ══════════════════════════════════════════════════════════════
+// SHOW TOKENS local vs remote parity tests
+// ══════════════════════════════════════════════════════════════
+
+use std::collections::HashMap;
+use larql_vindex::token_summary::{TokenHit, TokenShape, token_shape_name};
+use crate::ast::{ExportFormat, TokenSortBy};
+
+/// Build a deterministic `HashMap<String, TokenHit>` for parity testing.
+fn sample_token_hits() -> HashMap<String, TokenHit> {
+    let mut hits = HashMap::new();
+    hits.insert("Paris".into(), TokenHit {
+        shape: TokenShape::TitleWord,
+        kind: Some("title"),
+        hits: 3,
+        syntax_hits: 1,
+        knowledge_hits: 2,
+        output_hits: 0,
+        max_score: 0.95,
+    });
+    hits.insert("French".into(), TokenHit {
+        shape: TokenShape::TitleWord,
+        kind: Some("title"),
+        hits: 2,
+        syntax_hits: 0,
+        knowledge_hits: 2,
+        output_hits: 0,
+        max_score: 0.88,
+    });
+    hits.insert("NASA".into(), TokenHit {
+        shape: TokenShape::UpperWord,
+        kind: Some("acronym"),
+        hits: 1,
+        syntax_hits: 0,
+        knowledge_hits: 1,
+        output_hits: 0,
+        max_score: 0.75,
+    });
+    hits.insert("iPhone".into(), TokenHit {
+        shape: TokenShape::MixedWord,
+        kind: Some("mixed"),
+        hits: 1,
+        syntax_hits: 0,
+        knowledge_hits: 0,
+        output_hits: 1,
+        max_score: 0.62,
+    });
+    hits.insert("1234".into(), TokenHit {
+        shape: TokenShape::Number,
+        kind: None,
+        hits: 1,
+        syntax_hits: 1,
+        knowledge_hits: 0,
+        output_hits: 0,
+        max_score: 0.30,
+    });
+    hits
+}
+
+/// Serialize token hits to the server JSON format that `/v1/tokens` returns.
+fn token_hits_to_server_json(
+    label: &str,
+    hits: &HashMap<String, TokenHit>,
+) -> serde_json::Value {
+    let rows: Vec<serde_json::Value> = hits.iter().map(|(tok, hit)| {
+        serde_json::json!({
+            "token": tok,
+            "shape": token_shape_name(hit.shape),
+            "kind": hit.kind.unwrap_or("none"),
+            "hits": hit.hits,
+            "syntax_hits": hit.syntax_hits,
+            "knowledge_hits": hit.knowledge_hits,
+            "output_hits": hit.output_hits,
+            "max_score": hit.max_score,
+        })
+    }).collect();
+    serde_json::json!({
+        "label": label,
+        "token_hits": rows,
+        "token_count": hits.len(),
+    })
+}
+
+/// Parse server JSON back into `(label, HashMap<String, TokenHit>)` using
+/// the exact same logic as `remote_show_tokens`.
+fn parse_server_token_group(value: &serde_json::Value) -> (String, HashMap<String, TokenHit>) {
+    fn shape_from_name(name: &str) -> TokenShape {
+        match name {
+            "empty" => TokenShape::Empty,
+            "lower" => TokenShape::LowerWord,
+            "title" => TokenShape::TitleWord,
+            "upper" => TokenShape::UpperWord,
+            "mixed" => TokenShape::MixedWord,
+            "number" => TokenShape::Number,
+            "alnum" => TokenShape::AlphaNumeric,
+            "punct" => TokenShape::Punctuation,
+            "symbol" => TokenShape::Symbolic,
+            _ => TokenShape::Other,
+        }
+    }
+    fn kind_from_str(s: &str) -> Option<&'static str> {
+        match s {
+            "title" => Some("title"),
+            "mixed" => Some("mixed"),
+            "acronym" => Some("acronym"),
+            _ => None,
+        }
+    }
+
+    let label = value["label"].as_str().unwrap_or("").to_string();
+    let mut hits: HashMap<String, TokenHit> = HashMap::new();
+    if let Some(rows) = value["token_hits"].as_array() {
+        for r in rows {
+            let token = r["token"].as_str().unwrap_or("").to_string();
+            let shape = shape_from_name(r["shape"].as_str().unwrap_or("other"));
+            let kind = r["kind"].as_str().and_then(kind_from_str);
+            let hit = TokenHit {
+                shape,
+                kind,
+                hits: r["hits"].as_u64().unwrap_or(0) as usize,
+                syntax_hits: r["syntax_hits"].as_u64().unwrap_or(0) as usize,
+                knowledge_hits: r["knowledge_hits"].as_u64().unwrap_or(0) as usize,
+                output_hits: r["output_hits"].as_u64().unwrap_or(0) as usize,
+                max_score: r["max_score"].as_f64().unwrap_or(0.0) as f32,
+            };
+            hits.insert(token, hit);
+        }
+    }
+    (label, hits)
+}
+
+#[test]
+fn show_tokens_render_parity_flat() {
+    let hits = sample_token_hits();
+    let local = super::introspection::render_token_summary(
+        "across 5 layers".into(), hits.clone(), false, None, None,
+    );
+
+    let server_json = token_hits_to_server_json("across 5 layers", &hits);
+    let (label, parsed) = parse_server_token_group(&server_json);
+    let remote = super::introspection::render_token_summary(
+        label, parsed, false, None, None,
+    );
+
+    assert_eq!(local, remote, "flat render output must be byte-identical after JSON round-trip");
+}
+
+#[test]
+fn show_tokens_render_parity_grouped() {
+    let hits = sample_token_hits();
+    let local_l0 = super::introspection::render_token_summary(
+        "at layer 0".into(), hits.clone(), false, None, None,
+    );
+    let local_l1 = super::introspection::render_token_summary(
+        "at layer 1".into(), hits.clone(), false, None, None,
+    );
+    let mut local = Vec::new();
+    local.extend(local_l0);
+    local.push(String::new());
+    local.extend(local_l1);
+
+    let g0 = token_hits_to_server_json("at layer 0", &hits);
+    let g1 = token_hits_to_server_json("at layer 1", &hits);
+    let (label0, parsed0) = parse_server_token_group(&g0);
+    let (label1, parsed1) = parse_server_token_group(&g1);
+    let mut remote = Vec::new();
+    remote.extend(super::introspection::render_token_summary(label0, parsed0, false, None, None));
+    remote.push(String::new());
+    remote.extend(super::introspection::render_token_summary(label1, parsed1, false, None, None));
+
+    assert_eq!(local, remote, "grouped render output must be byte-identical after JSON round-trip");
+}
+
+#[test]
+fn show_tokens_export_csv_parity() {
+    let hits = sample_token_hits();
+    let local = super::introspection::export_token_summary(
+        hits.clone(), ExportFormat::Csv, false, None, None,
+    );
+
+    // Export ignores grouping, so we flatten the server groups into a single map.
+    let server_json = token_hits_to_server_json("flat", &hits);
+    let (_, parsed) = parse_server_token_group(&server_json);
+    let remote = super::introspection::export_token_summary(
+        parsed, ExportFormat::Csv, false, None, None,
+    );
+
+    assert_eq!(local, remote, "CSV export must be byte-identical after JSON round-trip");
+}
+
+#[test]
+fn show_tokens_export_json_parity() {
+    let hits = sample_token_hits();
+    let local = super::introspection::export_token_summary(
+        hits.clone(), ExportFormat::Json, false, None, None,
+    );
+
+    let server_json = token_hits_to_server_json("flat", &hits);
+    let (_, parsed) = parse_server_token_group(&server_json);
+    let remote = super::introspection::export_token_summary(
+        parsed, ExportFormat::Json, false, None, None,
+    );
+
+    assert_eq!(local, remote, "JSON export must be byte-identical after JSON round-trip");
+}
+
+#[test]
+fn show_tokens_sort_parity() {
+    let hits = sample_token_hits();
+    for sort in [
+        Some(TokenSortBy::MaxScore),
+        Some(TokenSortBy::Distinct),
+        Some(TokenSortBy::EntityLike),
+        Some(TokenSortBy::Shape),
+        None,
+    ] {
+        let local = super::introspection::render_token_summary(
+            "test".into(), hits.clone(), false, sort, Some(3),
+        );
+        let server_json = token_hits_to_server_json("test", &hits);
+        let (_, parsed) = parse_server_token_group(&server_json);
+        let remote = super::introspection::render_token_summary(
+            "test".into(), parsed, false, sort, Some(3),
+        );
+        assert_eq!(local, remote, "render with sort={sort:?} must be byte-identical");
+    }
+}
+
+#[test]
+fn show_tokens_end_to_end_vindex_parity() {
+    let (mut session, dir) = vindex_session("show_tokens_parity");
+
+    // Local path: SHOW TOKENS
+    let stmt = parser::parse("SHOW TOKENS;").unwrap();
+    let local = session.execute(&stmt).expect("local SHOW TOKENS");
+
+    // Build the server JSON response that `/v1/tokens` would return for the same data.
+    let (_path, config, patched) = session.require_vindex().unwrap();
+    let bands = super::query::describe_resolve_bands(config);
+    let scan_layers: Vec<usize> = (0..config.num_layers).collect();
+    let filters = larql_vindex::token_summary::TokenFilters::default();
+    let hits = larql_vindex::token_summary::collect_token_hits(
+        patched, &scan_layers, &bands, &filters,
+    );
+    let server_json = token_hits_to_server_json(
+        &format!("across {} layers", scan_layers.len()),
+        &hits,
+    );
+
+    // Parse back and render exactly as the remote path would.
+    let (label, parsed) = parse_server_token_group(&server_json);
+    let remote = super::introspection::render_token_summary(
+        label, parsed, false, None, None,
+    );
+
+    assert_eq!(local, remote,
+        "end-to-end: local SHOW TOKENS must match remote-rendered output");
 
     let _ = std::fs::remove_dir_all(&dir);
 }

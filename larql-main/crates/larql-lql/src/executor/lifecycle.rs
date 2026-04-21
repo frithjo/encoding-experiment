@@ -466,7 +466,7 @@ impl Session {
                 &memit_facts,
                 ridge,
                 target_alpha,
-                &tokenizer,
+                tokenizer.as_ref(),
             ).map_err(|e| LqlError::Execution(format!("MEMIT failed: {e}")))?;
 
             for result in &results {
@@ -982,14 +982,14 @@ fn collect_memit_facts(
                 let prompt = format!("The {rel_words} of {entity} is");
                 let encoding = tokenizer.encode(prompt.as_str(), true)
                     .map_err(|e| crate::error::LqlError::exec("tokenize MEMIT prompt", e))?;
-                let prompt_tokens: Vec<u32> = encoding.get_ids().to_vec();
+                let prompt_tokens: Vec<u32> = encoding.ids.clone();
 
                 // Target: first token of " " + target (matches INSERT semantics)
                 let spaced = format!(" {target}");
                 let target_encoding = tokenizer.encode(spaced.as_str(), false)
                     .map_err(|e| crate::error::LqlError::exec("tokenize MEMIT target", e))?;
                 let target_token_id = target_encoding
-                    .get_ids()
+                    .ids
                     .first()
                     .copied()
                     .unwrap_or(0);
