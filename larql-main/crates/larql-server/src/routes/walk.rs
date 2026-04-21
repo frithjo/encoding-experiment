@@ -20,8 +20,17 @@ pub struct WalkParams {
 
 fn default_top() -> usize { 5 }
 
+// Maximum number of top features to return per layer to prevent
+// excessive memory usage and response size.
+const MAX_TOP: usize = 1000;
+
 /// Parse a layer range string like "24-33" or "14,26,27".
+/// Returns only layers that exist in the provided `all` list.
+/// Invalid ranges or non-existent layers are silently filtered out.
 fn parse_layers(s: &str, all: &[usize]) -> Vec<usize> {
+    use std::collections::HashSet;
+    let all_set: HashSet<usize> = all.iter().copied().collect();
+    
     if let Some((start, end)) = s.split_once('-') {
         if let (Ok(s), Ok(e)) = (start.parse::<usize>(), end.parse::<usize>()) {
             return all.iter().copied().filter(|l| *l >= s && *l <= e).collect();
@@ -29,7 +38,7 @@ fn parse_layers(s: &str, all: &[usize]) -> Vec<usize> {
     }
     s.split(',')
         .filter_map(|p| p.trim().parse::<usize>().ok())
-        .filter(|l| all.contains(l))
+        .filter(|l| all_set.contains(l))
         .collect()
 }
 
@@ -43,7 +52,7 @@ fn walk_prompt(
         .tokenizer
         .encode(params.prompt.as_str(), true)
         .map_err(|e| ServerError::Internal(format!("tokenize error: {e}")))?;
-    let token_ids: Vec<u32> = encoding.ids.clone();
+    let token_ids = &encoding.ids;
 
     if token_ids.is_empty() {
         return Err(ServerError::BadRequest("empty prompt".into()));
@@ -61,7 +70,8 @@ fn walk_prompt(
         None => all_layers,
     };
 
-    let trace = patched.walk(&query, &walk_layers, params.top);
+    let top = params.top.min(MAX_TOP);
+    let trace = patched.walk(&query, &walk_layers, top);
 
     let hits: Vec<serde_json::Value> = trace
         .layers
