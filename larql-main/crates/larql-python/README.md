@@ -37,7 +37,20 @@ Open `http://127.0.0.1:8000` in your terminal browser, then:
 
 **Environment**
 
-- **`LARQL_UI_DEBUG`**: Set to `1`, `true`, or `yes` to enable Jinja2 template auto-reload (the server re-checks template files on each request). Leave unset for normal use so the UI does not stat templates on every request.
+- **`LARQL_UI_DEBUG`**: Set to `1`, `true`, or `yes` to enable Jinja2 template auto-reload (the server re-checks template files on each request). When set, skipped invalid rows while loading `runs.json` are also logged to stderr (`UiStore.list_runs`). Leave unset for normal use so the UI does not stat templates on every request.
+- **`LARQL_UI_RUNTIME_TTL`**: Optional seconds (default **300**) for the process-local **vindex / session** cache (`LarqlRuntimeCache`). Executor paths reuse `larql.load` per thread until TTL expires or the workspace changes; tune for fewer reloads on large vindexes.
+
+**Deployment / scaling**
+
+- Run the ASGI app with **one worker process** if you rely on **background async runs** (`async: true` on `/api/*`, or HTML “Background run” on Studio / Explorer / LQL / Trace). Tasks are scheduled with `asyncio.create_task` in that process only; extra Uvicorn/Gunicorn workers will not share those jobs, so polling from another worker can look “stuck.”
+- The workbench keeps only the **latest N runs** on disk (`DEFAULT_RUN_HISTORY_LIMIT` in `larql/ui/store.py`, default **250**). The Runs page states this so rotations are not mistaken for data loss.
+- **Workspace summaries** are cached in-process per resolved path (`WorkspaceManager`); switching workspaces or refreshing invalidates as needed. This is separate from the vindex/session TTL above.
+
+**Errors — HTML vs JSON**
+
+- Page flows use redirects and query parameters such as `?error=…` and `?notice=…` (and inline `page_error` in templates). JSON `/api/*` routes return a JSON object with an `error` string and an HTTP status (400, 404, 415, etc.). Clients should not expect identical shapes between the two.
+
+Configure Python’s `logging` to capture the `larql.ui` logger if you need **structured visibility** into background task failures (replacing ad-hoc stderr prints).
 
 ## Quickstart
 
