@@ -1,19 +1,20 @@
-//! f32 matrix multiply via BLAS.
+//! f32 matrix multiply.
 //!
-//! On macOS: dispatches through Accelerate → AMX coprocessor.
-//! On Linux: OpenBLAS or equivalent.
-//! Single-core at 117 GB/s on M3 Max.
+//! Routed through `larql_tensor::sgemm` (pure-Rust `matrixmultiply`) by default.
+//! When the `blas` feature on `larql-tensor` is active, ndarray's `.dot()`
+//! dispatches to OpenBLAS (linux) / Accelerate (macOS AMX) automatically,
+//! so both paths share this entry point.
 
 use ndarray::{Array2, ArrayView2};
 
-/// C = A × B via BLAS sgemm.
+/// C = A × B.
 pub fn matmul(a: ArrayView2<f32>, b: ArrayView2<f32>) -> Array2<f32> {
-    a.dot(&b)
+    ndarray::sgemm::matmul_f32(a, b)
 }
 
-/// C = A × B^T via BLAS sgemm.
+/// C = A × B^T.
 pub fn matmul_transb(a: ArrayView2<f32>, b: ArrayView2<f32>) -> Array2<f32> {
-    a.dot(&b.t())
+    ndarray::sgemm::matmul_transb_f32(a, b)
 }
 
 #[cfg(test)]
