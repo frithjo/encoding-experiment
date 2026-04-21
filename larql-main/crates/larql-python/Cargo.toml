@@ -15,10 +15,10 @@ larql-core = { path = "../larql-core" }
 larql-inference = { path = "../larql-inference" }
 larql-models = { path = "../larql-models" }
 larql-vindex = { path = "../larql-vindex" }
+larql-tokenizer = { path = "../larql-tokenizer" }
 larql-lql = { path = "../larql-lql" }
-pyo3 = { version = "0.24", features = ["extension-module"] }
-numpy = "0.24"
-ndarray = "0.16"
-memmap2 = "0.9"
+pyo3 = { version = "0.26", features = ["extension-module", "abi3-py310"] }
+numpy = "0.26"
+ndarray = { path = "../larql-tensor", package = "larql-tensor" }
 serde = { workspace = true }
 serde_json = { workspace = true }

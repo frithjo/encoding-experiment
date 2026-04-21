@@ -17,26 +17,14 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 
-# Model weights
-safetensors = "0.5"
-memmap2 = "0.9"
-
 # System
 libc = "0.2"
 
-# Matrix ops (BLAS-accelerated)
-ndarray = { version = "0.16", features = ["blas"] }
+# Matrix ops (BLAS-accelerated). Routed through larql-tensor facade.
+ndarray = { path = "../larql-tensor", package = "larql-tensor" }
 
-# Tokenizer
-tokenizers = "0.21"
-
-
-[target.'cfg(target_os = "linux")'.dependencies]
-blas-src = { version = "0.10", features = ["openblas"], default-features = false }
-openblas-src = { version = "0.10", features = ["system"] }
-
-[target.'cfg(target_os = "macos")'.dependencies]
-blas-src = { version = "0.10", features = ["accelerate"] }
+# Tokenizer contract (HF impl is the default; see larql-tokenizer).
+larql-tokenizer = { path = "../larql-tokenizer" }
 
 [features]
 default = []

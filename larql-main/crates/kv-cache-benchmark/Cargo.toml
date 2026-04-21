@@ -24,7 +24,7 @@ larql-inference = { path = "../larql-inference", optional = true }
 larql-vindex = { path = "../larql-vindex", optional = true }
 larql-models = { path = "../larql-models", optional = true }
 larql-compute = { path = "../larql-compute", optional = true }
-ndarray = { version = "0.16", optional = true }
+ndarray = { path = "../larql-tensor", package = "larql-tensor", optional = true }
 tokenizers = { version = "0.21", optional = true }
 
 [dev-dependencies]
