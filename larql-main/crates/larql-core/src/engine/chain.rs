@@ -33,7 +33,7 @@ pub fn chain_tokens(
     provider: &dyn ModelProvider,
     prompt: &str,
     max_tokens: usize,
-    min_probability: f64,
+    probability_floor: f64,
     stop_tokens: Option<&[char]>,
 ) -> Result<ChainResult, ProviderError> {
     let stops = stop_tokens.unwrap_or(DEFAULT_STOP);
@@ -49,7 +49,7 @@ pub fn chain_tokens(
         if stripped.is_empty() {
             break;
         }
-        if top.probability < min_probability {
+        if top.probability < probability_floor {
             break;
         }
         if stripped.chars().any(|c| stops.contains(&c)) {

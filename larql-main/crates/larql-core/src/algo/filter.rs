@@ -9,8 +9,8 @@ use crate::core::graph::Graph;
 /// All fields are optional. An edge must pass ALL set predicates.
 #[derive(Debug, Default)]
 pub struct FilterConfig {
-    pub min_confidence: Option<f64>,
-    pub max_confidence: Option<f64>,
+    pub confidence_floor: Option<f64>,
+    pub confidence_ceiling: Option<f64>,
     pub min_layer: Option<usize>,
     pub max_layer: Option<usize>,
     pub min_selectivity: Option<f64>,
@@ -26,12 +26,12 @@ pub struct FilterConfig {
 impl FilterConfig {
     /// Check whether an edge passes all configured predicates.
     pub fn matches(&self, edge: &Edge) -> bool {
-        if let Some(min) = self.min_confidence {
+        if let Some(min) = self.confidence_floor {
             if edge.confidence < min {
                 return false;
             }
         }
-        if let Some(max) = self.max_confidence {
+        if let Some(max) = self.confidence_ceiling {
             if edge.confidence > max {
                 return false;
             }
@@ -151,10 +151,10 @@ mod tests {
     }
 
     #[test]
-    fn test_min_confidence() {
+    fn test_confidence_floor() {
         let g = build_test_graph();
         let config = FilterConfig {
-            min_confidence: Some(0.6),
+            confidence_floor: Some(0.6),
             ..Default::default()
         };
         let filtered = filter_graph(&g, &config);
@@ -163,10 +163,10 @@ mod tests {
     }
 
     #[test]
-    fn test_max_confidence() {
+    fn test_confidence_ceiling() {
         let g = build_test_graph();
         let config = FilterConfig {
-            max_confidence: Some(0.7),
+            confidence_ceiling: Some(0.7),
             ..Default::default()
         };
         let filtered = filter_graph(&g, &config);
@@ -265,7 +265,7 @@ mod tests {
     fn test_combined_filters() {
         let g = build_test_graph();
         let config = FilterConfig {
-            min_confidence: Some(0.6),
+            confidence_floor: Some(0.6),
             relations: Some(vec!["capital-of".to_string()]),
             min_layer: Some(20),
             ..Default::default()
@@ -289,7 +289,7 @@ mod tests {
     fn test_empty_graph() {
         let g = Graph::new();
         let config = FilterConfig {
-            min_confidence: Some(0.5),
+            confidence_floor: Some(0.5),
             ..Default::default()
         };
         let filtered = filter_graph(&g, &config);

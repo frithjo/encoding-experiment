@@ -12,7 +12,7 @@ use super::templates::TemplateRegistry;
 pub struct BfsConfig {
     pub max_depth: u32,
     pub max_entities: usize,
-    pub min_confidence: f64,
+    pub confidence_floor: f64,
     pub max_chain_tokens: usize,
 }
 
@@ -21,7 +21,7 @@ impl Default for BfsConfig {
         Self {
             max_depth: 3,
             max_entities: 1000,
-            min_confidence: 0.3,
+            confidence_floor: 0.3,
             max_chain_tokens: 5,
         }
     }
@@ -76,7 +76,7 @@ pub fn extract_bfs(
                 1
             };
 
-            let result = match chain_tokens(provider, &prompt, max_tok, config.min_confidence, None)
+            let result = match chain_tokens(provider, &prompt, max_tok, config.confidence_floor, None)
             {
                 Ok(r) => r,
                 Err(_) => continue,
@@ -84,7 +84,7 @@ pub fn extract_bfs(
 
             total_passes += result.num_passes;
 
-            if !result.answer.is_empty() && result.avg_probability() >= config.min_confidence {
+            if !result.answer.is_empty() && result.avg_probability() >= config.confidence_floor {
                 let edge = Edge::new(&entity, &template.relation, &result.answer)
                     .with_confidence(result.avg_probability())
                     .with_source(SourceType::Parametric)

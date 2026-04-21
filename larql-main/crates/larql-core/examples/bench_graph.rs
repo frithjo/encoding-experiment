@@ -156,7 +156,7 @@ fn main() {
     println!("\n--- Filter ---\n");
     {
         let config = FilterConfig {
-            min_confidence: Some(0.85),
+            confidence_floor: Some(0.85),
             ..Default::default()
         };
         bench("filter_graph (100K, confidence>0.85)", 3, || {

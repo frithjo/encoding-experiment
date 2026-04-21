@@ -10,7 +10,8 @@ use crate::core::graph::Graph;
 pub struct WalkResult {
     pub destination: String,
     pub path: Vec<Edge>,
-    pub min_confidence: f64,
+    /// Minimum edge confidence along the path.
+    pub path_confidence_min: f64,
 }
 
 /// Walk following relations, collecting ALL paths (not just highest confidence).
@@ -24,7 +25,7 @@ pub fn walk_all_paths(
     let mut results = Vec::new();
     walk_recursive(graph, subject, relations, 0, &mut Vec::new(), &mut results, max_paths * 10);
 
-    results.sort_by(|a, b| b.min_confidence.partial_cmp(&a.min_confidence).unwrap());
+    results.sort_by(|a, b| b.path_confidence_min.partial_cmp(&a.path_confidence_min).unwrap());
     results.truncate(max_paths);
     results
 }
@@ -43,7 +44,7 @@ fn walk_recursive(
         results.push(WalkResult {
             destination: current.to_string(),
             path: path.clone(),
-            min_confidence: if path.is_empty() { 0.0 } else { min_conf },
+            path_confidence_min: if path.is_empty() { 0.0 } else { min_conf },
         });
         return;
     }

@@ -2,6 +2,7 @@ pub mod algo;
 pub mod core;
 pub mod engine;
 pub mod io;
+pub mod mmap;
 
 // Re-export the essential types at crate root.
 pub use core::edge::Edge;
@@ -29,3 +30,18 @@ pub use algo::components::{connected_components, are_connected};
 pub use algo::walk::{walk_all_paths, WalkResult};
 pub use io::csv::{load_csv, save_csv};
 pub use io::packed::{from_packed_bytes, load_packed, save_packed, to_packed_bytes};
+
+#[cfg(feature = "http")]
+pub use engine::http_provider::HttpProvider;
+
+#[cfg(feature = "http")]
+pub use reqwest::blocking::{Client, Response};
+
+#[cfg(feature = "http-async")]
+pub use reqwest::{Client as AsyncClient, Response as AsyncResponse};
+
+#[cfg(any(feature = "http", feature = "http-async"))]
+pub use engine::http_client::{HttpClient, HttpResponse, HttpClientError, HttpResult, ReqwestBlockingClient};
+
+#[cfg(feature = "huggingface")]
+pub use hf_hub;

@@ -125,12 +125,12 @@ fn walk_all_paths_finds_multiple() {
     assert_eq!(paths.len(), 3, "should find 3 two-hop paths from A");
 
     // Best path first (highest min confidence)
-    assert!(paths[0].min_confidence >= paths[1].min_confidence);
-    assert!(paths[1].min_confidence >= paths[2].min_confidence);
+    assert!(paths[0].path_confidence_min >= paths[1].path_confidence_min);
+    assert!(paths[1].path_confidence_min >= paths[2].path_confidence_min);
 
     // Best path: A->B(0.9)->C(0.8), min=0.8
     assert_eq!(paths[0].destination, "C");
-    assert!((paths[0].min_confidence - 0.8).abs() < 1e-10);
+    assert!((paths[0].path_confidence_min - 0.8).abs() < 1e-10);
 }
 
 #[test]

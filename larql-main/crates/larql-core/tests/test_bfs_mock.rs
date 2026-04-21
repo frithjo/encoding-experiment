@@ -47,7 +47,7 @@ fn test_bfs_basic() {
     let config = BfsConfig {
         max_depth: 0,
         max_entities: 100,
-        min_confidence: 0.3,
+        confidence_floor: 0.3,
         ..Default::default()
     };
 
@@ -76,7 +76,7 @@ fn test_bfs_depth_1_follows_entities() {
     let config = BfsConfig {
         max_depth: 1,
         max_entities: 100,
-        min_confidence: 0.3,
+        confidence_floor: 0.3,
         ..Default::default()
     };
 
@@ -105,7 +105,7 @@ fn test_bfs_multiple_seeds() {
     let config = BfsConfig {
         max_depth: 0,
         max_entities: 100,
-        min_confidence: 0.3,
+        confidence_floor: 0.3,
         ..Default::default()
     };
 
@@ -132,7 +132,7 @@ fn test_bfs_respects_max_entities() {
     let config = BfsConfig {
         max_depth: 3,
         max_entities: 1,
-        min_confidence: 0.3,
+        confidence_floor: 0.3,
         ..Default::default()
     };
 
@@ -151,7 +151,7 @@ fn test_bfs_respects_max_entities() {
 }
 
 #[test]
-fn test_bfs_respects_min_confidence() {
+fn test_bfs_respects_confidence_floor() {
     // Provider returns low confidence
     let provider = MockProvider::with_knowledge(vec![(
         "The capital of France is".into(),
@@ -163,7 +163,7 @@ fn test_bfs_respects_min_confidence() {
     let config = BfsConfig {
         max_depth: 0,
         max_entities: 100,
-        min_confidence: 0.5,
+        confidence_floor: 0.5,
         ..Default::default()
     };
 
@@ -213,7 +213,7 @@ fn test_bfs_no_duplicate_visits() {
     let config = BfsConfig {
         max_depth: 3,
         max_entities: 100,
-        min_confidence: 0.3,
+        confidence_floor: 0.3,
         ..Default::default()
     };
 
@@ -242,7 +242,7 @@ fn test_bfs_edges_have_source_parametric() {
     let config = BfsConfig {
         max_depth: 0,
         max_entities: 100,
-        min_confidence: 0.3,
+        confidence_floor: 0.3,
         ..Default::default()
     };
 
@@ -270,7 +270,7 @@ fn test_bfs_edges_have_metadata() {
     let config = BfsConfig {
         max_depth: 0,
         max_entities: 100,
-        min_confidence: 0.3,
+        confidence_floor: 0.3,
         ..Default::default()
     };
 
@@ -301,7 +301,7 @@ fn test_bfs_result_counts() {
     let config = BfsConfig {
         max_depth: 0,
         max_entities: 100,
-        min_confidence: 0.3,
+        confidence_floor: 0.3,
         ..Default::default()
     };
 

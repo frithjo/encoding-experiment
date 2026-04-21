@@ -40,12 +40,12 @@ fn main() {
     let high_conf = filter_graph(
         &graph,
         &FilterConfig {
-            min_confidence: Some(0.7),
+            confidence_floor: Some(0.7),
             ..Default::default()
         },
     );
     println!(
-        "min_confidence >= 0.7:   {} edges (removed {})",
+        "confidence_floor >= 0.7:   {} edges (removed {})",
         high_conf.edge_count(),
         graph.edge_count() - high_conf.edge_count()
     );
@@ -119,7 +119,7 @@ fn main() {
     let best = filter_graph(
         &graph,
         &FilterConfig {
-            min_confidence: Some(0.8),
+            confidence_floor: Some(0.8),
             min_layer: Some(20),
             min_selectivity: Some(0.7),
             ..Default::default()
