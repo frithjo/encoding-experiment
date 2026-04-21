@@ -42,7 +42,7 @@ impl CaptureCallbacks for SilentCallbacks {}
 /// Loaded model ready for inference and capture.
 pub struct InferenceModel {
     weights: ModelWeights,
-    tokenizer: tokenizers::Tokenizer,
+    tokenizer: crate::tokenizer::TokenizerArc,
     model_name: String,
 }
 
@@ -106,8 +106,8 @@ impl InferenceModel {
         &self.weights
     }
 
-    pub fn tokenizer(&self) -> &tokenizers::Tokenizer {
-        &self.tokenizer
+    pub fn tokenizer(&self) -> &dyn larql_tokenizer::Tokenizer {
+        self.tokenizer.as_ref()
     }
 
     /// Capture residuals and optionally activations for a list of entities.
@@ -162,7 +162,7 @@ impl InferenceModel {
                 .tokenizer
                 .encode(prompt.as_str(), false)
                 .map_err(|e| InferenceError::Parse(format!("tokenize error: {e}")))?;
-            let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+            let token_ids: Vec<u32> = encoding.ids.clone();
 
             if token_ids.is_empty() {
                 continue;
@@ -178,7 +178,7 @@ impl InferenceModel {
 
             // Write residuals
             for (layer, vector) in &trace.residuals {
-                let top_k = project_to_vocab(&self.weights.embed, vector, 10, &self.tokenizer);
+                let top_k = project_to_vocab(&self.weights.embed, vector, 10, self.tokenizer.as_ref());
 
                 let (top_token, top_token_id, c_score) = if let Some(first) = top_k.first() {
                     (first.token.clone(), first.token_id, first.logit)
@@ -243,7 +243,7 @@ fn project_to_vocab(
     embed: &ndarray::ArrayBase<impl ndarray::Data<Elem = f32>, ndarray::Ix2>,
     residual: &[f32],
     k: usize,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
 ) -> Vec<TopKEntry> {
     let vocab_size = embed.shape()[0];
     let mut scores: Vec<(usize, f32)> = Vec::with_capacity(vocab_size);

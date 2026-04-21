@@ -30,7 +30,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{self, Write, Seek, SeekFrom};
 use std::path::Path;
 
-use memmap2::Mmap;
+use larql_core::mmap::Mmap;
 
 const MAGIC: [u8; 4] = *b"CTXT";
 const VERSION: u32 = 1;

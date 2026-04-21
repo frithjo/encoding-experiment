@@ -57,7 +57,7 @@ impl TemplateUniverse {
     /// `activation_threshold`: minimum |activation| to count a feature as firing.
     pub fn build(
         weights: &ModelWeights,
-        tokenizer: &tokenizers::Tokenizer,
+        tokenizer: &dyn larql_tokenizer::Tokenizer,
         name: &str,
         template: &str,
         entities: &[&str],
@@ -74,7 +74,7 @@ impl TemplateUniverse {
                 Ok(e) => e,
                 Err(_) => continue,
             };
-            let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+            let token_ids: Vec<u32> = encoding.ids.clone();
 
             let trace = crate::forward::trace_forward_full(
                 weights, &token_ids, &all_layers,

@@ -21,7 +21,7 @@ use super::CachedLayerGraph;
 #[allow(clippy::too_many_arguments)]
 pub fn predict_hybrid(
     weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     token_ids: &[u32],
     top_k: usize,
     index: &larql_vindex::VectorIndex,
@@ -51,7 +51,7 @@ pub fn predict_hybrid(
 #[cfg(feature = "metal")]
 fn predict_hybrid_metal(
     weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     token_ids: &[u32],
     top_k: usize,
     index: &larql_vindex::VectorIndex,

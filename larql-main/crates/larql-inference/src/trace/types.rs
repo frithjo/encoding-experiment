@@ -79,7 +79,7 @@ impl ResidualTrace {
     }
 
     pub fn top_k(
-        &self, weights: &ModelWeights, tokenizer: &tokenizers::Tokenizer,
+        &self, weights: &ModelWeights, tokenizer: &dyn larql_tokenizer::Tokenizer,
         layer: i32, position: usize, k: usize,
     ) -> Vec<(String, f32)> {
         let node = match self.node(layer, position) {
@@ -122,7 +122,7 @@ impl ResidualTrace {
     }
 
     pub fn layer_summaries(
-        &self, weights: &ModelWeights, tokenizer: &tokenizers::Tokenizer,
+        &self, weights: &ModelWeights, tokenizer: &dyn larql_tokenizer::Tokenizer,
     ) -> Vec<LayerSummary> {
         let last_pos = self.tokens.len().saturating_sub(1);
         let mut summaries = Vec::new();

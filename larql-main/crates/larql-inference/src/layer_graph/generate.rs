@@ -15,7 +15,7 @@ use super::CachedLayerGraph;
 #[allow(clippy::too_many_arguments)]
 pub fn generate(
     weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     token_ids: &[u32],
     max_tokens: usize,
     index: &larql_vindex::VectorIndex,

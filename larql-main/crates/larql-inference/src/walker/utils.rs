@@ -3,7 +3,7 @@
 use super::weight_walker::ThresholdCounts;
 
 /// Decode a single token ID to a trimmed string.
-pub fn decode_token(tokenizer: &tokenizers::Tokenizer, id: u32) -> Option<String> {
+pub fn decode_token(tokenizer: &dyn larql_tokenizer::Tokenizer, id: u32) -> Option<String> {
     crate::tokenizer::decode_token(tokenizer, id)
 }
 

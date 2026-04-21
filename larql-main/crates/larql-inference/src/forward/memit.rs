@@ -105,7 +105,7 @@ pub fn run_memit(
     facts: &[MemitFact],
     ridge: f64,
     target_alpha: f32,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
 ) -> Result<Vec<MemitResult>, String> {
     if facts.is_empty() {
         return Ok(Vec::new());
@@ -125,7 +125,7 @@ pub fn run_memit(
             tokenizer
                 .encode(*p, true)
                 .ok()
-                .map(|e| e.get_ids().to_vec())
+                .map(|e| e.ids.clone())
         })
         .collect();
 

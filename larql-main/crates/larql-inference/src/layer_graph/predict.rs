@@ -23,7 +23,7 @@ use super::prefill::prefill_kv_cache_cpu;
 /// Replaces the 231ms dense logits matmul with a ~1ms KNN lookup.
 pub fn predict_with_graph_vindex_logits(
     weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     token_ids: &[u32],
     top_k: usize,
     graph: &dyn LayerGraph,
@@ -80,7 +80,7 @@ pub fn predict_with_graph_vindex_logits(
 /// This is the generic layer loop — embedding → layers → logits.
 pub fn predict_with_graph(
     weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     token_ids: &[u32],
     top_k: usize,
     graph: &dyn LayerGraph,
@@ -112,7 +112,7 @@ pub fn predict_with_graph(
 #[allow(clippy::too_many_arguments)]
 pub fn predict_split_pass(
     weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     token_ids: &[u32],
     top_k: usize,
     index: &larql_vindex::VectorIndex,
@@ -276,7 +276,7 @@ pub fn predict_split_pass(
 /// Target: 0ms attention + 8.5ms FFN + 5ms logits = ~14ms → 71 tok/s
 pub fn predict_split_cached(
     weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     top_k: usize,
     index: &larql_vindex::VectorIndex,
     backend: &dyn ComputeBackend,
@@ -331,7 +331,7 @@ pub fn predict_split_cached(
 #[allow(clippy::too_many_arguments)]
 pub fn predict_honest(
     weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     token_ids: &[u32],
     top_k: usize,
     index: &larql_vindex::VectorIndex,
@@ -493,7 +493,7 @@ pub fn predict_honest(
 /// 3. Falls back to full vocab matmul if no lm_head loaded
 pub fn predict_pipeline(
     weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     token_ids: &[u32],
     top_k: usize,
     graph: &dyn LayerGraph,

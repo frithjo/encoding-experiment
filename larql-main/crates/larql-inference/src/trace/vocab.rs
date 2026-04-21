@@ -37,7 +37,7 @@ pub fn softmax(logits: &[f32]) -> Vec<f32> {
     logits.iter().map(|&l| (((l - max) as f64).exp() / exp_sum) as f32).collect()
 }
 
-pub fn top_k_from_logits(logits: &[f32], tokenizer: &tokenizers::Tokenizer, k: usize) -> Vec<(String, f32)> {
+pub fn top_k_from_logits(logits: &[f32], tokenizer: &dyn larql_tokenizer::Tokenizer, k: usize) -> Vec<(String, f32)> {
     let probs = softmax(logits);
     let mut indexed: Vec<(usize, f32)> = probs.iter().copied().enumerate().collect();
     let k = k.min(indexed.len());

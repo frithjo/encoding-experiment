@@ -8,7 +8,7 @@ use crate::model::ModelWeights;
 /// Shared logits computation: final norm + vindex KNN + softmax.
 pub fn finalize_logits(
     weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     h: &Array2<f32>,
     top_k: usize,
     index: &larql_vindex::VectorIndex,

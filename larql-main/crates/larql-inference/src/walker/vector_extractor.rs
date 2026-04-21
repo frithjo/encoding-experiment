@@ -176,7 +176,7 @@ pub fn scan_completed_layers(path: &Path) -> Result<HashSet<usize>, InferenceErr
 /// A loaded model ready for vector extraction.
 pub struct VectorExtractor {
     weights: ModelWeights,
-    tokenizer: tokenizers::Tokenizer,
+    tokenizer: crate::tokenizer::TokenizerArc,
     model_name: String,
 }
 
@@ -191,7 +191,7 @@ impl VectorExtractor {
                 "tokenizer.json not found".into(),
             ));
         }
-        let tokenizer = tokenizers::Tokenizer::from_file(&tokenizer_path)
+        let tokenizer = larql_tokenizer::load_tokenizer(&tokenizer_path)
             .map_err(|e| InferenceError::Parse(e.to_string()))?;
 
         Ok(Self {
@@ -255,7 +255,7 @@ impl VectorExtractor {
             let top_k: Vec<TopKEntry> = top_k_pairs
                 .iter()
                 .filter_map(|&(idx, logit)| {
-                    decode_token(&self.tokenizer, idx as u32).map(|token| TopKEntry {
+                    decode_token(self.tokenizer.as_ref(), idx as u32).map(|token| TopKEntry {
                         token,
                         token_id: idx as u32,
                         logit,
@@ -329,7 +329,7 @@ impl VectorExtractor {
             let top_k: Vec<TopKEntry> = top_k_pairs
                 .iter()
                 .filter_map(|&(idx, logit)| {
-                    decode_token(&self.tokenizer, idx as u32).map(|token| TopKEntry {
+                    decode_token(self.tokenizer.as_ref(), idx as u32).map(|token| TopKEntry {
                         token,
                         token_id: idx as u32,
                         logit,
@@ -394,7 +394,7 @@ impl VectorExtractor {
             let top_k: Vec<TopKEntry> = top_k_pairs
                 .iter()
                 .filter_map(|&(idx, logit)| {
-                    decode_token(&self.tokenizer, idx as u32).map(|token| TopKEntry {
+                    decode_token(self.tokenizer.as_ref(), idx as u32).map(|token| TopKEntry {
                         token,
                         token_id: idx as u32,
                         logit,
@@ -490,7 +490,7 @@ impl VectorExtractor {
             let top_k: Vec<TopKEntry> = top_k_pairs
                 .iter()
                 .filter_map(|&(idx, logit)| {
-                    decode_token(&self.tokenizer, idx as u32).map(|token| TopKEntry {
+                    decode_token(self.tokenizer.as_ref(), idx as u32).map(|token| TopKEntry {
                         token,
                         token_id: idx as u32,
                         logit,
@@ -634,7 +634,7 @@ impl VectorExtractor {
             let vector: Vec<f32> = self.weights.embed.row(tok_id).to_vec();
             let norm: f32 = vector.iter().map(|x| x * x).sum::<f32>().sqrt();
 
-            let token = decode_token(&self.tokenizer, tok_id as u32).unwrap_or_default();
+            let token = decode_token(self.tokenizer.as_ref(), tok_id as u32).unwrap_or_default();
 
             writer.write_record(&VectorRecord {
                 id: format!("T{tok_id}"),

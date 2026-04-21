@@ -28,9 +28,9 @@ pub struct LayerResult {
 /// Per-layer statistics for validation.
 #[derive(Debug, Clone, Default)]
 pub struct LayerStats {
-    pub mean_confidence: f64,
-    pub max_confidence: f64,
-    pub min_confidence: f64,
+    pub confidence_mean: f64,
+    pub confidence_max: f64,
+    pub confidence_min: f64,
     pub mean_c_in: f64,
     pub mean_c_out: f64,
     pub mean_selectivity: f64,
@@ -60,14 +60,15 @@ pub struct ThresholdCounts {
 /// Configuration for the weight walker.
 pub struct WalkConfig {
     pub top_k: usize,
-    pub min_score: f32,
+    /// Minimum raw activation to include a token in top-k subject/object lists (weight / attention walks).
+    pub activation_floor: f32,
 }
 
 impl Default for WalkConfig {
     fn default() -> Self {
         Self {
             top_k: 5,
-            min_score: 0.02,
+            activation_floor: 0.02,
         }
     }
 }
@@ -88,7 +89,7 @@ impl WalkCallbacks for SilentWalkCallbacks {}
 /// A loaded model ready for weight walking.
 pub struct WeightWalker {
     weights: ModelWeights,
-    tokenizer: tokenizers::Tokenizer,
+    tokenizer: crate::tokenizer::TokenizerArc,
 }
 
 /// A raw edge before per-layer normalization.
@@ -113,7 +114,7 @@ impl WeightWalker {
                 "tokenizer.json not found".into(),
             ));
         }
-        let tokenizer = tokenizers::Tokenizer::from_file(&tokenizer_path)
+        let tokenizer = larql_tokenizer::load_tokenizer(&tokenizer_path)
             .map_err(|e| InferenceError::Parse(e.to_string()))?;
 
         Ok(Self { weights, tokenizer })
@@ -173,8 +174,8 @@ impl WeightWalker {
 
             let mut subjects: Vec<(String, f32)> = Vec::new();
             for (idx, score) in &top_in {
-                if *score >= config.min_score {
-                    if let Some(tok) = decode_token(&self.tokenizer, *idx as u32) {
+                if *score >= config.activation_floor {
+                    if let Some(tok) = decode_token(self.tokenizer.as_ref(), *idx as u32) {
                         if !tok.is_empty() {
                             subjects.push((tok, *score));
                         }
@@ -184,8 +185,8 @@ impl WeightWalker {
 
             let mut objects: Vec<(String, f32)> = Vec::new();
             for (idx, score) in &top_out {
-                if *score >= config.min_score {
-                    if let Some(tok) = decode_token(&self.tokenizer, *idx as u32) {
+                if *score >= config.activation_floor {
+                    if let Some(tok) = decode_token(self.tokenizer.as_ref(), *idx as u32) {
                         if !tok.is_empty() {
                             objects.push((tok, *score));
                         }
@@ -299,9 +300,9 @@ impl WeightWalker {
 
         let stats = if n > 0 {
             LayerStats {
-                mean_confidence: sum_conf / n as f64,
-                max_confidence: max_conf,
-                min_confidence: min_conf,
+                confidence_mean: sum_conf / n as f64,
+                confidence_max: max_conf,
+                confidence_min: min_conf,
                 mean_c_in: sum_cin / n as f64,
                 mean_c_out: sum_cout / n as f64,
                 mean_selectivity: sum_sel / n as f64,

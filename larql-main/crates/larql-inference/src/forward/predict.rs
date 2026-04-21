@@ -14,7 +14,7 @@ use super::layer::{run_layer_with_ffn, run_layer_with_capture, run_attention};
 pub fn logits_to_predictions_pub(
     weights: &ModelWeights,
     h: &Array2<f32>,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     top_k: usize,
     temperature: f32,
 ) -> PredictResult {
@@ -24,7 +24,7 @@ pub fn logits_to_predictions_pub(
 pub(super) fn logits_to_predictions(
     weights: &ModelWeights,
     h: &Array2<f32>,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     top_k: usize,
     temperature: f32,
 ) -> PredictResult {
@@ -83,7 +83,7 @@ pub(super) fn logits_to_predictions(
 /// Run a full forward pass and return the top-k next token predictions.
 pub fn predict(
     weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     token_ids: &[u32],
     top_k: usize,
 ) -> PredictResult {
@@ -92,7 +92,7 @@ pub fn predict(
 
 pub fn predict_with_temperature(
     weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     token_ids: &[u32],
     top_k: usize,
     temperature: f32,
@@ -120,7 +120,7 @@ pub fn predict_with_temperature(
 /// Run a full forward pass with a custom FFN backend for all layers.
 pub fn predict_with_ffn(
     weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     token_ids: &[u32],
     top_k: usize,
     ffn: &dyn FfnBackend,
@@ -154,7 +154,7 @@ pub fn predict_with_ffn(
 /// and per-layer residuals for logit lens.
 pub fn predict_with_ffn_attention(
     weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     token_ids: &[u32],
     top_k: usize,
     ffn: &dyn FfnBackend,
@@ -190,7 +190,7 @@ pub fn predict_with_ffn_attention(
 /// Project a single residual vector through final norm + lm_head to get top-1 prediction.
 pub fn logit_lens_top1(
     weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     residual: &[f32],
 ) -> Option<(String, f64)> {
     let hidden = weights.hidden_size;
@@ -204,7 +204,7 @@ pub fn logit_lens_top1(
 /// Forward pass with residual capture — predictions + per-layer residuals.
 pub fn predict_with_ffn_trace(
     weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     token_ids: &[u32],
     top_k: usize,
     ffn: &dyn FfnBackend,
@@ -234,7 +234,7 @@ pub fn predict_with_ffn_trace(
 /// Run a full forward pass with per-layer FFN backend selection.
 pub fn predict_with_router(
     weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     token_ids: &[u32],
     top_k: usize,
     router: &LayerFfnRouter,
@@ -257,7 +257,7 @@ pub fn predict_with_router(
 /// Run a forward pass with per-layer strategy: full compute or scalar gain bypass.
 pub fn predict_with_strategy(
     weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     token_ids: &[u32],
     top_k: usize,
     strategy: &[LayerMode],
@@ -291,7 +291,7 @@ pub fn predict_with_strategy(
 /// Resume a forward pass from a pre-computed hidden state.
 pub fn predict_from_hidden(
     weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     h_init: &Array2<f32>,
     start_layer: usize,
     top_k: usize,
@@ -303,7 +303,7 @@ pub fn predict_from_hidden(
 /// Resume a forward pass from a pre-computed hidden state with a custom FFN backend.
 pub fn predict_from_hidden_with_ffn(
     weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     h_init: &Array2<f32>,
     start_layer: usize,
     top_k: usize,

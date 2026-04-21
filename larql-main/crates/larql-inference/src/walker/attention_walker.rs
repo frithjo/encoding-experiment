@@ -44,7 +44,7 @@ struct RawEdge {
 /// A loaded model ready for attention walking.
 pub struct AttentionWalker {
     weights: ModelWeights,
-    tokenizer: tokenizers::Tokenizer,
+    tokenizer: crate::tokenizer::TokenizerArc,
 }
 
 impl AttentionWalker {
@@ -58,7 +58,7 @@ impl AttentionWalker {
                 "tokenizer.json not found".into(),
             ));
         }
-        let tokenizer = tokenizers::Tokenizer::from_file(&tokenizer_path)
+        let tokenizer = larql_tokenizer::load_tokenizer(&tokenizer_path)
             .map_err(|e| InferenceError::Parse(e.to_string()))?;
 
         Ok(Self {
@@ -143,16 +143,16 @@ impl AttentionWalker {
 
                 let top_out = partial_top_k(&out_logits, config.top_k);
 
-                let inp_token = match decode_token(&self.tokenizer, inp_idx as u32) {
+                let inp_token = match decode_token(self.tokenizer.as_ref(), inp_idx as u32) {
                     Some(t) if !t.is_empty() => t,
                     _ => continue,
                 };
 
                 for &(out_idx, c_out) in &top_out {
-                    if c_out < config.min_score {
+                    if c_out < config.activation_floor {
                         continue;
                     }
-                    let out_token = match decode_token(&self.tokenizer, out_idx as u32) {
+                    let out_token = match decode_token(self.tokenizer.as_ref(), out_idx as u32) {
                         Some(t) if !t.is_empty() => t,
                         _ => continue,
                     };
@@ -250,9 +250,9 @@ impl AttentionWalker {
 
         let stats = if n > 0 {
             LayerStats {
-                mean_confidence: sum_conf / n as f64,
-                max_confidence: max_conf,
-                min_confidence: min_conf,
+                confidence_mean: sum_conf / n as f64,
+                confidence_max: max_conf,
+                confidence_min: min_conf,
                 mean_c_in: sum_cin / n as f64,
                 mean_c_out: sum_cout / n as f64,
                 mean_selectivity: sum_sel / n as f64,

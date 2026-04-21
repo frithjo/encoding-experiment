@@ -18,7 +18,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::Path;
 
-use memmap2::Mmap;
+use larql_core::mmap::Mmap;
 
 use super::types::TraceNode;
 
