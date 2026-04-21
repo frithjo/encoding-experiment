@@ -278,11 +278,17 @@ impl Session {
         };
 
         let verbose_s = if verbose { "true".to_string() } else { "false".to_string() };
+        let mode_s = match mode {
+            crate::ast::DescribeMode::Verbose => "verbose",
+            crate::ast::DescribeMode::Brief => "brief",
+            crate::ast::DescribeMode::Raw => "raw",
+        }.to_string();
         let layer_s = layer.map(|l| l.to_string());
         let mut q: Vec<(String, String)> = vec![
             ("entity".into(), entity.to_string()),
             ("band".into(), band_str.to_string()),
             ("verbose".into(), verbose_s),
+            ("mode".into(), mode_s),
         ];
         if let Some(ref ls) = layer_s {
             q.push(("layer".into(), ls.clone()));
@@ -679,6 +685,7 @@ impl Session {
         target: &str,
         layer: Option<u32>,
         confidence: Option<f32>,
+        alpha: Option<f32>,
     ) -> Result<Vec<String>, LqlError> {
         let request = serde_json::json!({
             "entity": entity,
@@ -686,6 +693,7 @@ impl Session {
             "target": target,
             "layer": layer,
             "confidence": confidence.unwrap_or(0.9),
+            "alpha": alpha.unwrap_or(0.25),
         });
 
         let result = self.remote_post_json("/v1/insert", &request, true)?;
@@ -837,9 +845,31 @@ impl Session {
         &self,
         conditions: &[crate::ast::Condition],
         limit: Option<u32>,
+        fields: &[String],
+        nearest: Option<&crate::ast::NearestClause>,
+        order: Option<&crate::ast::OrderBy>,
     ) -> Result<Vec<String>, LqlError> {
         let mut body = serde_json::Map::new();
         body.insert("limit".into(), serde_json::json!(limit.unwrap_or(20)));
+
+        // Add order support
+        if let Some(o) = order {
+            body.insert("order".into(), serde_json::json!(if o.descending { "desc" } else { "asc" }));
+            body.insert("order_by".into(), serde_json::json!(&o.field));
+        }
+
+        // Add fields support
+        if !fields.is_empty() {
+            body.insert("fields".into(), serde_json::json!(fields));
+        }
+
+        // Add nearest support
+        if let Some(n) = nearest {
+            body.insert("nearest".into(), serde_json::json!({
+                "entity": n.entity,
+                "layer": n.layer,
+            }));
+        }
 
         for cond in conditions {
             match cond.field.as_str() {
@@ -948,15 +978,176 @@ impl Session {
             out.push("  (no local patches)".into());
         } else {
             out.push("Local patches (client-side only):".into());
-            for (i, patch) in local_patches.iter().enumerate() {
-                let (ins, upd, del) = patch.counts();
-                let name = patch.description.as_deref().unwrap_or("(unnamed)");
-                out.push(format!(
-                    "  {}. {:<40} {} ops ({} ins, {} upd, {} del)",
-                    i + 1, name, patch.len(), ins, upd, del,
+            for p in local_patches {
+                let (ins, upd, del) = p.counts();
+                let desc = p.description.as_deref().unwrap_or("unnamed");
+                out.push(format!("  - {} (ins={}, upd={}, del={})", desc, ins, upd, del));
+            }
+        }
+        Ok(out)
+    }
+
+    pub(crate) fn remote_show_models(&self) -> Result<Vec<String>, LqlError> {
+        let body = self.remote_get_json("/v1/models", &[])?;
+
+        let mut out = Vec::new();
+        out.push(format!("{:<35} {:>10} {:>8} {:>12}",
+            "Model", "Features", "Status", "Path"));
+        out.push("-".repeat(70));
+
+        if let Some(models) = body["models"].as_array() {
+            for m in models {
+                let id = m["id"].as_str().unwrap_or("?");
+                let features = m["features"].as_u64().unwrap_or(0);
+                let loaded = m["loaded"].as_bool().unwrap_or(false);
+                let path = m["path"].as_str().unwrap_or("/v1");
+                out.push(format!("{:<35} {:>10} {:>8} {:>12}",
+                    id,
+                    features,
+                    if loaded { "loaded" } else { "unloaded" },
+                    path
                 ));
             }
         }
+
+        Ok(out)
+    }
+
+    pub(crate) fn remote_show_layers(&self, range: Option<&crate::ast::Range>) -> Result<Vec<String>, LqlError> {
+        let mut params: Vec<(String, String)> = vec![];
+        if let Some(r) = range {
+            params.push(("start".to_string(), r.start.to_string()));
+            params.push(("end".to_string(), r.end.to_string()));
+        }
+
+        let qref: Vec<(&str, &str)> = params.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+        let body = self.remote_get_json("/v1/layers", &qref)?;
+
+        let mut out = Vec::new();
+        out.push(format!(
+            "{:<8} {:>10} {:>10} {:>15}",
+            "Layer", "Features", "With Meta", "Top Token"
+        ));
+        out.push("-".repeat(48));
+
+        if let Some(layers) = body["layers"].as_array() {
+            for l in layers {
+                let layer = l["layer"].as_u64().unwrap_or(0);
+                let features = l["features"].as_u64().unwrap_or(0);
+                let with_meta = l["with_meta"].as_u64().unwrap_or(0);
+                let top_token = l["top_token"].as_str().unwrap_or("");
+                out.push(format!(
+                    "{:<8} {:>10} {:>10} {:>15}",
+                    layer,
+                    features,
+                    with_meta,
+                    top_token
+                ));
+            }
+        }
+
+        Ok(out)
+    }
+
+    pub(crate) fn remote_show_features(
+        &self,
+        layer: u32,
+        conditions: &[crate::ast::Condition],
+        limit: Option<u32>,
+    ) -> Result<Vec<String>, LqlError> {
+        let mut params: Vec<(String, String)> = vec![("layer".to_string(), layer.to_string())];
+
+        let token_filter = conditions.iter().find(|c| c.field == "relation" || c.field == "token").and_then(|c| {
+            if let crate::ast::Value::String(ref s) = c.value { Some(s.clone()) } else { None }
+        });
+        let min_score = conditions.iter().find(|c| c.field == "confidence" || c.field == "c_score").and_then(|c| {
+            match &c.value {
+                crate::ast::Value::Number(n) => Some(*n as f32),
+                crate::ast::Value::Integer(n) => Some(*n as f32),
+                _ => None,
+            }
+        });
+
+        if let Some(tf) = token_filter {
+            params.push(("token".to_string(), tf));
+        }
+        if let Some(ms) = min_score {
+            params.push(("min_score".to_string(), ms.to_string()));
+        }
+        if let Some(lim) = limit {
+            params.push(("limit".to_string(), lim.to_string()));
+        }
+
+        let qref: Vec<(&str, &str)> = params.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+        let body = self.remote_get_json("/v1/features", &qref)?;
+
+        if let Some(error) = body.get("error") {
+            return Err(LqlError::Execution(error.as_str().unwrap_or("unknown error").to_string()));
+        }
+
+        let mut out = Vec::new();
+        out.push(format!(
+            "{:<8} {:<20} {:>10} {:>30}",
+            "Feature", "Top Token", "Score", "Down outputs"
+        ));
+        out.push("-".repeat(72));
+
+        if let Some(features) = body["features"].as_array() {
+            for f in features {
+                let feature = f["feature"].as_u64().unwrap_or(0);
+                let top_token = f["top_token"].as_str().unwrap_or("");
+                let score = f["score"].as_f64().unwrap_or(0.0);
+                let down_outputs = f["down_outputs"].as_str().unwrap_or("");
+                out.push(format!(
+                    "{:<8} {:<20} {:>10.1} {:>30}",
+                    feature,
+                    top_token,
+                    score,
+                    down_outputs
+                ));
+            }
+        }
+
+        Ok(out)
+    }
+
+    pub(crate) fn remote_show_entities(
+        &self,
+        layer: Option<u32>,
+        limit: Option<u32>,
+    ) -> Result<Vec<String>, LqlError> {
+        let mut params: Vec<(String, String)> = vec![];
+        if let Some(l) = layer {
+            params.push(("layer".to_string(), l.to_string()));
+        }
+        if let Some(lim) = limit {
+            params.push(("limit".to_string(), lim.to_string()));
+        }
+
+        let qref: Vec<(&str, &str)> = params.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+        let body = self.remote_get_json("/v1/entities", &qref)?;
+
+        let mut out = Vec::new();
+        out.push(format!(
+            "{:<30} {:>10} {:>10}",
+            "Entity", "Count", "Score"
+        ));
+        out.push("-".repeat(52));
+
+        if let Some(entities) = body["entities"].as_array() {
+            for e in entities {
+                let entity = e["entity"].as_str().unwrap_or("");
+                let count = e["count"].as_u64().unwrap_or(0);
+                let score = e["score"].as_f64().unwrap_or(0.0);
+                out.push(format!(
+                    "{:<30} {:>10} {:>10.1}",
+                    entity,
+                    count,
+                    score
+                ));
+            }
+        }
+
         Ok(out)
     }
 

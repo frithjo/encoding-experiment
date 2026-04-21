@@ -29,6 +29,9 @@ pub struct DescribeParams {
     pub layer: Option<u32>,
     #[serde(default)]
     pub relations_only: bool,
+    /// Output mode: brief, verbose, or raw
+    #[serde(default)]
+    pub mode: Option<String>,
 }
 
 fn default_band() -> String { "knowledge".into() }
@@ -164,6 +167,11 @@ fn describe_entity(
     }
     ranked.truncate(params.limit);
 
+    let mode = params.mode.as_deref().unwrap_or("brief");
+    let is_verbose = mode == "verbose" || params.verbose;
+    let is_raw = mode == "raw";
+    let show_also = is_verbose || is_raw;
+
     let edge_json: Vec<serde_json::Value> = ranked
         .iter()
         .map(|info| {
@@ -176,19 +184,21 @@ fn describe_entity(
                 "layer": info.best_layer,
             });
 
-            // Probe-confirmed relation label.
-            if let Some(label) = model.probe_labels.get(&(info.best_layer, info.best_feature)) {
-                edge["relation"] = serde_json::json!(label);
-                edge["source"] = serde_json::json!("probe");
+            // Probe-confirmed relation label (skip in raw mode).
+            if !is_raw {
+                if let Some(label) = model.probe_labels.get(&(info.best_layer, info.best_feature)) {
+                    edge["relation"] = serde_json::json!(label);
+                    edge["source"] = serde_json::json!("probe");
+                }
             }
 
-            if params.verbose {
+            if is_verbose {
                 edge["layer_max"] = serde_json::json!(max_l);
                 edge["layer_min"] = serde_json::json!(min_l);
                 edge["count"] = serde_json::json!(info.count);
             }
 
-            if !info.also.is_empty() {
+            if show_also && !info.also.is_empty() {
                 edge["also"] = serde_json::json!(info.also);
             }
 
