@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import struct
 import tempfile
@@ -14,7 +15,7 @@ from starlette.testclient import TestClient
 
 from larql.ui.app import create_app
 from larql.ui.models import RecipeRecord, RunRecord, execution_engine_for_recipe, validate_recipe
-from larql.ui.store import UiStore
+from larql.ui.store import DEFAULT_RUN_HISTORY_LIMIT, UiStore
 
 
 FIXTURE_UI_WALK_TRACE_VINDEX = Path(__file__).resolve().parent / "fixtures" / "ui_walk_trace_vindex"
@@ -264,6 +265,56 @@ def test_studio_compare_validation(client: TestClient, vindex_path: str) -> None
     assert "exactly one placeholder" in bad.text.lower()
 
 
+def test_studio_page_marks_background_run_as_run_only(
+    client: TestClient, vindex_path: str
+) -> None:
+    client.post("/workspace", data={"path": vindex_path}, follow_redirects=True)
+    page = client.get("/studio")
+    assert page.status_code == 200
+    assert "Background run (Run only; compare always executes in-page)" in page.text
+
+
+def test_studio_async_page_waits_for_shared_poller(
+    client: TestClient, vindex_path: str
+) -> None:
+    client.post("/workspace", data={"path": vindex_path}, follow_redirects=True)
+    page = client.post(
+        "/studio/run",
+        data={
+            "recipe_id": "",
+            "engine": "describe",
+            "inline_template": "{subject}",
+            "band": "knowledge",
+            "subject": "hello",
+            "compare_subjects": "",
+            "async_background": "on",
+        },
+    )
+    assert page.status_code == 200
+    assert 'document.addEventListener("DOMContentLoaded", startPolling, { once: true })' in page.text
+
+
+def test_studio_async_page_preserves_poll_id_bootstrap(
+    client: TestClient, vindex_path: str
+) -> None:
+    client.post("/workspace", data={"path": vindex_path}, follow_redirects=True)
+    page = client.post(
+        "/studio/run",
+        data={
+            "recipe_id": "",
+            "engine": "describe",
+            "inline_template": "{subject}",
+            "band": "knowledge",
+            "subject": "hello",
+            "compare_subjects": "",
+            "async_background": "on",
+        },
+    )
+    assert page.status_code == 200
+    assert 'window.LarqlAsyncRuns.pollRun({' in page.text
+    assert 'scope: "studio"' in page.text
+
+
 def test_studio_run_resolves_engine_from_recipe_when_engine_omitted(
     client: TestClient, vindex_path: str
 ) -> None:
@@ -305,6 +356,39 @@ def test_trace_redirect_without_workspace(client: TestClient) -> None:
     assert "/workspace" in (response.headers.get("location") or "")
 
 
+def test_runs_page_shows_retention_limit(client: TestClient, vindex_path: str) -> None:
+    client.post("/workspace", data={"path": vindex_path}, follow_redirects=True)
+    page = client.get("/runs")
+    assert page.status_code == 200
+    assert f"Only the {DEFAULT_RUN_HISTORY_LIMIT} most recent runs are kept" in page.text
+
+
+def test_partial_result_panel_keeps_edge_metadata(client: TestClient, vindex_path: str) -> None:
+    client.post("/workspace", data={"path": vindex_path}, follow_redirects=True)
+    run = client.post(
+        "/studio/run",
+        data={
+            "recipe_id": "",
+            "engine": "describe",
+            "inline_template": "{subject}",
+            "band": "knowledge",
+            "subject": "hello",
+            "compare_subjects": "",
+        },
+    )
+    assert run.status_code == 200
+    runs_page = client.get("/runs")
+    assert runs_page.status_code == 200
+    match = re.search(r'/runs/([^"]+)', runs_page.text)
+    assert match is not None
+    run_id = match.group(1)
+    panel = client.get(f"/partials/result-panel?run_id={run_id}")
+    assert panel.status_code == 200
+    assert "Open run detail" in panel.text
+    assert "Raw JSON" in panel.text
+    assert "<pre>" in panel.text
+
+
 def test_trace_page_lists_in_nav_and_gates_without_weights(
     client: TestClient, vindex_path: str
 ) -> None:
@@ -323,6 +407,16 @@ def test_trace_rejects_empty_prompt(client: TestClient, vindex_path: str) -> Non
     r = client.post("/trace", data={"prompt": "", "positions": "last", "walk_top_k": "8192"})
     assert r.status_code == 200
     assert "Prompt required" in r.text
+
+
+def test_trace_async_page_uses_shared_helper(client: TestClient, vindex_path: str) -> None:
+    client.post("/workspace", data={"path": vindex_path}, follow_redirects=True)
+    page = client.get("/trace")
+    assert page.status_code == 200
+    assert 'window.LarqlAsyncRuns.submitAndPoll({' in page.text
+    assert 'scope: "trace"' in page.text
+    assert 'resultUrlBuilder: function (runId)' in page.text
+    assert '/partials/trace-summary?run_id=' in page.text
 
 
 def test_workspace_status_shows_trace_ready_with_weights_fixture(

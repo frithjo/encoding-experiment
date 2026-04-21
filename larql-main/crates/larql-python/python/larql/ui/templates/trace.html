@@ -92,60 +92,23 @@
       window.alert("Prompt required.");
       return;
     }
-    panel.hidden = false;
-    statusEl.textContent = "Submitting…";
-    resultEl.innerHTML = "";
-    fetch("/api/trace/run", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "content-type": "application/json", "accept": "application/json" },
-      body: JSON.stringify({
+    window.LarqlAsyncRuns.submitAndPoll({
+      scope: "trace",
+      url: "/api/trace/run",
+      body: {
         prompt: prompt,
         positions: positions,
         walk_top_k: parseInt(walkTop, 10) || 8192,
         async: true
-      })
-    })
-      .then(function (r) {
-        if (!r.ok) return r.json().then(function (j) { throw new Error(j.error || r.statusText); });
-        return r.json();
-      })
-      .then(function (data) {
-        var runId = data.run_id;
-        if (!runId) throw new Error("No run_id");
-        statusEl.textContent = "Queued — polling run " + runId + "…";
-        var tries = 0;
-        var t = setInterval(function () {
-          tries += 1;
-          if (tries > 600) {
-            clearInterval(t);
-            statusEl.textContent = "Timed out waiting for result.";
-            return;
-          }
-          fetch("/api/runs/" + encodeURIComponent(runId), { credentials: "same-origin" })
-            .then(function (r) { return r.json(); })
-            .then(function (j) {
-              var run = j.run;
-              if (!run) return;
-              if (run.status === "pending" || run.status === "running") return;
-              clearInterval(t);
-              if (run.status === "error") {
-                statusEl.textContent = "Error.";
-                resultEl.textContent = run.summary || "Unknown error";
-                return;
-              }
-              statusEl.textContent = "Done.";
-              return fetch("/partials/trace-summary?run_id=" + encodeURIComponent(runId), {
-                credentials: "same-origin"
-              }).then(function (r) { return r.text(); })
-                .then(function (html) { resultEl.innerHTML = html; });
-            })
-            .catch(function () {});
-        }, 500);
-      })
-      .catch(function (e) {
-        statusEl.textContent = "Failed: " + (e && e.message ? e.message : String(e));
-      });
+      },
+      panel: panel,
+      statusEl: statusEl,
+      resultEl: resultEl,
+      maxAttempts: 600,
+      resultUrlBuilder: function (runId) {
+        return "/partials/trace-summary?run_id=" + encodeURIComponent(runId);
+      }
+    });
   });
 })();
 </script>

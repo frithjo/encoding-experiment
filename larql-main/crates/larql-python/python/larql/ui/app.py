@@ -139,6 +139,59 @@ def create_app(store: UiStore | None = None) -> Starlette:
             return list(variables_form.keys())
         return template_fields(inline_template or "{subject}")
 
+    def _studio_form_data(
+        *,
+        recipe_id: str,
+        engine: str,
+        inline_template: str,
+        band: str,
+        verbose: bool,
+        infer_top_k_predictions: int,
+        walk_top_k: int,
+        compare_subjects: str,
+    ) -> dict[str, object]:
+        return {
+            "recipe_id": recipe_id,
+            "engine": engine,
+            "inline_template": inline_template,
+            "band": band,
+            "verbose": verbose,
+            "infer_top_k_predictions": infer_top_k_predictions,
+            "walk_top_k": walk_top_k,
+            "compare_subjects": compare_subjects,
+        }
+
+    def _render_studio(
+        request: Request,
+        *,
+        workspace: WorkspaceSummary,
+        form_data: dict[str, object],
+        variables_form: dict[str, str] | None,
+        run: object = None,
+        compare_runs: object = None,
+        studio_async_poll_id: str | None = None,
+        **context: object,
+    ):
+        return render(
+            request,
+            "studio.html",
+            title="Studio",
+            current_page="studio",
+            shell_workspace=workspace,
+            recipes=ui_store.list_recipes(),
+            form_data=form_data,
+            variable_names=_studio_variable_names(
+                variables_form=variables_form,
+                inline_template=str(form_data.get("inline_template", "")),
+            ),
+            variables_form=variables_form,
+            run=run,
+            compare_runs=compare_runs,
+            studio_async_poll_id=studio_async_poll_id,
+            **_studio_engine_flags(workspace),
+            **context,
+        )
+
     async def index(_request: Request) -> RedirectResponse:
         target = "/studio" if current_workspace_path() else "/workspace"
         return RedirectResponse(target, status_code=status.HTTP_303_SEE_OTHER)
@@ -252,34 +305,20 @@ def create_app(store: UiStore | None = None) -> Starlette:
             return RedirectResponse("/workspace?error=Open+workspace+first", status_code=status.HTTP_303_SEE_OTHER)
         if workspace is None:
             return RedirectResponse("/workspace?error=Open+workspace+first", status_code=status.HTTP_303_SEE_OTHER)
-        recipes = ui_store.list_recipes()
-        fd = {
-            "recipe_id": "",
-            "engine": "describe",
-            "inline_template": "{subject}",
-            "band": "knowledge",
-            "verbose": False,
-            "infer_top_k_predictions": 5,
-            "walk_top_k": 8192,
-            "compare_subjects": "",
-        }
-        return render(
+        return _render_studio(
             request,
-            "studio.html",
-            title="Studio",
-            current_page="studio",
-            shell_workspace=workspace,
-            recipes=recipes,
-            form_data=fd,
-            variable_names=_studio_variable_names(
-                variables_form=None,
-                inline_template=str(fd["inline_template"]),
+            workspace=workspace,
+            form_data=_studio_form_data(
+                recipe_id="",
+                engine="describe",
+                inline_template="{subject}",
+                band="knowledge",
+                verbose=False,
+                infer_top_k_predictions=5,
+                walk_top_k=8192,
+                compare_subjects="",
             ),
             variables_form=None,
-            run=None,
-            compare_runs=None,
-            studio_async_poll_id=None,
-            **_studio_engine_flags(workspace),
         )
 
     async def studio_run(request: Request):
@@ -336,33 +375,21 @@ def create_app(store: UiStore | None = None) -> Starlette:
                     infer_top=infer_top,
                     walk_k=walk_k,
                 )
-                recipes = ui_store.list_recipes()
-                return render(
+                return _render_studio(
                     request,
-                    "studio.html",
-                    title="Studio",
-                    current_page="studio",
-                    shell_workspace=workspace,
-                    recipes=recipes,
-                    form_data={
-                        "recipe_id": recipe_id or "",
-                        "engine": engine,
-                        "inline_template": str(form.get("inline_template", "")),
-                        "band": band,
-                        "verbose": verbose,
-                        "infer_top_k_predictions": infer_top,
-                        "walk_top_k": walk_k,
-                        "compare_subjects": str(form.get("compare_subjects", "")),
-                    },
-                    variable_names=_studio_variable_names(
-                        variables_form=variables_form,
+                    workspace=workspace,
+                    form_data=_studio_form_data(
+                        recipe_id=recipe_id or "",
+                        engine=engine,
                         inline_template=str(form.get("inline_template", "")),
+                        band=band,
+                        verbose=verbose,
+                        infer_top_k_predictions=infer_top,
+                        walk_top_k=walk_k,
+                        compare_subjects=str(form.get("compare_subjects", "")),
                     ),
                     variables_form=variables_form,
-                    run=None,
-                    compare_runs=None,
                     studio_async_poll_id=rid,
-                    **_studio_engine_flags(workspace),
                 )
 
             run = executor.run_studio(
@@ -377,63 +404,38 @@ def create_app(store: UiStore | None = None) -> Starlette:
                 walk_top_k=walk_k,
             )
         except Exception as exc:
-            recipes = ui_store.list_recipes()
-            return render(
+            return _render_studio(
                 request,
-                "studio.html",
-                title="Studio",
-                current_page="studio",
-                shell_workspace=workspace,
-                recipes=recipes,
-                form_data={
-                    "recipe_id": recipe_id or "",
-                    "engine": form_engine or "describe",
-                    "inline_template": str(form.get("inline_template", "")),
-                    "band": band,
-                    "verbose": verbose,
-                    "infer_top_k_predictions": infer_top,
-                    "walk_top_k": walk_k,
-                    "compare_subjects": str(form.get("compare_subjects", "")),
-                },
-                variable_names=_studio_variable_names(
-                    variables_form=variables_form,
+                workspace=workspace,
+                form_data=_studio_form_data(
+                    recipe_id=recipe_id or "",
+                    engine=form_engine or "describe",
                     inline_template=str(form.get("inline_template", "")),
+                    band=band,
+                    verbose=verbose,
+                    infer_top_k_predictions=infer_top,
+                    walk_top_k=walk_k,
+                    compare_subjects=str(form.get("compare_subjects", "")),
                 ),
                 variables_form=variables_form,
-                run=None,
-                compare_runs=None,
-                studio_async_poll_id=None,
-                **_studio_engine_flags(workspace),
                 page_error=str(exc),
             )
 
-        recipes = ui_store.list_recipes()
-        return render(
+        return _render_studio(
             request,
-            "studio.html",
-            title="Studio",
-            current_page="studio",
-            shell_workspace=workspace,
-            recipes=recipes,
-            form_data={
-                "recipe_id": recipe_id or "",
-                "engine": engine,
-                "inline_template": str(form.get("inline_template", "")),
-                "band": band,
-                "verbose": verbose,
-                "infer_top_k_predictions": infer_top,
-                "walk_top_k": walk_k,
-                "compare_subjects": str(form.get("compare_subjects", "")),
-            },
-            variable_names=_studio_variable_names(
-                variables_form=variables_form,
+            workspace=workspace,
+            form_data=_studio_form_data(
+                recipe_id=recipe_id or "",
+                engine=engine,
                 inline_template=str(form.get("inline_template", "")),
+                band=band,
+                verbose=verbose,
+                infer_top_k_predictions=infer_top,
+                walk_top_k=walk_k,
+                compare_subjects=str(form.get("compare_subjects", "")),
             ),
             variables_form=variables_form,
             run=run,
-            compare_runs=None,
-            studio_async_poll_id=None,
-            **_studio_engine_flags(workspace),
         )
 
     async def studio_compare(request: Request):
@@ -514,65 +516,43 @@ def create_app(store: UiStore | None = None) -> Starlette:
                     )
                 )
         except Exception as exc:
-            recipes = ui_store.list_recipes()
-            return render(
+            return _render_studio(
                 request,
-                "studio.html",
-                title="Studio",
-                current_page="studio",
-                shell_workspace=workspace,
-                recipes=recipes,
-                form_data={
-                    "recipe_id": recipe_id or "",
-                    "engine": form_engine or "describe",
-                    "inline_template": str(form.get("inline_template", "")),
-                    "band": band,
-                    "verbose": verbose,
-                    "infer_top_k_predictions": infer_top,
-                    "walk_top_k": walk_k,
-                    "compare_subjects": str(form.get("compare_subjects", "")),
-                },
-                variable_names=_studio_variable_names(
-                    variables_form=base_vars,
+                workspace=workspace,
+                form_data=_studio_form_data(
+                    recipe_id=recipe_id or "",
+                    engine=form_engine or "describe",
                     inline_template=str(form.get("inline_template", "")),
+                    band=band,
+                    verbose=verbose,
+                    infer_top_k_predictions=infer_top,
+                    walk_top_k=walk_k,
+                    compare_subjects=str(form.get("compare_subjects", "")),
                 ),
                 variables_form=base_vars,
-                run=None,
-                compare_runs=None,
-                studio_async_poll_id=None,
-                **_studio_engine_flags(workspace),
                 page_error=str(exc),
             )
 
-        recipes = ui_store.list_recipes()
         compare_vars = dict(base_vars)
         if lines and template_src:
             tf = template_fields(template_src)
             if len(tf) == 1:
                 compare_vars[tf[0]] = lines[0]
-        return render(
+        return _render_studio(
             request,
-            "studio.html",
-            title="Studio",
-            current_page="studio",
-            shell_workspace=workspace,
-            recipes=recipes,
-            form_data={
-                "recipe_id": recipe_id or "",
-                "engine": engine,
-                "inline_template": str(form.get("inline_template", "")),
-                "band": band,
-                "verbose": verbose,
-                "infer_top_k_predictions": infer_top,
-                "walk_top_k": walk_k,
-                "compare_subjects": str(form.get("compare_subjects", "")),
-            },
-            variable_names=template_fields(template_src) if template_src else [],
+            workspace=workspace,
+            form_data=_studio_form_data(
+                recipe_id=recipe_id or "",
+                engine=engine,
+                inline_template=str(form.get("inline_template", "")),
+                band=band,
+                verbose=verbose,
+                infer_top_k_predictions=infer_top,
+                walk_top_k=walk_k,
+                compare_subjects=str(form.get("compare_subjects", "")),
+            ),
             variables_form=compare_vars,
-            run=None,
             compare_runs=compare_runs,
-            studio_async_poll_id=None,
-            **_studio_engine_flags(workspace),
         )
 
     async def explorer_page(request: Request):
@@ -1024,6 +1004,7 @@ def create_app(store: UiStore | None = None) -> Starlette:
                 shell_workspace=None,
                 shell_workspace_error=str(exc),
                 runs=ui_store.list_runs(),
+                run_history_limit=DEFAULT_RUN_HISTORY_LIMIT,
             )
         return render(
             request,
@@ -1032,6 +1013,7 @@ def create_app(store: UiStore | None = None) -> Starlette:
             current_page="runs",
             shell_workspace=sw,
             runs=ui_store.list_runs(),
+            run_history_limit=DEFAULT_RUN_HISTORY_LIMIT,
         )
 
     async def run_detail(request: Request):
