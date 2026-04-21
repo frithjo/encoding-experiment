@@ -126,6 +126,8 @@ pub enum Statement {
         verbose: bool,
         group_by: Option<TokenGroupBy>,
         order_by: Option<TokenSortBy>,
+        limit: Option<u32>,
+        export_format: Option<ExportFormat>,
     },
     ShowModels,
     Stats {
@@ -342,6 +344,12 @@ pub enum TokenSortBy {
     Distinct,
     EntityLike,
     Shape,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExportFormat {
+    Csv,
+    Json,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

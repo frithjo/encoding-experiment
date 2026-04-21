@@ -114,6 +114,8 @@ impl Parser {
                 let mut verbose = false;
                 let mut group_by = None;
                 let mut order_by = None;
+                let mut limit = None;
+                let mut export_format = None;
                 loop {
                     match self.peek() {
                         Token::Keyword(Keyword::By) => {
@@ -163,11 +165,32 @@ impl Parser {
                             self.advance();
                             verbose = true;
                         }
+                        Token::Keyword(Keyword::Limit) => {
+                            self.advance();
+                            limit = Some(self.expect_u32()?);
+                        }
+                        Token::Keyword(Keyword::Export) => {
+                            self.advance();
+                            export_format = Some(match self.peek() {
+                                Token::Keyword(Keyword::Csv) => {
+                                    self.advance();
+                                    ExportFormat::Csv
+                                }
+                                Token::Keyword(Keyword::Json) => {
+                                    self.advance();
+                                    ExportFormat::Json
+                                }
+                                _ => return Err(ParseError(format!(
+                                    "expected CSV or JSON after EXPORT, got {:?}",
+                                    self.peek()
+                                ))),
+                            });
+                        }
                         _ => break,
                     }
                 }
                 self.eat_semicolon();
-                Ok(Statement::ShowTokens { layer, conditions, verbose, group_by, order_by })
+                Ok(Statement::ShowTokens { layer, conditions, verbose, group_by, order_by, limit, export_format })
             }
             Token::Keyword(Keyword::Models) => {
                 self.advance();

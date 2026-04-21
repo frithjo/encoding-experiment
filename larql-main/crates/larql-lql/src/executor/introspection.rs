@@ -381,6 +381,8 @@ impl Session {
         verbose: bool,
         group_by: Option<TokenGroupBy>,
         order_by: Option<TokenSortBy>,
+        limit: Option<u32>,
+        export_format: Option<crate::ast::ExportFormat>,
     ) -> Result<Vec<String>, LqlError> {
         let (_path, config, patched) = self.require_vindex()?;
 
@@ -389,91 +391,99 @@ impl Session {
         } else {
             (0..config.num_layers).collect()
         };
-        let bands = super::query::describe_resolve_bands(config);
-        let filters = parse_token_filters(conditions);
+    let bands = super::query::describe_resolve_bands(config);
+    let filters = parse_token_filters(conditions);
 
-        match group_by {
-            Some(TokenGroupBy::Layer) => {
-                let mut out = Vec::new();
-                let mut rendered = 0usize;
-                let mut skipped = 0usize;
-                for layer in &scan_layers {
-                    let hits = collect_token_hits(patched, &[*layer], &bands, &filters);
-                    if hits.is_empty() {
-                        skipped += 1;
-                        continue;
-                    }
-                    if rendered > 0 {
-                        out.push(String::new());
-                    }
-                    out.extend(render_token_summary(
-                        format!("at layer {}", layer),
-                        hits,
-                        verbose,
-                        order_by,
-                    ));
-                    rendered += 1;
+    // If export format is specified, collect all data and return in specified format
+    if let Some(fmt) = export_format {
+        let hits = collect_token_hits(patched, &scan_layers, &bands, &filters);
+        return Ok(export_token_summary(hits, fmt, verbose, order_by, limit));
+    }
+
+    match group_by {
+        Some(TokenGroupBy::Layer) => {
+            let mut out = Vec::new();
+            let mut rendered = 0usize;
+            let mut skipped = 0usize;
+            for layer in &scan_layers {
+                let hits = collect_token_hits(patched, &[*layer], &bands, &filters);
+                if hits.is_empty() {
+                    skipped += 1;
+                    continue;
                 }
-                if rendered == 0 {
-                    return Ok(vec!["  (no tokens found)".into()]);
-                }
-                if skipped > 0 {
+                if rendered > 0 {
                     out.push(String::new());
-                    out.push(format!("Skipped {} empty layer summaries.", skipped));
                 }
-                Ok(out)
+                out.extend(render_token_summary(
+                    format!("at layer {}", layer),
+                    hits,
+                    verbose,
+                    order_by,
+                    limit,
+                ));
+                rendered += 1;
             }
-            Some(TokenGroupBy::Band) => {
-                let mut out = Vec::new();
-                let mut rendered = 0usize;
-                let mut skipped = 0usize;
-                let groups = [
-                    ("syntax", bands.syntax.0, bands.syntax.1),
-                    ("knowledge", bands.knowledge.0, bands.knowledge.1),
-                    ("output", bands.output.0, bands.output.1),
-                ];
-                for (name, start, end) in groups {
-                    let group_layers: Vec<usize> = scan_layers
-                        .iter()
-                        .copied()
-                        .filter(|l| *l >= start && *l <= end)
-                        .collect();
-                    let hits = collect_token_hits(patched, &group_layers, &bands, &filters);
-                    if hits.is_empty() {
-                        skipped += 1;
-                        continue;
-                    }
-                    if rendered > 0 {
-                        out.push(String::new());
-                    }
-                    out.extend(render_token_summary(
-                        format!("for {} band (L{}-{})", name, start, end),
-                        hits,
-                        verbose,
-                        order_by,
-                    ));
-                    rendered += 1;
+            if rendered == 0 {
+                return Ok(vec!["  (no tokens found)".into()]);
+            }
+            if skipped > 0 {
+                out.push(String::new());
+                out.push(format!("Skipped {} empty layer summaries.", skipped));
+            }
+            Ok(out)
+        }
+        Some(TokenGroupBy::Band) => {
+            let mut out = Vec::new();
+            let mut rendered = 0usize;
+            let mut skipped = 0usize;
+            let groups = [
+                ("syntax", bands.syntax.0, bands.syntax.1),
+                ("knowledge", bands.knowledge.0, bands.knowledge.1),
+                ("output", bands.output.0, bands.output.1),
+            ];
+            for (name, start, end) in groups {
+                let group_layers: Vec<usize> = scan_layers
+                    .iter()
+                    .copied()
+                    .filter(|l| *l >= start && *l <= end)
+                    .collect();
+                let hits = collect_token_hits(patched, &group_layers, &bands, &filters);
+                if hits.is_empty() {
+                    skipped += 1;
+                    continue;
                 }
-                if rendered == 0 {
-                    return Ok(vec!["  (no tokens found)".into()]);
-                }
-                if skipped > 0 {
+                if rendered > 0 {
                     out.push(String::new());
-                    out.push(format!("Skipped {} empty band summaries.", skipped));
                 }
-                Ok(out)
+                out.extend(render_token_summary(
+                    format!("for {} band (L{}-{})", name, start, end),
+                    hits,
+                    verbose,
+                    order_by,
+                    limit,
+                ));
+                rendered += 1;
             }
-            None => {
-                let hits = collect_token_hits(patched, &scan_layers, &bands, &filters);
-                let scope = if let Some(l) = layer_filter {
-                    format!("at layer {}", l)
-                } else {
-                    format!("across {} layers", scan_layers.len())
-                };
-                Ok(render_token_summary(scope, hits, verbose, order_by))
+            if rendered == 0 {
+                return Ok(vec!["  (no tokens found)".into()]);
             }
+            if skipped > 0 {
+                out.push(String::new());
+                out.push(format!("Skipped {} empty band summaries.", skipped));
+            }
+            Ok(out)
+        }
+        None => {
+            let hits = collect_token_hits(patched, &scan_layers, &bands, &filters);
+            let scope = if let Some(l) = layer_filter {
+                format!("at layer {}", l)
+            } else {
+                format!("across {} layers", scan_layers.len())
+            };
+            Ok(render_token_summary(scope, hits, verbose, order_by, limit))
         }
     }
+}
 
     pub(crate) fn exec_show_models(&self) -> Result<Vec<String>, LqlError> {
         let mut out = Vec::new();
@@ -644,11 +654,97 @@ fn collect_token_hits(
     token_hits
 }
 
+fn export_token_summary(
+    token_hits: HashMap<String, TokenHit>,
+    format: crate::ast::ExportFormat,
+    _verbose: bool,
+    order_by: Option<TokenSortBy>,
+    limit: Option<u32>,
+) -> Vec<String> {
+    let mut shapes: HashMap<TokenShape, ShapeInfo> = HashMap::new();
+
+    for (tok, hit) in &token_hits {
+        let shape_info = shapes.entry(hit.shape).or_default();
+        shape_info.distinct += 1;
+        shape_info.feature_hits += hit.hits;
+        if hit.kind.is_some() {
+            shape_info.entity_like += 1;
+        }
+        if shape_info.examples.len() < 4 && !tok.is_empty() {
+            shape_info.examples.push(tok.clone());
+        }
+    }
+
+    let mut shape_rows: Vec<(TokenShape, ShapeInfo)> = shapes.into_iter().collect();
+    match order_by {
+        Some(TokenSortBy::MaxScore) => {
+            let mut shape_max_scores: HashMap<TokenShape, f32> = HashMap::new();
+            for hit in token_hits.values() {
+                let entry = shape_max_scores.entry(hit.shape).or_insert(0.0);
+                *entry = (*entry).max(hit.max_score);
+            }
+            shape_rows.sort_by(|a, b| {
+                let score_a = shape_max_scores.get(&a.0).unwrap_or(&0.0);
+                let score_b = shape_max_scores.get(&b.0).unwrap_or(&0.0);
+                score_b.partial_cmp(score_a).unwrap_or(std::cmp::Ordering::Equal)
+            });
+        }
+        Some(TokenSortBy::Distinct) => {
+            shape_rows.sort_by(|a, b| b.1.distinct.cmp(&a.1.distinct));
+        }
+        Some(TokenSortBy::EntityLike) => {
+            shape_rows.sort_by(|a, b| b.1.entity_like.cmp(&a.1.entity_like));
+        }
+        Some(TokenSortBy::Shape) => {
+            shape_rows.sort_by(|a, b| token_shape_name(a.0).cmp(token_shape_name(b.0)));
+        }
+        None => {
+            shape_rows.sort_by(|a, b| b.1.feature_hits.cmp(&a.1.feature_hits));
+        }
+    }
+    if let Some(lim) = limit {
+        shape_rows.truncate(lim as usize);
+    }
+
+    match format {
+        crate::ast::ExportFormat::Csv => {
+            let mut out = vec!["shape,distinct,feature_hits,entity_like,examples".to_string()];
+            for (shape, info) in shape_rows {
+                let examples = info.examples.iter()
+                    .map(|e| e.replace(',', "\\,"))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                out.push(format!("{},{},{},{},{}",
+                    token_shape_name(shape),
+                    info.distinct,
+                    info.feature_hits,
+                    info.entity_like,
+                    examples
+                ));
+            }
+            out
+        }
+        crate::ast::ExportFormat::Json => {
+            let rows: Vec<serde_json::Value> = shape_rows.iter().map(|(shape, info)| {
+                serde_json::json!({
+                    "shape": token_shape_name(*shape),
+                    "distinct": info.distinct,
+                    "feature_hits": info.feature_hits,
+                    "entity_like": info.entity_like,
+                    "examples": info.examples,
+                })
+            }).collect();
+            vec![serde_json::to_string_pretty(&rows).unwrap_or("[]".to_string())]
+        }
+    }
+}
+
 fn render_token_summary(
     scope: String,
     token_hits: HashMap<String, TokenHit>,
     verbose: bool,
     order_by: Option<TokenSortBy>,
+    limit: Option<u32>,
 ) -> Vec<String> {
     let has_tokens = !token_hits.is_empty();
     let mut shapes: HashMap<TokenShape, ShapeInfo> = HashMap::new();
@@ -713,6 +809,9 @@ fn render_token_summary(
         None => {
             shape_rows.sort_by(|a, b| b.1.feature_hits.cmp(&a.1.feature_hits));
         }
+    }
+    if let Some(lim) = limit {
+        shape_rows.truncate(lim as usize);
     }
     for (shape, info) in shape_rows {
         out.push(format!(
