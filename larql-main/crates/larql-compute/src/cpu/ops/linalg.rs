@@ -3,6 +3,7 @@
 //! All operations use f64 for numerical stability (the MEMIT covariance
 //! inverse is ill-conditioned at f32 for ffn_dim > 2048).
 
+use ndarray::DenseMatrix;
 use ndarray::Array2;
 
 /// Cholesky decomposition of a symmetric positive-definite matrix.
@@ -16,30 +17,22 @@ pub fn cholesky(a: &Array2<f64>, ridge: f64) -> Result<Array2<f64>, String> {
         return Err(format!("cholesky: matrix must be square, got {}×{}", n, a.shape()[1]));
     }
 
-    let mut l = Array2::<f64>::zeros((n, n));
-
+    // Apply ridge to diagonal
+    let mut a_with_ridge = a.clone();
     for i in 0..n {
-        for j in 0..=i {
-            let mut sum = a[[i, j]];
-            if i == j {
-                sum += ridge;
-            }
-            for k in 0..j {
-                sum -= l[[i, k]] * l[[j, k]];
-            }
-            if i == j {
-                if sum <= 0.0 {
-                    return Err(format!(
-                        "cholesky: matrix not positive-definite at index {i} (diagonal value {sum:.6e})"
-                    ));
-                }
-                l[[i, j]] = sum.sqrt();
-            } else {
-                l[[i, j]] = sum / l[[j, j]];
-            }
-        }
+        a_with_ridge[[i, i]] += ridge;
     }
-    Ok(l)
+
+    // Convert to DenseMatrix facade
+    let data = a_with_ridge.as_slice().unwrap().to_vec();
+    let dm = DenseMatrix::from_raw(data, n, n)
+        .map_err(|e| format!("cholesky: {}", e))?;
+
+    // Use facade cholesky
+    let l_dm = dm.cholesky()
+        .map_err(|e| format!("cholesky: {}", e))?;
+
+    Ok(l_dm.inner().clone())
 }
 
 /// Solve L L^T X = B for X, given the lower-triangular Cholesky factor L.
