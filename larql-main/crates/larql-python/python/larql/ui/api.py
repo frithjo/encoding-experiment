@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from dataclasses import replace
 from typing import Any, Callable
 
@@ -16,6 +17,8 @@ from .models import RecipeRecord, RunRecord, utc_now_iso, validate_recipe
 from .runtime_cache import LarqlRuntimeCache, normalize_workspace_path, workspace_paths_differ
 from .store import UiStore
 from .workspace import WorkspaceError, WorkspaceManager
+
+logger = logging.getLogger("larql.ui")
 
 
 def _content_type_is_json(content_type: str) -> bool:
@@ -138,6 +141,81 @@ def dispatch_rerun_execution(
     raise ValueError(f"cannot rerun engine {prev.engine!r}")
 
 
+def schedule_studio_background_job(
+    app_holder: list[Any],
+    ui_store: UiStore,
+    executor: UiExecutor,
+    *,
+    ws_path: str,
+    engine: str,
+    rendered: str,
+    recipe_id: str | None,
+    title: str | None,
+    band: str,
+    verbose: bool,
+    infer_top: int,
+    walk_k: int,
+) -> str:
+    """Queue a studio run (same semantics as ``POST /api/runs`` with ``async: true``). Returns new run id."""
+    pending = RunRecord.create(
+        kind="studio",
+        title=title or f"Studio ({engine})",
+        workspace_path=ws_path,
+        recipe_id=recipe_id,
+        engine=engine,
+        status="pending",
+        summary="Queued",
+        input_text=rendered,
+        raw={
+            "async_job": True,
+            "band": band,
+            "verbose": verbose,
+            "infer_top_k_predictions": infer_top,
+            "walk_top_k": walk_k,
+        },
+        duration_ms=0,
+    )
+    ui_store.save_run(pending)
+    rid = pending.id
+
+    async def _bg() -> None:
+        cur = ui_store.get_run(rid)
+        if cur:
+            ui_store.save_run(replace(cur, status="running", summary="Running…"))
+        try:
+
+            def _work() -> RunRecord:
+                return executor.run_studio(
+                    workspace_path=ws_path,
+                    engine=engine,
+                    rendered=rendered,
+                    recipe_id=recipe_id,
+                    title=title,
+                    band=band,
+                    verbose=verbose,
+                    infer_top_k_predictions=max(1, infer_top),
+                    walk_top_k=max(1, walk_k),
+                    run_id=rid,
+                )
+
+            await asyncio.to_thread(_work)
+        except Exception as exc:
+            old = ui_store.get_run(rid)
+            if old:
+                ui_store.save_run(
+                    replace(
+                        old,
+                        status="error",
+                        summary=str(exc),
+                        raw={**old.raw, "error": str(exc), "failed_engine": engine},
+                        duration_ms=0,
+                    )
+                )
+
+    _schedule_async(app_holder, _bg)
+    return rid
+
+
 def _schedule_async(app_holder: list[Any], coro_factory: Callable[[], Any]) -> None:
     """Run coroutine on the current event loop; retain strong ref via app.state."""
     app = app_holder[0]
@@ -152,7 +230,7 @@ def _schedule_async(app_holder: list[Any], coro_factory: Callable[[], Any]) -> N
             return
         exc = t.exception()
         if exc is not None:
-            print(f"[larql-ui] background task failed: {exc!r}")  # noqa: T201
+            logger.error("background task failed: %s", exc, exc_info=(type(exc), exc, exc.__traceback__))
 
     task.add_done_callback(_done)
 
@@ -322,60 +400,20 @@ def build_api_routes(
                 return JSONResponse({"error": str(exc)}, status_code=500)
             return JSONResponse({"run": run.to_dict()})
 
-        pending = RunRecord.create(
-            kind="studio",
-            title=title or f"Studio ({engine})",
-            workspace_path=ws_path,
-            recipe_id=recipe_id,
+        rid = schedule_studio_background_job(
+            app_holder,
+            ui_store,
+            executor,
+            ws_path=ws_path,
             engine=engine,
-            status="pending",
-            summary="Queued",
-            input_text=rendered,
-            raw={"async_job": True, "band": band, "verbose": verbose, "infer_top_k_predictions": infer_top, "walk_top_k": walk_k},
-            duration_ms=0,
+            rendered=rendered,
+            recipe_id=recipe_id,
+            title=title,
+            band=band,
+            verbose=verbose,
+            infer_top=infer_top,
+            walk_k=walk_k,
         )
-        ui_store.save_run(pending)
-        rid = pending.id
-
-        async def _bg() -> None:
-            cur = ui_store.get_run(rid)
-            if cur:
-                ui_store.save_run(replace(cur, status="running", summary="Running…"))
-            try:
-
-                def _work() -> RunRecord:
-                    return executor.run_studio(
-                        workspace_path=ws_path,
-                        engine=engine,
-                        rendered=rendered,
-                        recipe_id=recipe_id,
-                        title=title,
-                        band=band,
-                        verbose=verbose,
-                        infer_top_k_predictions=max(1, infer_top),
-                        walk_top_k=max(1, walk_k),
-                        run_id=rid,
-                    )
-
-                await asyncio.to_thread(_work)
-            except Exception as exc:
-                old = ui_store.get_run(rid)
-                if old:
-                    ui_store.save_run(
-                        replace(
-                            old,
-                            status="error",
-                            summary=str(exc),
-                            raw={
-                                **old.raw,
-                                "error": str(exc),
-                                "failed_engine": engine,
-                            },
-                            duration_ms=0,
-                        )
-                    )
-
-        _schedule_async(app_holder, _bg)
         return JSONResponse({"run_id": rid, "status": "pending"}, status_code=status.HTTP_202_ACCEPTED)
 
     async def api_runs_rerun(request: Request) -> Response:

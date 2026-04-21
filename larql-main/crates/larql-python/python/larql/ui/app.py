@@ -15,11 +15,11 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 
-from .api import build_api_routes
+from .api import build_api_routes, schedule_studio_background_job
 from .execution import UiExecutor
 from .models import RecipeRecord, WorkspaceSummary, render_template, template_fields, validate_recipe
 from .runtime_cache import LarqlRuntimeCache, workspace_paths_differ
-from .store import UiStore
+from .store import DEFAULT_RUN_HISTORY_LIMIT, UiStore
 from .workspace import WorkspaceError, WorkspaceManager
 
 # Primary nav — stable tuple reused for every page (avoid per-request alloc).
@@ -86,6 +86,8 @@ def create_app(store: UiStore | None = None) -> Starlette:
     workspace_manager = WorkspaceManager(ui_store)
     runtime_cache = LarqlRuntimeCache()
     executor = UiExecutor(ui_store, workspace_manager, runtime_cache)
+    # Filled after ``Starlette()`` construction; async HTML + /api background tasks need ``app_holder[0]``.
+    app_holder: list[Any] = []
 
     def render(
         request: Request,
@@ -276,6 +278,7 @@ def create_app(store: UiStore | None = None) -> Starlette:
             variables_form=None,
             run=None,
             compare_runs=None,
+            studio_async_poll_id=None,
             **_studio_engine_flags(workspace),
         )
 
@@ -318,6 +321,50 @@ def create_app(store: UiStore | None = None) -> Starlette:
 
             engine = _studio_resolve_engine(form_engine=form_engine, recipe=recipe)
 
+            if form.get("async_background") == "on":
+                rid = schedule_studio_background_job(
+                    app_holder,
+                    ui_store,
+                    executor,
+                    ws_path=workspace_path,
+                    engine=engine,
+                    rendered=rendered,
+                    recipe_id=recipe_id,
+                    title=title,
+                    band=band,
+                    verbose=verbose,
+                    infer_top=infer_top,
+                    walk_k=walk_k,
+                )
+                recipes = ui_store.list_recipes()
+                return render(
+                    request,
+                    "studio.html",
+                    title="Studio",
+                    current_page="studio",
+                    shell_workspace=workspace,
+                    recipes=recipes,
+                    form_data={
+                        "recipe_id": recipe_id or "",
+                        "engine": engine,
+                        "inline_template": str(form.get("inline_template", "")),
+                        "band": band,
+                        "verbose": verbose,
+                        "infer_top_k_predictions": infer_top,
+                        "walk_top_k": walk_k,
+                        "compare_subjects": str(form.get("compare_subjects", "")),
+                    },
+                    variable_names=_studio_variable_names(
+                        variables_form=variables_form,
+                        inline_template=str(form.get("inline_template", "")),
+                    ),
+                    variables_form=variables_form,
+                    run=None,
+                    compare_runs=None,
+                    studio_async_poll_id=rid,
+                    **_studio_engine_flags(workspace),
+                )
+
             run = executor.run_studio(
                 workspace_path=workspace_path,
                 engine=engine,
@@ -355,6 +402,7 @@ def create_app(store: UiStore | None = None) -> Starlette:
                 variables_form=variables_form,
                 run=None,
                 compare_runs=None,
+                studio_async_poll_id=None,
                 **_studio_engine_flags(workspace),
                 page_error=str(exc),
             )
@@ -384,6 +432,7 @@ def create_app(store: UiStore | None = None) -> Starlette:
             variables_form=variables_form,
             run=run,
             compare_runs=None,
+            studio_async_poll_id=None,
             **_studio_engine_flags(workspace),
         )
 
@@ -490,6 +539,7 @@ def create_app(store: UiStore | None = None) -> Starlette:
                 variables_form=base_vars,
                 run=None,
                 compare_runs=None,
+                studio_async_poll_id=None,
                 **_studio_engine_flags(workspace),
                 page_error=str(exc),
             )
@@ -521,6 +571,7 @@ def create_app(store: UiStore | None = None) -> Starlette:
             variables_form=compare_vars,
             run=None,
             compare_runs=compare_runs,
+            studio_async_poll_id=None,
             **_studio_engine_flags(workspace),
         )
 
@@ -1039,7 +1090,6 @@ def create_app(store: UiStore | None = None) -> Starlette:
         Route("/runs/{run_id}", run_detail, methods=["GET"]),
     ]
 
-    app_holder: list[Any] = []
     routes.extend(
         build_api_routes(
             app_holder=app_holder,

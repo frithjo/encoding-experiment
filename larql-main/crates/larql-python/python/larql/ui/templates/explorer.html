@@ -23,7 +23,7 @@
 <section class="panel">
   <h2>Explorer</h2>
   <p class="panel-lead">Describe entity using current vindex. Good for quick knowledge browse.</p>
-  <form method="post" class="stack-form">
+  <form method="post" class="stack-form" id="explorer-form">
     <label for="entity">Entity</label>
     <input id="entity" name="entity" type="text" value="{{ form_data.entity }}" placeholder="France">
 
@@ -40,8 +40,18 @@
     </div>
 
     <button type="submit" aria-label="Run describe on entity">Describe</button>
+    <div class="checkbox-row explorer-async-toggle">
+      <input type="checkbox" id="explorer_async">
+      <label for="explorer_async">Background run (API + polling — avoids blocking on long describes)</label>
+    </div>
   </form>
 </section>
+
+<div class="panel explorer-async-panel" id="explorer-async-panel" hidden>
+  <h3>Async describe status</h3>
+  <p class="muted" id="explorer-async-status" role="status"></p>
+  <div id="explorer-async-result"></div>
+</div>
 
 {% if run %}
 <section class="panel">
@@ -74,4 +84,75 @@
   </details>
 </section>
 {% endif %}
+<script>
+(function () {
+  var form = document.getElementById("explorer-form");
+  var asyncCb = document.getElementById("explorer_async");
+  var panel = document.getElementById("explorer-async-panel");
+  var statusEl = document.getElementById("explorer-async-status");
+  var resultEl = document.getElementById("explorer-async-result");
+  if (!form || !asyncCb || !panel || !statusEl || !resultEl) return;
+
+  form.addEventListener("submit", function (ev) {
+    if (!asyncCb.checked) return;
+    ev.preventDefault();
+    var entity = (document.getElementById("entity") || {}).value || "";
+    var band = (document.getElementById("band") || {}).value || "knowledge";
+    var verbose = (document.getElementById("explorer_verbose") || {}).checked;
+    if (!entity.trim()) {
+      window.alert("Entity required.");
+      return;
+    }
+    panel.hidden = false;
+    statusEl.textContent = "Submitting…";
+    resultEl.innerHTML = "";
+    fetch("/api/explorer/describe", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json", "accept": "application/json" },
+      body: JSON.stringify({ entity: entity.trim(), band: band, verbose: verbose, async: true })
+    })
+      .then(function (r) {
+        if (!r.ok) return r.json().then(function (j) { throw new Error(j.error || r.statusText); });
+        return r.json();
+      })
+      .then(function (data) {
+        var runId = data.run_id;
+        if (!runId) throw new Error("No run_id");
+        statusEl.textContent = "Queued — polling run " + runId + "…";
+        var tries = 0;
+        var t = setInterval(function () {
+          tries += 1;
+          if (tries > 600) {
+            clearInterval(t);
+            statusEl.textContent = "Timed out waiting for result.";
+            return;
+          }
+          fetch("/api/runs/" + encodeURIComponent(runId), { credentials: "same-origin" })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+              var run = j.run;
+              if (!run) return;
+              if (run.status === "pending" || run.status === "running") return;
+              clearInterval(t);
+              if (run.status === "error") {
+                statusEl.textContent = "Error.";
+                resultEl.textContent = run.summary || "Unknown error";
+                return;
+              }
+              statusEl.textContent = "Done.";
+              return fetch("/partials/result-panel?run_id=" + encodeURIComponent(runId), {
+                credentials: "same-origin"
+              }).then(function (r) { return r.text(); })
+                .then(function (html) { resultEl.innerHTML = html; });
+            })
+            .catch(function () {});
+        }, 500);
+      })
+      .catch(function (e) {
+        statusEl.textContent = "Failed: " + (e && e.message ? e.message : String(e));
+      });
+  });
+})();
+</script>
 {% endblock %}

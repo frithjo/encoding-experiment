@@ -66,8 +66,18 @@
       <button type="submit" formaction="/studio/run" formmethod="post" aria-label="Run studio template or ad-hoc query">Run</button>
       <button type="submit" formaction="/studio/compare" formmethod="post" class="secondary" aria-label="Compare batch across subjects">Compare batch</button>
     </div>
+    <div class="checkbox-row">
+      <input type="checkbox" id="studio_async_background" name="async_background">
+      <label for="studio_async_background">Background run (queues job; avoids blocking this tab on slow engines)</label>
+    </div>
   </form>
 </section>
+
+<div class="panel studio-async-panel" id="studio-async-panel" hidden>
+  <h3>Background studio run</h3>
+  <p class="muted" id="studio-async-status" role="status"></p>
+  <div id="studio-async-result"></div>
+</div>
 
 {% if run %}
 <section class="panel">
@@ -146,6 +156,43 @@
   }
 
   recipeSel.addEventListener("change", applyRecipeDefaultEngine);
+})();
+
+(function () {
+  var pollId = {% if studio_async_poll_id %}"{{ studio_async_poll_id }}"{% else %}null{% endif %};
+  var panel = document.getElementById("studio-async-panel");
+  var statusEl = document.getElementById("studio-async-status");
+  var resultEl = document.getElementById("studio-async-result");
+  if (!pollId || !panel || !statusEl || !resultEl) return;
+  panel.hidden = false;
+  statusEl.textContent = "Queued — polling run " + pollId + "…";
+  var tries = 0;
+  var t = setInterval(function () {
+    tries += 1;
+    if (tries > 600) {
+      clearInterval(t);
+      statusEl.textContent = "Timed out waiting for result.";
+      return;
+    }
+    fetch("/api/runs/" + encodeURIComponent(pollId), { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        var run = j.run;
+        if (!run) return;
+        if (run.status === "pending" || run.status === "running") return;
+        clearInterval(t);
+        if (run.status === "error") {
+          statusEl.textContent = "Error.";
+          resultEl.textContent = run.summary || "Unknown error";
+          return;
+        }
+        statusEl.textContent = "Done.";
+        return fetch("/partials/result-panel?run_id=" + encodeURIComponent(pollId), { credentials: "same-origin" })
+          .then(function (r) { return r.text(); })
+          .then(function (html) { resultEl.innerHTML = html; });
+      })
+      .catch(function () {});
+  }, 500);
 })();
 </script>
 {% endblock %}

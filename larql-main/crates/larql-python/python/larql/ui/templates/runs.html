@@ -4,6 +4,7 @@
 <section class="panel">
   <h2>Runs</h2>
   <p class="panel-lead">Recent executions from Studio, Explorer, LQL, and recipes.</p>
+  <p class="muted">Only the {{ run_history_limit }} most recent runs are kept; older entries are removed when new runs are saved.</p>
   {% if runs %}
   <div class="result-list">
     {% for run in runs %}

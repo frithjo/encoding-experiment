@@ -11,12 +11,22 @@
 <section class="panel">
   <h2>LQL Console</h2>
   <p class="panel-lead">Run raw LQL. Semicolon optional.</p>
-  <form method="post" class="stack-form">
+  <form method="post" class="stack-form" id="lql-form">
     <label for="query">Query</label>
     <textarea id="query" name="query" rows="10">{{ query }}</textarea>
     <button type="submit" aria-label="Execute LQL query">Run query</button>
+    <div class="checkbox-row lql-async-toggle">
+      <input type="checkbox" id="lql_async">
+      <label for="lql_async">Background run (API + polling — avoids blocking on long queries)</label>
+    </div>
   </form>
 </section>
+
+<div class="panel lql-async-panel" id="lql-async-panel" hidden>
+  <h3>Async LQL status</h3>
+  <p class="muted" id="lql-async-status" role="status"></p>
+  <div id="lql-async-result"></div>
+</div>
 
 {% if run %}
 <section class="panel">
@@ -32,4 +42,73 @@
   </details>
 </section>
 {% endif %}
+<script>
+(function () {
+  var form = document.getElementById("lql-form");
+  var asyncCb = document.getElementById("lql_async");
+  var panel = document.getElementById("lql-async-panel");
+  var statusEl = document.getElementById("lql-async-status");
+  var resultEl = document.getElementById("lql-async-result");
+  if (!form || !asyncCb || !panel || !statusEl || !resultEl) return;
+
+  form.addEventListener("submit", function (ev) {
+    if (!asyncCb.checked) return;
+    ev.preventDefault();
+    var query = (document.getElementById("query") || {}).value || "";
+    if (!query.trim()) {
+      window.alert("Query required.");
+      return;
+    }
+    panel.hidden = false;
+    statusEl.textContent = "Submitting…";
+    resultEl.innerHTML = "";
+    fetch("/api/lql/query", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json", "accept": "application/json" },
+      body: JSON.stringify({ query: query.trim(), async: true })
+    })
+      .then(function (r) {
+        if (!r.ok) return r.json().then(function (j) { throw new Error(j.error || r.statusText); });
+        return r.json();
+      })
+      .then(function (data) {
+        var runId = data.run_id;
+        if (!runId) throw new Error("No run_id");
+        statusEl.textContent = "Queued — polling run " + runId + "…";
+        var tries = 0;
+        var t = setInterval(function () {
+          tries += 1;
+          if (tries > 600) {
+            clearInterval(t);
+            statusEl.textContent = "Timed out waiting for result.";
+            return;
+          }
+          fetch("/api/runs/" + encodeURIComponent(runId), { credentials: "same-origin" })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+              var run = j.run;
+              if (!run) return;
+              if (run.status === "pending" || run.status === "running") return;
+              clearInterval(t);
+              if (run.status === "error") {
+                statusEl.textContent = "Error.";
+                resultEl.textContent = run.summary || "Unknown error";
+                return;
+              }
+              statusEl.textContent = "Done.";
+              return fetch("/partials/result-panel?run_id=" + encodeURIComponent(runId), {
+                credentials: "same-origin"
+              }).then(function (r) { return r.text(); })
+                .then(function (html) { resultEl.innerHTML = html; });
+            })
+            .catch(function () {});
+        }, 500);
+      })
+      .catch(function (e) {
+        statusEl.textContent = "Failed: " + (e && e.message ? e.message : String(e));
+      });
+  });
+})();
+</script>
 {% endblock %}

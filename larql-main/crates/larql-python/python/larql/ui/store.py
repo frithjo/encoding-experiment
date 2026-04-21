@@ -9,6 +9,9 @@ from typing import Any
 
 from .models import RecipeRecord, RunRecord
 
+# Oldest runs are dropped when saving a new run; surfaced in the Runs UI.
+DEFAULT_RUN_HISTORY_LIMIT = 250
+
 
 def _norm_workspace_path(path: str) -> str:
     return str(Path(path).expanduser().resolve())
@@ -175,7 +178,7 @@ class UiStore:
                 return run
         return None
 
-    def save_run(self, run: RunRecord, limit: int = 250) -> None:
+    def save_run(self, run: RunRecord, limit: int = DEFAULT_RUN_HISTORY_LIMIT) -> None:
         with self._file_lock:
             runs = [item for item in self.list_runs() if item.id != run.id]
             runs.insert(0, run)
