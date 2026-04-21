@@ -101,7 +101,7 @@ pub fn auto_label_clusters(
 pub fn auto_label_clusters_from_embeddings(
     _centres: &ndarray::ArrayBase<impl ndarray::Data<Elem = f32>, ndarray::Ix2>,
     embed: &ndarray::ArrayBase<impl ndarray::Data<Elem = f32>, ndarray::Ix2>,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     assignments: &[usize],
     top_tokens: &[String],
     k: usize,
@@ -249,10 +249,10 @@ pub fn encode_token_with_tokenizer(
     tok: &str,
     embed: &ndarray::ArrayBase<impl ndarray::Data<Elem = f32>, ndarray::Ix2>,
     hidden: usize,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
 ) -> Option<Array1<f32>> {
     let encoding = tokenizer.encode(tok, false).ok()?;
-    let ids = encoding.get_ids();
+    let ids = encoding.ids.as_slice();
     if ids.is_empty() {
         return None;
     }

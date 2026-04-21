@@ -9,6 +9,7 @@
 use std::path::Path;
 
 use ndarray::{Array1, Array2};
+use larql_core::mmap::Mmap;
 
 /// MoE router weights for all layers.
 pub struct RouterIndex {
@@ -47,7 +48,7 @@ impl RouterIndex {
         let num_layers = config.num_layers;
 
         let file = std::fs::File::open(&path).ok()?;
-        let mmap = unsafe { memmap2::Mmap::map(&file).ok()? };
+        let mmap = unsafe { Mmap::map(&file).ok()? };
         let floats = crate::config::dtype::decode_floats(&mmap, config.dtype);
 
         let weight_size = num_experts * hidden_size;

@@ -16,6 +16,8 @@ use std::io::Write;
 use std::path::Path;
 use std::time::Instant;
 
+use larql_core::mmap::Mmap;
+
 // Single source of truth for quantization — same functions used by compute kernels
 use larql_compute::cpu::ops::q4_common::{quantize_q4_k, quantize_q6_k};
 
@@ -38,7 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let attn_src = dir.join("attn_weights.bin");
     if attn_src.exists() {
         let file = std::fs::File::open(&attn_src)?;
-        let mmap = unsafe { memmap2::Mmap::map(&file)? };
+        let mmap = unsafe { Mmap::map(&file)? };
         let mut out = std::fs::File::create(dir.join("attn_weights_q4k.bin"))?;
         let mut q4k_manifest = Vec::new();
         let mut offset = 0usize;
@@ -105,7 +107,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let interleaved_src = dir.join("interleaved.bin");
     if interleaved_src.exists() {
         let file = std::fs::File::open(&interleaved_src)?;
-        let mmap = unsafe { memmap2::Mmap::map(&file)? };
+        let mmap = unsafe { Mmap::map(&file)? };
 
         let config_path = dir.join("index.json");
         let config: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&config_path)?)?;

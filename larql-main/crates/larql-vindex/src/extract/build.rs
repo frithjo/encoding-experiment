@@ -54,7 +54,7 @@ struct ClusterData {
 /// Build the whole-word vocabulary: tokens that decode as 3+ char alphabetic words.
 /// Returns (token_ids, reduced_embedding_matrix).
 pub(crate) fn build_whole_word_vocab(
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     embed: &ndarray::ArrayBase<impl ndarray::Data<Elem = f32>, ndarray::Ix2>,
     vocab_size: usize,
     hidden_size: usize,
@@ -85,7 +85,7 @@ pub(crate) fn build_whole_word_vocab(
 /// Returns a Vec<String> of decoded whole-word tokens, one per feature.
 fn compute_gate_top_tokens(
     weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     layer: usize,
     num_features: usize,
     ww_ids: &[usize],
@@ -132,7 +132,7 @@ fn compute_offset_direction(
     gate_token: &str,
     output_token_id: usize,
     weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     hidden_size: usize,
     vocab_size: usize,
 ) -> Option<Vec<f32>> {
@@ -142,7 +142,7 @@ fn compute_offset_direction(
 
     // Get gate token embedding (may be multi-subword)
     let enc = tokenizer.encode(gate_token, false).ok()?;
-    let ids = enc.get_ids();
+    let ids = enc.ids.as_slice();
     let valid: Vec<usize> = ids
         .iter()
         .filter(|&&id| id > 2)
@@ -184,7 +184,7 @@ fn run_clustering_pipeline(
     data: ClusterData,
     hidden_size: usize,
     weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     output_dir: &Path,
     callbacks: &mut dyn IndexBuildCallbacks,
 ) -> Result<(), VindexError> {
@@ -298,7 +298,7 @@ pub use crate::extract::callbacks::IndexBuildCallbacks;
     #[allow(clippy::too_many_arguments)]
     pub fn build_vindex(
         weights: &ModelWeights,
-        tokenizer: &tokenizers::Tokenizer,
+        tokenizer: &dyn larql_tokenizer::Tokenizer,
         model_name: &str,
         output_dir: &Path,
         down_top_k: usize,
@@ -600,7 +600,7 @@ pub use crate::extract::callbacks::IndexBuildCallbacks;
         // ── 4. Copy tokenizer ──
         callbacks.on_stage("tokenizer");
         let tokenizer_json = tokenizer
-            .to_string(true)
+            .to_json(true)
             .map_err(|e| VindexError::Parse(format!("tokenizer serialize: {e}")))?;
         std::fs::write(output_dir.join("tokenizer.json"), tokenizer_json)?;
         callbacks.on_stage_done("tokenizer", 0.0);
@@ -692,7 +692,7 @@ pub use crate::extract::callbacks::IndexBuildCallbacks;
     /// Runs: relation clustering + tokenizer + index.json.
     pub fn build_vindex_resume(
         weights: &ModelWeights,
-        tokenizer: &tokenizers::Tokenizer,
+        tokenizer: &dyn larql_tokenizer::Tokenizer,
         model_name: &str,
         output_dir: &Path,
         callbacks: &mut dyn IndexBuildCallbacks,
@@ -821,7 +821,7 @@ pub use crate::extract::callbacks::IndexBuildCallbacks;
 
         // Tokenizer
         callbacks.on_stage("tokenizer");
-        let tokenizer_json = tokenizer.to_string(true)
+        let tokenizer_json = tokenizer.to_json(true)
             .map_err(|e| VindexError::Parse(format!("tokenizer serialize: {e}")))?;
         std::fs::write(output_dir.join("tokenizer.json"), tokenizer_json)?;
         callbacks.on_stage_done("tokenizer", 0.0);

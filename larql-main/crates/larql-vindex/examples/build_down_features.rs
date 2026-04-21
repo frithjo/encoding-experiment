@@ -23,6 +23,8 @@ use std::io::Write;
 use std::path::Path;
 use std::time::Instant;
 
+use larql_core::mmap::Mmap;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let vindex_dir = std::env::args().nth(1)
         .ok_or("Usage: build_down_features <vindex_dir>")?;
@@ -60,7 +62,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Determine storage dtype from file size
     let down_path = dir.join("down_weights.bin");
     let down_file = std::fs::File::open(&down_path)?;
-    let down_mmap = unsafe { memmap2::Mmap::map(&down_file)? };
+    let down_mmap = unsafe { Mmap::map(&down_file)? };
 
     let expected_f16 = num_layers * hidden_size * intermediate_size * 2;
     let expected_f32 = num_layers * hidden_size * intermediate_size * 4;

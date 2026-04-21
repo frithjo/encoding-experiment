@@ -33,7 +33,7 @@ pub fn probe_entities(
     index: &VectorIndex,
     embed: &ndarray::Array2<f32>,
     embed_scale: f32,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     layers: &[usize],
     top_k: usize,
 ) -> ProbeResult {
@@ -52,7 +52,7 @@ pub fn probe_entities(
             Ok(e) => e,
             Err(_) => continue,
         };
-        let ids = encoding.get_ids();
+        let ids = encoding.ids.as_slice();
         if ids.is_empty() {
             continue;
         }

@@ -18,11 +18,19 @@ pub mod index;
 pub mod patch;
 pub mod mmap_util;
 pub mod text;
+pub mod token_summary;
 pub mod vindexfile;
 
 // ── Re-export dependencies ──
 pub use ndarray;
-pub use tokenizers;
+pub use larql_tokenizer;
+pub use larql_tokenizer::Tokenizer as TokenizerTrait;
+
+/// Convenience alias for a shared, trait-object tokenizer handle.
+///
+/// All vindex APIs that hold a tokenizer use this type, letting callers swap
+/// the underlying impl (HF, vocab-only, ...) without changing signatures.
+pub type TokenizerArc = std::sync::Arc<dyn larql_tokenizer::Tokenizer>;
 
 // ── Re-export essentials at crate root ──
 
@@ -46,9 +54,14 @@ pub use index::residency::{ResidencyManager, LayerState};
 // Describe
 pub use describe::{DescribeEdge, LabelSource};
 pub use describe_collect::{
-    collect_describe_edges_from_trace, CollectedDescribeEdge, DESCRIBE_WALK_TOP_K,
+    collect_describe_edges_from_trace, CollectedDescribeEdge, DESCRIBE_GATE_FLOOR_DEFAULT,
+    DESCRIBE_WALK_TOP_K,
 };
 pub use text::{is_content_token, is_readable_token};
+pub use token_summary::{
+    band_name_for_layer, classify_token_shape, collect_token_hits, entity_token_kind,
+    token_shape_name, KindInfo, ShapeInfo, TokenFilters, TokenHit, TokenShape,
+};
 
 // Extract
 pub use extract::{

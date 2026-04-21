@@ -14,6 +14,8 @@ use std::io::Write;
 use std::path::Path;
 use std::time::Instant;
 
+use larql_core::mmap::Mmap;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dir = std::env::args().nth(1).ok_or("Usage: build_interleaved <vindex_dir>")?;
     let dir = Path::new(&dir);
@@ -36,13 +38,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Open source files
     let gate_file = std::fs::File::open(dir.join("gate_vectors.bin"))?;
-    let gate_mmap = unsafe { memmap2::Mmap::map(&gate_file)? };
+    let gate_mmap = unsafe { Mmap::map(&gate_file)? };
 
     let up_file = std::fs::File::open(dir.join("up_features.bin"))?;
-    let up_mmap = unsafe { memmap2::Mmap::map(&up_file)? };
+    let up_mmap = unsafe { Mmap::map(&up_file)? };
 
     let down_file = std::fs::File::open(dir.join("down_features.bin"))?;
-    let down_mmap = unsafe { memmap2::Mmap::map(&down_file)? };
+    let down_mmap = unsafe { Mmap::map(&down_file)? };
 
     println!("Source files:");
     println!("  gate_vectors.bin:  {:.1} MB", gate_mmap.len() as f64 / 1e6);

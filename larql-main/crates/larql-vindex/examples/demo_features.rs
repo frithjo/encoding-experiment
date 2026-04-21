@@ -8,6 +8,7 @@
 //! Run: cargo run -p larql-vindex --example vindex_demo
 
 use larql_models::TopKEntry;
+use larql_tokenizer::HfTokenizer;
 use larql_vindex::{FeatureMeta, VectorIndex, VindexConfig};
 use ndarray::{Array1, Array2, ArcArray2};
 use std::collections::HashMap;
@@ -163,7 +164,7 @@ fn main() {
     let mut ecb = larql_vindex::SilentBuildCallbacks;
     larql_vindex::build_vindex(
         &weights,
-        &tokenizers::Tokenizer::from_bytes(tok_json).unwrap(),
+        &HfTokenizer::from_bytes(tok_json.as_bytes()).unwrap(),
         "demo/synthetic",
         &dir_ext,
         3,

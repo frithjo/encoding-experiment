@@ -14,6 +14,8 @@ use std::io::Write;
 use std::path::Path;
 use std::time::Instant;
 
+use larql_core::mmap::Mmap;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let vindex_dir = std::env::args().nth(1)
         .ok_or("Usage: convert_gates_f32 <vindex_dir>")?;
@@ -46,7 +48,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Mmap the f16 file
     let gate_path = dir.join("gate_vectors.bin");
     let f16_file = std::fs::File::open(&gate_path)?;
-    let f16_mmap = unsafe { memmap2::Mmap::map(&f16_file)? };
+    let f16_mmap = unsafe { Mmap::map(&f16_file)? };
     let f16_size = f16_mmap.len();
     println!("F16 file: {:.1} MB", f16_size as f64 / 1e6);
 

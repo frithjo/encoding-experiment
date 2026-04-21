@@ -6,6 +6,8 @@
 use std::io::Write;
 use std::path::Path;
 use std::time::Instant;
+
+use larql_core::mmap::Mmap;
 use larql_compute::cpu::q4::quantize_q4_0;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -19,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let file = std::fs::File::open(&src)?;
-    let mmap = unsafe { memmap2::Mmap::map(&file)? };
+    let mmap = unsafe { Mmap::map(&file)? };
     let num_floats = mmap.len() / 4;
     let f32_data = unsafe {
         std::slice::from_raw_parts(mmap.as_ptr() as *const f32, num_floats)

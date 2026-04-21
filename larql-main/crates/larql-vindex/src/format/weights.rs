@@ -16,6 +16,8 @@ use std::io::{BufWriter, Write};
 use std::path::Path;
 
 use ndarray::Array2;
+use larql_core::mmap::Mmap;
+use larql_models::loading::safetensors_parse::{SafeTensorsFile, Dtype};
 use serde::{Deserialize, Serialize};
 
 use crate::error::VindexError;
@@ -107,18 +109,18 @@ pub struct StreamingWeights<'a> {
 impl<'a> StreamingWeights<'a> {
     fn read_tensor_raw(&self, key: &str) -> Option<(Vec<f32>, Vec<usize>)> {
         let (shard_idx, tensor_name) = self.tensor_index.get(key)?;
-        let st = safetensors::SafeTensors::deserialize(self.shard_mmaps[*shard_idx]).ok()?;
-        let view = st.tensor(tensor_name).ok()?;
+        let st = SafeTensorsFile::deserialize(self.shard_mmaps[*shard_idx]).ok()?;
+        let view = st.tensor(tensor_name)?;
         let shape = view.shape().to_vec();
 
         let data = match view.dtype() {
-            safetensors::Dtype::F32 => {
+            Dtype::F32 => {
                 view.data().chunks_exact(4)
                     .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
                     .collect()
             }
-            safetensors::Dtype::F16 => crate::format::quant::half::decode_f16(view.data()),
-            safetensors::Dtype::BF16 => crate::format::quant::half::decode_bf16(view.data()),
+            Dtype::F16 => crate::format::quant::half::decode_f16(view.data()),
+            Dtype::BF16 => crate::format::quant::half::decode_bf16(view.data()),
             _ => return None,
         };
         Some((data, shape))
@@ -477,7 +479,7 @@ pub fn load_model_weights(
 
     callbacks.on_file_start("embeddings", &dir.join("embeddings.bin").display().to_string());
     let embed_file = std::fs::File::open(dir.join("embeddings.bin"))?;
-    let embed_mmap = unsafe { memmap2::Mmap::map(&embed_file)? };
+    let embed_mmap = unsafe { Mmap::map(&embed_file)? };
     // Detect actual dtype from file size (may differ from index.json global dtype)
     let expected_embed_f32 = config.vocab_size * config.hidden_size * 4;
     let embed_dtype = if embed_mmap.len() == expected_embed_f32 {
@@ -500,7 +502,7 @@ pub fn load_model_weights(
     let entries: Vec<WeightEntry> = serde_json::from_str(&manifest_text)
         .map_err(|e| VindexError::Parse(e.to_string()))?;
 
-    let mut mmap_cache: HashMap<String, memmap2::Mmap> = HashMap::new();
+    let mut mmap_cache: HashMap<String, Mmap> = HashMap::new();
     let mut tensors: HashMap<String, larql_models::WeightArray> = HashMap::new();
     let mut vectors: HashMap<String, Vec<f32>> = HashMap::new();
     let mut lm_head_loaded: Option<larql_models::WeightArray> = None;
@@ -512,7 +514,7 @@ pub fn load_model_weights(
             let fpath = dir.join(&filename);
             if fpath.exists() {
                 if let Ok(f) = std::fs::File::open(&fpath) {
-                    if let Ok(m) = unsafe { memmap2::Mmap::map(&f) } {
+                    if let Ok(m) = unsafe { Mmap::map(&f) } {
                         mmap_cache.insert(filename.clone(), m);
                     }
                 }
@@ -560,7 +562,7 @@ pub fn load_model_weights(
 
     // Gate vectors from gate_vectors.bin
     let gate_file = std::fs::File::open(dir.join("gate_vectors.bin"))?;
-    let gate_mmap = unsafe { memmap2::Mmap::map(&gate_file)? };
+    let gate_mmap = unsafe { Mmap::map(&gate_file)? };
     let gate_floats = crate::config::dtype::decode_floats(&gate_mmap, config.dtype);
     let bpf = crate::config::dtype::bytes_per_float(config.dtype);
     for info in &config.layers {

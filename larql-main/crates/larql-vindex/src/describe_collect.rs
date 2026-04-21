@@ -22,6 +22,9 @@ pub struct CollectedDescribeEdge {
 /// Same per-layer walk breadth as `exec_describe` in larql-lql (`patched.walk(..., 20)`).
 pub const DESCRIBE_WALK_TOP_K: usize = 20;
 
+/// Default gate-floor filter for DESCRIBE edge collection (HTTP `/v1/describe`, LQL local path, gRPC).
+pub const DESCRIBE_GATE_FLOOR_DEFAULT: f32 = 5.0;
+
 /// Walk the trace, deduplicate by lowercased target token, and apply
 /// content / coherence filters. Output is sorted descending by gate.
 pub fn collect_describe_edges_from_trace(
@@ -148,7 +151,7 @@ mod tests {
                 )],
             )],
         };
-        let out = collect_describe_edges_from_trace(&trace, "France", 5.0);
+        let out = collect_describe_edges_from_trace(&trace, "France", DESCRIBE_GATE_FLOOR_DEFAULT);
         assert!(out.is_empty());
     }
 
@@ -167,7 +170,7 @@ mod tests {
                 )],
             )],
         };
-        let out = collect_describe_edges_from_trace(&trace2, "France", 5.0);
+        let out = collect_describe_edges_from_trace(&trace2, "France", DESCRIBE_GATE_FLOOR_DEFAULT);
         assert!(out.is_empty());
     }
 
@@ -180,7 +183,7 @@ mod tests {
                 (1, vec![hit(1, 2, 12.0, m)]),
             ],
         };
-        let out = collect_describe_edges_from_trace(&trace, "France", 5.0);
+        let out = collect_describe_edges_from_trace(&trace, "France", DESCRIBE_GATE_FLOOR_DEFAULT);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].original, "Paris");
         assert_eq!(out[0].gate, 12.0);
@@ -201,7 +204,7 @@ mod tests {
                 )],
             )],
         };
-        assert!(collect_describe_edges_from_trace(&trace, "France", 5.0).is_empty());
+        assert!(collect_describe_edges_from_trace(&trace, "France", DESCRIBE_GATE_FLOOR_DEFAULT).is_empty());
         assert!(!collect_describe_edges_from_trace(&trace, "France", 4.0).is_empty());
     }
 }

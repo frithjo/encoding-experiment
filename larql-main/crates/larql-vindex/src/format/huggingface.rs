@@ -11,12 +11,21 @@
 //! # Upload a vindex
 //! larql publish gemma3-4b.vindex --repo chrishayuk/gemma-3-4b-it-vindex
 //! ```
+//!
+//! This module is gated behind the `huggingface` feature. The vindex format
+//! itself is registry-agnostic — it works with local paths and any HTTP server.
 
+#[cfg(feature = "huggingface")]
 use std::path::{Path, PathBuf};
 
+#[cfg(feature = "huggingface")]
 use crate::error::VindexError;
 
+#[cfg(feature = "huggingface")]
+use larql_core::{Client as HttpClient, hf_hub};
+
 /// The files that make up a vindex, in priority order for lazy loading.
+#[cfg(feature = "huggingface")]
 const VINDEX_CORE_FILES: &[&str] = &[
     "index.json",
     "tokenizer.json",
@@ -28,6 +37,7 @@ const VINDEX_CORE_FILES: &[&str] = &[
     "feature_labels.json",
 ];
 
+#[cfg(feature = "huggingface")]
 const VINDEX_WEIGHT_FILES: &[&str] = &[
     "attn_weights.bin",
     "norms.bin",
@@ -45,6 +55,7 @@ const VINDEX_WEIGHT_FILES: &[&str] = &[
 ///
 /// Files are cached in the HuggingFace cache directory (~/.cache/huggingface/).
 /// Only downloads files that don't already exist locally.
+#[cfg(feature = "huggingface")]
 pub fn resolve_hf_vindex(hf_path: &str) -> Result<PathBuf, VindexError> {
     let path = hf_path.strip_prefix("hf://")
         .ok_or_else(|| VindexError::Parse(format!("not an hf:// path: {hf_path}")))?;
@@ -96,6 +107,7 @@ pub fn resolve_hf_vindex(hf_path: &str) -> Result<PathBuf, VindexError> {
 
 /// Download additional weight files for inference/compile.
 /// Called lazily when INFER or COMPILE is first used.
+#[cfg(feature = "huggingface")]
 pub fn download_hf_weights(hf_path: &str) -> Result<(), VindexError> {
     let path = hf_path.strip_prefix("hf://")
         .ok_or_else(|| VindexError::Parse(format!("not an hf:// path: {hf_path}")))?;
@@ -132,6 +144,7 @@ pub fn download_hf_weights(hf_path: &str) -> Result<(), VindexError> {
 /// Upload a local vindex directory to HuggingFace as a dataset repo.
 ///
 /// Requires HF_TOKEN environment variable or ~/.huggingface/token.
+#[cfg(feature = "huggingface")]
 pub fn publish_vindex(
     vindex_dir: &Path,
     repo_id: &str,
@@ -188,6 +201,7 @@ pub fn publish_vindex(
 }
 
 /// Callbacks for publish progress.
+#[cfg(feature = "huggingface")]
 pub trait PublishCallbacks {
     fn on_start(&mut self, _repo: &str) {}
     fn on_file_start(&mut self, _filename: &str, _size: u64) {}
@@ -195,13 +209,17 @@ pub trait PublishCallbacks {
     fn on_complete(&mut self, _url: &str) {}
 }
 
+#[cfg(feature = "huggingface")]
 pub struct SilentPublishCallbacks;
+
+#[cfg(feature = "huggingface")]
 impl PublishCallbacks for SilentPublishCallbacks {}
 
 // ═══════════════════════════════════════════════════════════════
 // HuggingFace HTTP API helpers
 // ═══════════════════════════════════════════════════════════════
 
+#[cfg(feature = "huggingface")]
 fn get_hf_token() -> Result<String, VindexError> {
     // Try environment variable first
     if let Ok(token) = std::env::var("HF_TOKEN") {
@@ -228,8 +246,9 @@ fn get_hf_token() -> Result<String, VindexError> {
     ))
 }
 
+#[cfg(feature = "huggingface")]
 fn create_hf_dataset_repo(repo_id: &str, token: &str) -> Result<(), VindexError> {
-    let client = reqwest::blocking::Client::new();
+    let client = HttpClient::new();
     let resp = client
         .post("https://huggingface.co/api/repos/create")
         .header("Authorization", format!("Bearer {token}"))
@@ -251,6 +270,7 @@ fn create_hf_dataset_repo(repo_id: &str, token: &str) -> Result<(), VindexError>
     }
 }
 
+#[cfg(feature = "huggingface")]
 fn upload_file_to_hf(
     repo_id: &str,
     token: &str,
@@ -264,7 +284,7 @@ fn upload_file_to_hf(
         repo_id, remote_filename
     );
 
-    let client = reqwest::blocking::Client::builder()
+    let client = HttpClient::builder()
         .timeout(std::time::Duration::from_secs(3600)) // 1 hour for large files
         .build()
         .map_err(|e| VindexError::Parse(format!("HTTP client error: {e}")))?;
@@ -292,6 +312,46 @@ fn upload_file_to_hf(
 pub fn is_hf_path(path: &str) -> bool {
     path.starts_with("hf://")
 }
+
+/// Returns an error if hf:// path is used without huggingface feature.
+#[cfg(not(feature = "huggingface"))]
+pub fn resolve_hf_vindex(_hf_path: &str) -> Result<std::path::PathBuf, crate::error::VindexError> {
+    Err(crate::error::VindexError::Parse(
+        "hf:// paths require the 'huggingface' feature. Use local paths or enable the feature.".into()
+    ))
+}
+
+#[cfg(not(feature = "huggingface"))]
+pub fn download_hf_weights(_hf_path: &str) -> Result<(), crate::error::VindexError> {
+    Err(crate::error::VindexError::Parse(
+        "hf:// paths require the 'huggingface' feature.".into()
+    ))
+}
+
+#[cfg(not(feature = "huggingface"))]
+pub fn publish_vindex(
+    _vindex_dir: &std::path::Path,
+    _repo_id: &str,
+    _callbacks: &mut dyn PublishCallbacks,
+) -> Result<String, crate::error::VindexError> {
+    Err(crate::error::VindexError::Parse(
+        "HuggingFace publishing requires the 'huggingface' feature.".into()
+    ))
+}
+
+#[cfg(not(feature = "huggingface"))]
+pub trait PublishCallbacks {
+    fn on_start(&mut self, _repo: &str) {}
+    fn on_file_start(&mut self, _filename: &str, _size: u64) {}
+    fn on_file_done(&mut self, _filename: &str) {}
+    fn on_complete(&mut self, _url: &str) {}
+}
+
+#[cfg(not(feature = "huggingface"))]
+pub struct SilentPublishCallbacks;
+
+#[cfg(not(feature = "huggingface"))]
+impl PublishCallbacks for SilentPublishCallbacks {}
 
 #[cfg(test)]
 mod tests {

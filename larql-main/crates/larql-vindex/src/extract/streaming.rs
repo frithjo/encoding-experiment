@@ -11,6 +11,8 @@ use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use ndarray::Array2;
+use larql_core::mmap::Mmap;
+use larql_models::loading::safetensors_parse::SafeTensorsFile;
 
 use crate::config::dtype::StorageDtype;
 use crate::config::{VindexConfig, VindexLayerInfo, VindexModelConfig};
@@ -20,7 +22,7 @@ use crate::extract::callbacks::IndexBuildCallbacks;
 /// Mmap'd safetensors file — kept alive for the duration of extraction.
 struct MmapShard {
     _file: std::fs::File,
-    mmap: memmap2::Mmap,
+    mmap: Mmap,
 }
 
 /// Build a vindex by streaming from safetensors files (no full model load).
@@ -29,7 +31,7 @@ struct MmapShard {
 #[allow(clippy::too_many_arguments)]
 pub fn build_vindex_streaming(
     model_dir: &Path,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     model_name: &str,
     output_dir: &Path,
     down_top_k: usize,
@@ -84,7 +86,7 @@ pub fn build_vindex_streaming(
     // The mmaps are kept alive in `shard_mmaps` for the lifetime of the function.
     let shard_mmaps: Vec<MmapShard> = st_files.iter().map(|path| {
         let file = std::fs::File::open(path).unwrap();
-        let mmap = unsafe { memmap2::Mmap::map(&file).unwrap() };
+        let mmap = unsafe { Mmap::map(&file).unwrap() };
         MmapShard { _file: file, mmap }
     }).collect();
 
@@ -92,7 +94,7 @@ pub fn build_vindex_streaming(
     // We need to find which shard contains each tensor.
     let mut tensor_index: HashMap<String, (usize, String)> = HashMap::new();
     for (shard_idx, shard) in shard_mmaps.iter().enumerate() {
-        let st = safetensors::SafeTensors::deserialize(&shard.mmap)
+        let st = SafeTensorsFile::deserialize(&shard.mmap)
             .map_err(|e| VindexError::Parse(e.to_string()))?;
         for name in st.names() {
             let key = normalize_key(name, prefixes);
@@ -127,15 +129,19 @@ pub fn build_vindex_streaming(
                 tensor_index.get(&blocks_key),
                 tensor_index.get(&scales_key),
             ) {
-                let blocks_st = safetensors::SafeTensors::deserialize(&shard_mmaps[blocks_info.0].mmap)
+                let blocks_st = SafeTensorsFile::deserialize(&shard_mmaps[blocks_info.0].mmap)
                     .map_err(|e| VindexError::Parse(e.to_string()))?;
-                let scales_st = safetensors::SafeTensors::deserialize(&shard_mmaps[scales_info.0].mmap)
+                let scales_st = SafeTensorsFile::deserialize(&shard_mmaps[scales_info.0].mmap)
                     .map_err(|e| VindexError::Parse(e.to_string()))?;
 
-                let blocks_view = blocks_st.tensor(&blocks_info.1)
-                    .map_err(|e| VindexError::Parse(e.to_string()))?;
-                let scales_view = scales_st.tensor(&scales_info.1)
-                    .map_err(|e| VindexError::Parse(e.to_string()))?;
+                let blocks_view = match blocks_st.tensor(&blocks_info.1) {
+                    Some(v) => v,
+                    None => continue,
+                };
+                let scales_view = match scales_st.tensor(&scales_info.1) {
+                    Some(v) => v,
+                    None => continue,
+                };
 
                 let shape = blocks_view.shape();
                 let n_exp = shape[0];
@@ -273,12 +279,18 @@ pub fn build_vindex_streaming(
             let blocks_key = arch.packed_down_blocks_key(layer).unwrap_or_default();
             let scales_key = arch.packed_down_scales_key(layer).unwrap_or_default();
             if let (Some(bi), Some(si)) = (tensor_index.get(&blocks_key), tensor_index.get(&scales_key)) {
-                let bst = safetensors::SafeTensors::deserialize(&shard_mmaps[bi.0].mmap)
+                let bst = SafeTensorsFile::deserialize(&shard_mmaps[bi.0].mmap)
                     .map_err(|e| VindexError::Parse(e.to_string()))?;
-                let sst = safetensors::SafeTensors::deserialize(&shard_mmaps[si.0].mmap)
+                let sst = SafeTensorsFile::deserialize(&shard_mmaps[si.0].mmap)
                     .map_err(|e| VindexError::Parse(e.to_string()))?;
-                let bv = bst.tensor(&bi.1).map_err(|e| VindexError::Parse(e.to_string()))?;
-                let sv = sst.tensor(&si.1).map_err(|e| VindexError::Parse(e.to_string()))?;
+                let bv = match bst.tensor(&bi.1) {
+                Some(v) => v,
+                None => continue,
+            };
+            let sv = match sst.tensor(&si.1) {
+                Some(v) => v,
+                None => continue,
+            };
                 let shape = bv.shape();
                 let n_exp = shape[0];
                 let out_features = shape[1];
@@ -380,7 +392,7 @@ pub fn build_vindex_streaming(
 
     // ── 4. Tokenizer ──
     callbacks.on_stage("tokenizer");
-    let tokenizer_json = tokenizer.to_string(true)
+    let tokenizer_json = tokenizer.to_json(true)
         .map_err(|e| VindexError::Parse(format!("tokenizer serialize: {e}")))?;
     std::fs::write(output_dir.join("tokenizer.json"), tokenizer_json)?;
     callbacks.on_stage_done("tokenizer", 0.0);
@@ -477,23 +489,26 @@ fn get_tensor_f32(
         None => return Ok(None),
     };
 
-    let st = safetensors::SafeTensors::deserialize(&shards[*shard_idx].mmap)
+    let st = SafeTensorsFile::deserialize(&shards[*shard_idx].mmap)
         .map_err(|e| VindexError::Parse(e.to_string()))?;
 
-    let view = st.tensor(tensor_name)
-        .map_err(|e| VindexError::Parse(e.to_string()))?;
+    let view = match st.tensor(tensor_name) {
+        Some(v) => v,
+        None => return Ok(None),
+    };
 
     let shape = view.shape();
     if shape.len() != 2 { return Ok(None); }
 
+    use larql_models::loading::safetensors_parse::Dtype;
     let data = match view.dtype() {
-        safetensors::Dtype::F32 => {
+        Dtype::F32 => {
             view.data().chunks_exact(4)
                 .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
                 .collect()
         }
-        safetensors::Dtype::F16 => crate::format::quant::half::decode_f16(view.data()),
-        safetensors::Dtype::BF16 => crate::format::quant::half::decode_bf16(view.data()),
+        Dtype::F16 => crate::format::quant::half::decode_f16(view.data()),
+        Dtype::BF16 => crate::format::quant::half::decode_bf16(view.data()),
         _ => return Ok(None), // skip non-float
     };
 

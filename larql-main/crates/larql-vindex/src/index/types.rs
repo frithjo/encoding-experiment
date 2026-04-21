@@ -1,6 +1,7 @@
 //! Shared types and traits for the vindex index.
 
 use ndarray::{Array1, Array2};
+use larql_core::mmap::Mmap;
 use larql_models::TopKEntry;
 
 /// Metadata for a single FFN feature (from extraction).
@@ -126,11 +127,11 @@ pub struct GateQ4Slice {
 /// Mmap'd down_meta.bin — reads individual feature records on demand.
 #[derive(Clone)]
 pub struct DownMetaMmap {
-    pub(crate) mmap: std::sync::Arc<memmap2::Mmap>,
+    pub(crate) mmap: std::sync::Arc<Mmap>,
     pub(crate) layer_offsets: Vec<usize>,
     pub(crate) layer_num_features: Vec<usize>,
     pub(crate) top_k_count: usize,
-    pub(crate) tokenizer: std::sync::Arc<tokenizers::Tokenizer>,
+    pub(crate) tokenizer: crate::TokenizerArc,
 }
 
 impl DownMetaMmap {

@@ -6,6 +6,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use ndarray::{Array1, Array2};
+use larql_core::mmap::Mmap;
 
 use crate::error::VindexError;
 use larql_models::TopKEntry;
@@ -28,7 +29,7 @@ pub struct VectorIndex {
     /// For f32: bytes are reinterpreted as &[f32] directly (zero-copy).
     /// For f16: bytes are decoded per-layer on demand.
     /// Arc for Clone support — the mmap is shared, not copied.
-    pub(crate) gate_mmap_bytes: Option<Arc<memmap2::Mmap>>,
+    pub(crate) gate_mmap_bytes: Option<Arc<Mmap>>,
 
     /// Storage dtype for mmap'd data (needed for f16 decoding).
     pub(crate) gate_mmap_dtype: crate::config::dtype::StorageDtype,
@@ -68,36 +69,36 @@ pub struct VectorIndex {
     /// KNN call, then reused. Eliminates repeated f16→f32 conversion.
     pub(crate) f16_decode_cache: Mutex<Vec<Option<Vec<f32>>>>,
     pub(crate) warmed_gates: std::sync::RwLock<Vec<Option<Vec<f32>>>>,
-    pub(crate) down_features_mmap: Option<Arc<memmap2::Mmap>>,
-    pub(crate) up_features_mmap: Option<Arc<memmap2::Mmap>>,
+    pub(crate) down_features_mmap: Option<Arc<Mmap>>,
+    pub(crate) up_features_mmap: Option<Arc<Mmap>>,
     pub(crate) hnsw_cache: Mutex<Vec<Option<super::hnsw::HnswLayer>>>,
     pub(crate) hnsw_enabled: std::sync::atomic::AtomicBool,
     pub(crate) hnsw_ef_search: std::sync::atomic::AtomicUsize,
     /// Mmap'd lm_head (output projection): [vocab_size, hidden_size], f32.
-    pub(crate) lm_head_mmap: Option<Arc<memmap2::Mmap>>,
+    pub(crate) lm_head_mmap: Option<Arc<Mmap>>,
     pub vocab_size: usize,
     /// Interleaved FFN data: [gate|up|down] per layer in one contiguous file.
-    pub(crate) interleaved_mmap: Option<Arc<memmap2::Mmap>>,
+    pub(crate) interleaved_mmap: Option<Arc<Mmap>>,
     /// Q4_0 quantized interleaved FFN data (7x smaller, dequant on read).
-    pub(crate) interleaved_q4_mmap: Option<Arc<memmap2::Mmap>>,
+    pub(crate) interleaved_q4_mmap: Option<Arc<Mmap>>,
     /// Q4_K/Q6_K quantized interleaved FFN data (Ollama-compatible, matches attn format).
-    pub(crate) interleaved_q4k_mmap: Option<Arc<memmap2::Mmap>>,
+    pub(crate) interleaved_q4k_mmap: Option<Arc<Mmap>>,
 
     /// Q4_0 gate vectors mmap — for fast Q4 KNN via larql-compute.
-    pub(crate) gate_q4_mmap: Option<Arc<memmap2::Mmap>>,
+    pub(crate) gate_q4_mmap: Option<Arc<Mmap>>,
     /// Per-layer byte offset + byte length in gate_q4_mmap.
     pub(crate) gate_q4_slices: Vec<GateQ4Slice>,
     /// Q4_0 lm_head mmap — for GPU Q4 logits (replaces CPU f32 lm_head KNN).
-    pub(crate) lm_head_q4_mmap: Option<Arc<memmap2::Mmap>>,
+    pub(crate) lm_head_q4_mmap: Option<Arc<Mmap>>,
     /// Q4_K/Q6_K attention weights (Ollama-compatible).
-    pub(crate) attn_q4k_mmap: Option<Arc<memmap2::Mmap>>,
+    pub(crate) attn_q4k_mmap: Option<Arc<Mmap>>,
     pub(crate) attn_q4k_manifest: Option<Vec<(usize, usize, String)>>,
     /// Q4_0 attention weights mmap — for GPU full pipeline.
-    pub(crate) attn_q4_mmap: Option<Arc<memmap2::Mmap>>,
+    pub(crate) attn_q4_mmap: Option<Arc<Mmap>>,
     /// Per-matrix (offset, length) in attn_q4_mmap — from manifest.
     pub(crate) attn_q4_manifest: Option<Vec<(usize, usize)>>,
     /// Q8_0 attention weights mmap — higher precision for attention projections.
-    pub(crate) attn_q8_mmap: Option<Arc<memmap2::Mmap>>,
+    pub(crate) attn_q8_mmap: Option<Arc<Mmap>>,
     /// Per-matrix (offset, vals_len, scales_len) in attn_q8_mmap.
     pub(crate) attn_q8_manifest: Option<Vec<(usize, usize, usize)>>,
 }
@@ -191,7 +192,7 @@ impl VectorIndex {
     /// Create a VectorIndex with zero-copy mmap'd gate vectors and down_meta.
     /// No heap allocation — everything read on demand from mmap'd files.
     pub fn new_mmap(
-        gate_mmap: memmap2::Mmap,
+        gate_mmap: Mmap,
         gate_slices: Vec<GateLayerSlice>,
         dtype: crate::config::dtype::StorageDtype,
         down_meta_mmap: Option<DownMetaMmap>,

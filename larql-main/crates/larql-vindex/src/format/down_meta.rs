@@ -12,6 +12,8 @@
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::Path;
 
+use larql_core::mmap::Mmap;
+
 use crate::error::VindexError;
 use crate::index::FeatureMeta;
 
@@ -89,7 +91,7 @@ pub fn write_binary(
 #[allow(clippy::type_complexity)]
 pub fn read_binary(
     dir: &Path,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
 ) -> Result<(Vec<Option<Vec<Option<FeatureMeta>>>>, usize), VindexError> {
     let path = dir.join("down_meta.bin");
     let file = std::fs::File::open(&path)?;
@@ -177,11 +179,11 @@ pub fn has_binary(dir: &Path) -> bool {
 /// Only parses the header + per-layer feature counts to build the offset table.
 pub fn mmap_binary(
     dir: &Path,
-    tokenizer: std::sync::Arc<tokenizers::Tokenizer>,
+    tokenizer: crate::TokenizerArc,
 ) -> Result<crate::index::core::DownMetaMmap, VindexError> {
     let path = dir.join("down_meta.bin");
     let file = std::fs::File::open(&path)?;
-    let mmap = unsafe { memmap2::Mmap::map(&file)? };
+    let mmap = unsafe { Mmap::map(&file)? };
 
     if mmap.len() < 16 {
         return Err(VindexError::Parse("down_meta.bin too small".into()));

@@ -9,6 +9,8 @@
 use std::io::Write;
 use std::path::Path;
 use std::time::Instant;
+
+use larql_core::mmap::Mmap;
 use larql_compute::cpu::q4::quantize_q4_0;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -27,7 +29,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load gate_vectors.bin
     let gate_path = dir.join("gate_vectors.bin");
     let file = std::fs::File::open(&gate_path)?;
-    let mmap = unsafe { memmap2::Mmap::map(&file)? };
+    let mmap = unsafe { Mmap::map(&file)? };
 
     let layers_info: Vec<(usize, usize)> = config["layers"].as_array().unwrap()
         .iter()

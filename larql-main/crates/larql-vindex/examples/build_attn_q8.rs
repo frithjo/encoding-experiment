@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     let file = std::fs::File::open(&src)?;
-    let mmap = unsafe { memmap2::Mmap::map(&file)? };
+    let mmap = unsafe { larql_core::mmap::Mmap::map(&file)? };
 
     println!("=== Building attn_weights_q8.bin ===");
     println!("  Source: {} ({:.1} MB)", src.display(), mmap.len() as f64 / 1e6);

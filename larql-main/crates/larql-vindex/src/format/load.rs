@@ -5,6 +5,7 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 use ndarray::Array2;
+use larql_core::mmap::Mmap;
 
 use crate::error::VindexError;
 use crate::config::VindexConfig;
@@ -65,8 +66,8 @@ impl VectorIndex {
             match load_vindex_tokenizer(dir) {
                 Ok(tokenizer) => {
                     callbacks.on_file_start("down_meta", &dir.join("down_meta.bin").display().to_string());
-                    let tok = std::sync::Arc::new(tokenizer);
-                    match crate::format::down_meta::mmap_binary(dir, tok) {
+                    // `load_vindex_tokenizer` already returns `Arc<dyn Tokenizer>`.
+                    match crate::format::down_meta::mmap_binary(dir, tokenizer) {
                         Ok(dm) => {
                             let count = dm.total_features();
                             callbacks.on_file_done("down_meta", count, start.elapsed().as_secs_f64() * 1000.0);
@@ -92,7 +93,7 @@ pub fn load_vindex_embeddings(dir: &Path) -> Result<(Array2<f32>, f32), VindexEr
         .map_err(|e| VindexError::Parse(e.to_string()))?;
 
     let embed_file = std::fs::File::open(dir.join("embeddings.bin"))?;
-    let embed_mmap = unsafe { memmap2::Mmap::map(&embed_file)? };
+    let embed_mmap = unsafe { Mmap::map(&embed_file)? };
     // Detect actual dtype from file size (may differ from index.json global dtype
     // if gate vectors were converted to f32 but embeddings remain f16).
     let expected_f32 = config.vocab_size * config.hidden_size * 4;
@@ -110,9 +111,12 @@ pub fn load_vindex_embeddings(dir: &Path) -> Result<(Array2<f32>, f32), VindexEr
 }
 
 /// Load tokenizer from a .vindex directory.
-pub fn load_vindex_tokenizer(dir: &Path) -> Result<tokenizers::Tokenizer, VindexError> {
+///
+/// Returns a trait-object tokenizer; concrete impl is selected by the
+/// `larql-tokenizer` crate's feature flags (HF by default).
+pub fn load_vindex_tokenizer(dir: &Path) -> Result<crate::TokenizerArc, VindexError> {
     let path = dir.join("tokenizer.json");
-    tokenizers::Tokenizer::from_file(&path).map_err(|e| VindexError::Parse(e.to_string()))
+    larql_tokenizer::load_tokenizer(&path).map_err(|e| VindexError::Parse(e.to_string()))
 }
 
 /// Load the vindex config.

@@ -12,6 +12,8 @@ use std::io::Write;
 use std::path::Path;
 use std::time::Instant;
 
+use larql_core::mmap::Mmap;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let vindex_dir = std::env::args().nth(1)
         .ok_or("Usage: build_up_features <vindex_dir>")?;
@@ -34,7 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let up_path = dir.join("up_weights.bin");
     let up_file = std::fs::File::open(&up_path)?;
-    let up_mmap = unsafe { memmap2::Mmap::map(&up_file)? };
+    let up_mmap = unsafe { Mmap::map(&up_file)? };
 
     println!("=== Build f32 Up Features ===\n");
     println!("Up entries: {}, file: {:.1}MB", up_entries.len(), up_mmap.len() as f64 / 1e6);
