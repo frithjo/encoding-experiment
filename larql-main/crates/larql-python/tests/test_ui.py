@@ -13,7 +13,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from larql.ui.app import create_app
-from larql.ui.models import RecipeRecord, execution_engine_for_recipe, validate_recipe
+from larql.ui.models import RecipeRecord, RunRecord, execution_engine_for_recipe, validate_recipe
 from larql.ui.store import UiStore
 
 
@@ -31,9 +31,9 @@ def _write_f32(path: Path, data: list[float]) -> None:
     np.array(data, dtype=np.float32).tofile(str(path))
 
 
-@pytest.fixture()
-def vindex_path() -> str:
-    tmpdir = tempfile.mkdtemp(prefix="larql_ui_vindex_")
+def _populate_synthetic_vindex(out_dir: Path) -> None:
+    """Write a minimal valid vindex tree (same shape as the ``vindex_path`` fixture)."""
+    out_dir.mkdir(parents=True, exist_ok=True)
     config = {
         "version": 1,
         "model": "test/synthetic-ui",
@@ -72,16 +72,16 @@ def vindex_path() -> str:
             }
         )
 
-    with open(os.path.join(tmpdir, "index.json"), "w", encoding="utf-8") as handle:
+    with open(out_dir / "index.json", "w", encoding="utf-8") as handle:
         json.dump(config, handle)
-    _write_f32(Path(tmpdir) / "gate_vectors.bin", gate_data)
+    _write_f32(out_dir / "gate_vectors.bin", gate_data)
 
     embed_data: list[float] = []
     for token in range(VOCAB_SIZE):
         vec = np.zeros(HIDDEN_SIZE, dtype=np.float32)
         vec[token % HIDDEN_SIZE] = 1.0
         embed_data.extend(vec.tolist())
-    _write_f32(Path(tmpdir) / "embeddings.bin", embed_data)
+    _write_f32(out_dir / "embeddings.bin", embed_data)
 
     top_k_count = 3
     record_size = 8 + top_k_count * 8
@@ -99,7 +99,7 @@ def vindex_path() -> str:
                     logit = c_score - k * 0.1
                     record += struct.pack("<If", tid, logit)
             meta_data.extend(record)
-    with open(os.path.join(tmpdir, "down_meta.bin"), "wb") as handle:
+    with open(out_dir / "down_meta.bin", "wb") as handle:
         handle.write(meta_data)
 
     vocab: dict[str, int] = {}
@@ -119,9 +119,14 @@ def vindex_path() -> str:
         "post_processor": None,
         "decoder": None,
     }
-    with open(os.path.join(tmpdir, "tokenizer.json"), "w", encoding="utf-8") as handle:
+    with open(out_dir / "tokenizer.json", "w", encoding="utf-8") as handle:
         json.dump(tokenizer_config, handle)
 
+
+@pytest.fixture()
+def vindex_path() -> str:
+    tmpdir = tempfile.mkdtemp(prefix="larql_ui_vindex_")
+    _populate_synthetic_vindex(Path(tmpdir))
     yield tmpdir
     shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -462,3 +467,98 @@ def test_probe_generation_engine_resolution() -> None:
     assert execution_engine_for_recipe(gen) == "walk_model"
     validate_recipe(probe)
     validate_recipe(gen)
+
+
+def test_api_mutating_route_415_without_json_content_type(client: TestClient) -> None:
+    r = client.post(
+        "/api/workspace/open",
+        content=b'{"path": "/tmp"}',
+        headers={"Content-Type": "text/plain"},
+    )
+    assert r.status_code == 415
+    assert "json" in r.json().get("error", "").lower()
+
+
+def test_api_recipe_put_bumps_updated_at(client: TestClient, tmp_path: Path) -> None:
+    app = create_app(UiStore(tmp_path / "ui"))
+    c = TestClient(app)
+    r = c.post(
+        "/api/recipes",
+        json={
+            "name": "u1",
+            "kind": "probe",
+            "template": "T {subject}",
+            "default_engine": "describe",
+            "tags": [],
+            "notes": "a",
+        },
+    )
+    assert r.status_code == 201
+    rid = r.json()["recipe"]["id"]
+    before = r.json()["recipe"]["updated_at"]
+    time.sleep(0.02)
+    r2 = c.put(f"/api/recipes/{rid}", json={"notes": "b"})
+    assert r2.status_code == 200
+    after = r2.json()["recipe"]["updated_at"]
+    assert before != after
+
+
+def test_runrecord_from_dict_partial_defaults() -> None:
+    r = RunRecord.from_dict(
+        {
+            "id": "legacy-1",
+            "kind": "describe",
+            "workspace_path": "/w",
+            "engine": "describe",
+        }
+    )
+    assert r.status == "completed"
+    assert r.recipe_id is None
+    assert r.raw == {}
+
+
+def test_ui_store_list_runs_skips_non_dict_rows(tmp_path: Path) -> None:
+    store = UiStore(tmp_path / "ui")
+    good = RunRecord.create(
+        kind="lql",
+        title="q",
+        workspace_path="/w",
+        engine="lql",
+        summary="s",
+        input_text="STATS",
+        raw={},
+        duration_ms=0,
+    )
+    p = store.runs_path
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps([good.to_dict(), "not-a-dict"], ensure_ascii=True), encoding="utf-8")
+    runs = store.list_runs()
+    assert len(runs) == 1
+    assert runs[0].id == good.id
+
+
+def test_api_rerun_409_when_workspace_differs_allow_flag(client: TestClient, tmp_path: Path) -> None:
+    v1 = tmp_path / "vindex_a"
+    v2 = tmp_path / "vindex_b"
+    _populate_synthetic_vindex(v1)
+    _populate_synthetic_vindex(v2)
+    client.post("/api/workspace/open", json={"path": str(v1)})
+    d = client.post(
+        "/api/explorer/describe",
+        json={"entity": "hello", "band": "knowledge", "async": False},
+    )
+    assert d.status_code == 200
+    run_id = d.json()["run"]["id"]
+    client.post("/api/workspace/open", json={"path": str(v2)})
+    r = client.post(f"/api/runs/{run_id}/rerun", json={})
+    assert r.status_code == 409
+    err = r.json()
+    assert "workspace" in err.get("error", "").lower()
+    assert "run_workspace" in err
+    assert "current_workspace" in err
+    r_ok = client.post(
+        f"/api/runs/{run_id}/rerun",
+        json={"allow_different_workspace": True, "async": False},
+    )
+    assert r_ok.status_code == 200
+    assert r_ok.json()["run"]["kind"] == "describe"
