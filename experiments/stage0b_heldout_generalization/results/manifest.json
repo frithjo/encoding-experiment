@@ -1,10 +1,10 @@
 {
   "stage": "heldout_0b",
   "name": "evaluate_stage0b_learned_on_graph_admissibility_variants",
-  "timestamp_utc": "2026-04-21T02:41:10.270573+00:00",
+  "timestamp_utc": "2026-04-21T02:51:55.495184+00:00",
   "python": "3.14.3 (main, Mar 26 2026, 00:00:00) [GCC 15.2.1 20260123 (Red Hat 15.2.1-7)]",
   "platform": "Linux-6.19.12-200.fc43.x86_64-x86_64-with-glibc2.42",
-  "git_rev": null,
+  "git_rev": "4f6dd496ae713abbd51ee511211a3a7b576c2346",
   "learning_seed": 0,
   "learning_config": {
     "n_samples_per_state": 900,
