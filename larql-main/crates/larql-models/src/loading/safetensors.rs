@@ -7,9 +7,11 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use ndarray::Array2;
+use larql_core::mmap::Mmap;
 
 use crate::weights::ModelWeights;
 use crate::detect::ModelError;
+use super::safetensors_parse::SafeTensorsFile;
 
 /// Load model weights from a directory or file.
 ///
@@ -82,8 +84,8 @@ pub fn load_model_dir(path: impl AsRef<Path>) -> Result<ModelWeights, ModelError
 
     for st_path in &st_files {
         let file = std::fs::File::open(st_path)?;
-        let mmap = unsafe { memmap2::Mmap::map(&file)? };
-        let st = safetensors::SafeTensors::deserialize(&mmap)
+        let mmap = unsafe { Mmap::map(&file)? };
+        let st = SafeTensorsFile::deserialize(&mmap)
             .map_err(|e| ModelError::Parse(e.to_string()))?;
 
         // Check for MXFP4 packed expert tensors (GPT-OSS format)
@@ -231,7 +233,7 @@ pub fn normalize_key_pub(key: &str, prefixes: &[&str]) -> String {
 ///   layers.{L}.block_sparse_moe.experts.{E}.w3.weight (up)
 ///   layers.{L}.block_sparse_moe.experts.{E}.w2.weight (down)
 fn dequantize_mxfp4_experts(
-    st: &safetensors::SafeTensors,
+    st: &SafeTensorsFile,
     tensor_names: &[String],
     prefixes: &[&str],
     tensors: &mut HashMap<String, crate::WeightArray>,
@@ -246,10 +248,14 @@ fn dequantize_mxfp4_experts(
         let down_scales_name = name.replace("gate_up_proj_blocks", "down_proj_scales");
 
         // Get tensor views
-        let blocks_view = st.tensor(name)
-            .map_err(|e| ModelError::Parse(format!("MXFP4 blocks: {e}")))?;
-        let scales_view = st.tensor(&scales_name)
-            .map_err(|e| ModelError::Parse(format!("MXFP4 scales: {e}")))?;
+        let blocks_view = match st.tensor(name) {
+            Some(v) => v,
+            None => continue,
+        };
+        let scales_view = match st.tensor(&scales_name) {
+            Some(v) => v,
+            None => continue,
+        };
 
         let shape = blocks_view.shape();
         if shape.len() != 4 { continue; }
@@ -289,7 +295,7 @@ fn dequantize_mxfp4_experts(
         }
 
         // Dequantize down projection
-        if let (Ok(db), Ok(ds)) = (st.tensor(&down_blocks_name), st.tensor(&down_scales_name)) {
+        if let (Some(db), Some(ds)) = (st.tensor(&down_blocks_name), st.tensor(&down_scales_name)) {
             let down_shape = db.shape();
             if down_shape.len() == 4 {
                 let down_out = down_shape[1];
@@ -311,7 +317,7 @@ fn dequantize_mxfp4_experts(
 
         // Also remap router: mlp.router.weight → block_sparse_moe.gate.weight
         let router_name = name.replace("experts.gate_up_proj_blocks", "router.weight");
-        if let Ok(router_view) = st.tensor(&router_name) {
+        if let Some(router_view) = st.tensor(&router_name) {
             if let Ok(data) = tensor_to_f32(&router_view) {
                 let s = router_view.shape();
                 if s.len() == 2 {
@@ -336,18 +342,19 @@ fn normalize_key(key: &str, prefixes: &[&str]) -> String {
     key.to_string()
 }
 
-fn tensor_to_f32(view: &safetensors::tensor::TensorView<'_>) -> Result<Vec<f32>, ModelError> {
+fn tensor_to_f32(view: &super::safetensors_parse::TensorView<'_>) -> Result<Vec<f32>, ModelError> {
     use crate::quant::half;
+    use super::safetensors_parse::Dtype;
     match view.dtype() {
-        safetensors::Dtype::F32 => {
+        Dtype::F32 => {
             let bytes = view.data();
             Ok(bytes
                 .chunks_exact(4)
                 .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
                 .collect())
         }
-        safetensors::Dtype::F16 => Ok(half::decode_f16(view.data())),
-        safetensors::Dtype::BF16 => Ok(half::decode_bf16(view.data())),
+        Dtype::F16 => Ok(half::decode_f16(view.data())),
+        Dtype::BF16 => Ok(half::decode_bf16(view.data())),
         other => Err(ModelError::UnsupportedDtype(format!("{other:?}"))),
     }
 }
