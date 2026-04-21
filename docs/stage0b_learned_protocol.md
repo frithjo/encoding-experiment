@@ -23,9 +23,11 @@ Baseline kernel `K`:
 2. estimate `K_hat` from trace counts (log(count + alpha) on admissible edges)
 3. freeze `K_hat` and run the rest of the evaluation
 
-## Hypotheses (relaxed thresholds)
+## Hypotheses
 
-Same hypothesis set as Stage 0b, but thresholds are slightly relaxed to account for learning noise.
+Same hypothesis set and same thresholds as Stage 0b.
+
+If the learned-kernel stage fails under those thresholds, that is a result, not a bug.
 
 Run + evaluation are implemented in:
 
