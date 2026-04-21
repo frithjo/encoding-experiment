@@ -1,0 +1,24 @@
+[package]
+name = "larql-tensor"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+repository.workspace = true
+description = "Tensor facade crate for LARQL - abstraction over ndarray"
+
+[dependencies]
+ndarray = "0.16"
+thiserror = { workspace = true }
+matrixmultiply = "0.3"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+blas-src = { version = "0.10", features = ["openblas"], default-features = false, optional = true }
+openblas-src = { version = "0.10", features = ["system"], optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+blas-src = { version = "0.10", features = ["accelerate"], optional = true }
+
+[features]
+default = []
+# BLAS-backed matmul via ndarray. Off by default; enable for peak perf when OpenBLAS/Accelerate available.
+blas = ["ndarray/blas", "dep:blas-src", "dep:openblas-src"]
