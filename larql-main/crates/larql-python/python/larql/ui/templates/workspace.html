@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel">
+  <h2>Open Workspace</h2>
+  <p>Load local <code>.vindex</code> directory. Explorer and LQL pages use current workspace.</p>
+  <form method="post" class="stack-form">
+    <label for="path">Workspace path</label>
+    <input id="path" name="path" type="text" value="{{ form_path or (current_workspace.path if current_workspace else '') }}" placeholder="/path/to/model.vindex">
+    <button type="submit">Open workspace</button>
+  </form>
+</section>
+
+{% if current_workspace %}
+<section class="panel">
+  <h2>Current Workspace</h2>
+  <dl class="kv-grid">
+    <dt>Path</dt><dd><code>{{ current_workspace.path }}</code></dd>
+    <dt>Model</dt><dd>{{ current_workspace.model }}</dd>
+    <dt>Family</dt><dd>{{ current_workspace.family }}</dd>
+    <dt>Layers</dt><dd>{{ current_workspace.num_layers }}</dd>
+    <dt>Hidden size</dt><dd>{{ current_workspace.hidden_size }}</dd>
+    <dt>Vocab size</dt><dd>{{ current_workspace.vocab_size }}</dd>
+    <dt>Extract level</dt><dd>{{ current_workspace.extract_level or "unknown" }}</dd>
+  </dl>
+</section>
+{% endif %}
+{% endblock %}

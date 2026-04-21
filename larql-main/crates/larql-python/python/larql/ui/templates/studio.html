@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel">
+  <h2>Studio</h2>
+  <p>Pick recipe or ad-hoc template, choose engine, fill variables, run or compare batch (single <code>{placeholder}</code> only).</p>
+
+  <form id="studio-form" method="post" class="stack-form">
+    <label for="recipe_id">Recipe (optional)</label>
+    <select id="recipe_id" name="recipe_id">
+      <option value="">— Ad-hoc template —</option>
+      {% for rec in recipes %}
+      <option value="{{ rec.id }}" data-default-engine="{{ rec.effective_engine('') }}" {% if form_data.recipe_id == rec.id %}selected{% endif %}>{{ rec.name }} ({{ rec.kind }})</option>
+      {% endfor %}
+    </select>
+
+    <label for="engine">Engine</label>
+    <select id="engine" name="engine">
+      <option value="describe" {% if form_data.engine == 'describe' %}selected{% endif %}>describe</option>
+      <option value="lql" {% if form_data.engine == 'lql' %}selected{% endif %}>lql</option>
+      <option value="infer" {% if form_data.engine == 'infer' %}selected{% endif %} {% if not supports_infer %}disabled{% endif %}>infer</option>
+      <option value="walk_model" {% if form_data.engine == 'walk_model' %}selected{% endif %} {% if not supports_infer %}disabled{% endif %}>walk_model</option>
+    </select>
+    {% if not supports_infer %}
+    <p class="muted">infer / walk_model need model weights in vindex.</p>
+    {% endif %}
+
+    <label for="inline_template">Ad-hoc template (when no recipe)</label>
+    <textarea id="inline_template" name="inline_template" rows="3">{{ form_data.inline_template }}</textarea>
+
+    <label for="band">Describe band</label>
+    <select id="band" name="band">
+      {% for band_name in ["knowledge", "syntax", "output", "all"] %}
+      <option value="{{ band_name }}" {% if form_data.band == band_name %}selected{% endif %}>{{ band_name }}</option>
+      {% endfor %}
+    </select>
+
+    <label class="checkbox-row">
+      <input type="checkbox" name="verbose" {% if form_data.verbose %}checked{% endif %}>
+      <span>Verbose describe</span>
+    </label>
+
+    <label for="infer_top_k_predictions">Top-k predictions (infer / walk_model)</label>
+    <input id="infer_top_k_predictions" name="infer_top_k_predictions" type="number" min="1" value="{{ form_data.infer_top_k_predictions }}">
+
+    <label for="walk_top_k">WalkModel top_k features</label>
+    <input id="walk_top_k" name="walk_top_k" type="number" min="1" value="{{ form_data.walk_top_k }}">
+
+    {% if variable_names %}
+    <fieldset>
+      <legend>Variables</legend>
+      {% for name in variable_names %}
+      <label for="var_{{ name }}">{{ name }}</label>
+      <input id="var_{{ name }}" name="{{ name }}" type="text" value="{{ variables_form[name] if variables_form and name in variables_form else '' }}">
+      {% endfor %}
+    </fieldset>
+    {% endif %}
+
+    <label for="compare_subjects">Compare — one batch key per line</label>
+    <textarea id="compare_subjects" name="compare_subjects" rows="4" placeholder="France&#10;Germany">{{ form_data.compare_subjects }}</textarea>
+
+    <div class="button-row">
+      <button type="submit" formaction="/studio/run" formmethod="post">Run</button>
+      <button type="submit" formaction="/studio/compare" formmethod="post" class="secondary">Compare batch</button>
+    </div>
+  </form>
+</section>
+
+{% if run %}
+<section class="panel">
+  <div class="panel-header">
+    <h2>{{ run.summary }}</h2>
+    <span>{{ run.engine }} | {{ run.duration_ms }} ms</span>
+  </div>
+  {% if run.raw.predictions %}
+  <ul class="predictions">
+    {% for p in run.raw.predictions %}
+    <li><strong>{{ p.token }}</strong> — {{ "%.2f"|format(p.probability * 100) }}%</li>
+    {% endfor %}
+  </ul>
+  {% elif run.raw.edges %}
+  <div class="result-list">
+    {% for edge in run.raw.edges[:15] %}
+    <article class="result-card">
+      <div class="result-main">
+        <strong>{{ edge.relation or "?" }}</strong>
+        <span class="arrow">-&gt;</span>
+        <span>{{ edge.target }}</span>
+      </div>
+      <div class="muted">L{{ edge.layer }} score {{ "%.1f"|format(edge.gate_score) }}</div>
+    </article>
+    {% endfor %}
+  </div>
+  {% elif run.raw.lines %}
+  <pre>{% for line in run.raw.lines %}{{ line }}
+{% endfor %}</pre>
+  {% endif %}
+  <details>
+    <summary>Raw JSON</summary>
+    <pre>{{ run.raw|to_pretty_json }}</pre>
+  </details>
+</section>
+{% endif %}
+
+{% if compare_runs %}
+<section class="panel">
+  <h2>Compare results ({{ compare_runs|length }})</h2>
+  <div class="result-list">
+    {% for r in compare_runs %}
+    <article class="result-card">
+      <div class="panel-header">
+        <strong>{{ r.title }}</strong>
+        <span>{{ r.summary }}</span>
+      </div>
+      {% if r.raw.predictions %}
+      <div class="muted">Top: {{ r.raw.predictions[0].token }} ({{ "%.1f"|format(r.raw.predictions[0].probability * 100) }}%)</div>
+      {% endif %}
+      <details>
+        <summary>Raw</summary>
+        <pre>{{ r.raw|to_pretty_json }}</pre>
+      </details>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+<script>
+(function () {
+  var recipeSel = document.getElementById("recipe_id");
+  var engineSel = document.getElementById("engine");
+  if (!recipeSel || !engineSel) return;
+
+  function applyRecipeDefaultEngine() {
+    var opt = recipeSel.selectedOptions[0];
+    if (!opt || !opt.value) {
+      engineSel.value = "describe";
+      return;
+    }
+    var def = opt.getAttribute("data-default-engine");
+    if (!def) return;
+    var match = engineSel.querySelector('option[value="' + def + '"]');
+    if (match && !match.disabled) engineSel.value = def;
+  }
+
+  recipeSel.addEventListener("change", applyRecipeDefaultEngine);
+})();
+</script>
+{% endblock %}

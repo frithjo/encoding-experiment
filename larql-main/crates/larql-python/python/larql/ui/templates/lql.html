@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel">
+  <h2>LQL Console</h2>
+  <p>Run raw LQL. Semicolon optional.</p>
+  <form method="post" class="stack-form">
+    <label for="query">Query</label>
+    <textarea id="query" name="query" rows="10">{{ query }}</textarea>
+    <button type="submit">Run query</button>
+  </form>
+</section>
+
+{% if run %}
+<section class="panel">
+  <div class="panel-header">
+    <h2>{{ run.summary }}</h2>
+    <span>{{ run.duration_ms }} ms</span>
+  </div>
+  <pre>{% for line in run.raw.lines %}{{ line }}
+{% endfor %}</pre>
+  <details>
+    <summary>Raw JSON</summary>
+    <pre>{{ run.raw|to_pretty_json }}</pre>
+  </details>
+</section>
+{% endif %}
+{% endblock %}

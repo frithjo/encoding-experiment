@@ -1,0 +1,4 @@
+# On some Linux setups, rust-lld does not search default library paths for `-lopenblas`
+# (Fedora: `openblas-devel` installs libopenblas under /usr/lib64).
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-L", "native=/usr/lib64"]

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% if current_workspace %}
+<section class="panel relation-label-sources">
+  <h2>Relation labels</h2>
+  {% if current_workspace.relation_count %}
+  <p class="muted">Edge <strong>relation</strong> strings come from the cluster classifier when available. Edge <code>source</code> is <strong>probe</strong> (probe head), <strong>cluster</strong> (cluster label), or <strong>none</strong>. Verbose mode surfaces more cluster-backed labels.</p>
+  <p class="relation-label-chips muted">{% for rel in current_workspace.relation_labels[:16] %}<code>{{ rel.name }}</code>{% if not loop.last %} · {% endif %}{% endfor %}{% if current_workspace.relation_count > 16 %} <span>…</span>{% endif %}</p>
+  <p class="muted"><a href="#relation-label-sources">Full table (counts, tokens)</a> in the workspace strip.</p>
+  {% else %}
+  <p class="muted">This vindex reports no relation cluster labels (<code>vindex.relations()</code> empty). Describe still returns edges; relation text may be sparse or <code>?</code> unless verbose fills in cluster names.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="panel">
+  <h2>Explorer</h2>
+  <p>Describe entity using current vindex. Good for quick knowledge browse.</p>
+  <form method="post" class="stack-form">
+    <label for="entity">Entity</label>
+    <input id="entity" name="entity" type="text" value="{{ form_data.entity }}" placeholder="France">
+
+    <label for="band">Band</label>
+    <select id="band" name="band">
+      {% for band_name in ["knowledge", "syntax", "output", "all"] %}
+      <option value="{{ band_name }}" {% if form_data.band == band_name %}selected{% endif %}>{{ band_name }}</option>
+      {% endfor %}
+    </select>
+
+    <label class="checkbox-row">
+      <input type="checkbox" name="verbose" {% if form_data.verbose %}checked{% endif %}>
+      <span>Verbose labels</span>
+    </label>
+
+    <button type="submit">Describe</button>
+  </form>
+</section>
+
+{% if run %}
+<section class="panel">
+  <div class="panel-header">
+    <h2>{{ run.summary }}</h2>
+    <span>{{ run.duration_ms }} ms</span>
+  </div>
+  {% if run.raw.edges %}
+  <div class="result-list">
+    {% for edge in run.raw.edges %}
+    <article class="result-card">
+      <div class="result-main">
+        <strong>{{ edge.relation or "?" }}</strong>
+        <span class="arrow">-&gt;</span>
+        <span>{{ edge.target }}</span>
+      </div>
+      <div class="muted">score {{ "%.1f"|format(edge.gate_score) }} | layer {{ edge.layer }} | feature {{ edge.feature }} | {{ edge.source }}</div>
+      {% if edge.also %}
+      <div class="muted">also: {{ edge.also|join(", ") }}</div>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p>No edges returned.</p>
+  {% endif %}
+  <details>
+    <summary>Raw JSON</summary>
+    <pre>{{ run.raw|to_pretty_json }}</pre>
+  </details>
+</section>
+{% endif %}
+{% endblock %}

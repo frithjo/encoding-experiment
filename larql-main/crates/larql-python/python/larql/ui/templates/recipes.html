@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel">
+  <h2>Create Recipe</h2>
+  <form method="post" class="stack-form">
+    <label for="name">Name</label>
+    <input id="name" name="name" type="text" value="{{ form_data.name if form_data else '' }}" placeholder="Capital describe">
+
+    <label for="kind">Kind</label>
+    <select id="kind" name="kind">
+      {% set selected_kind = form_data.kind if form_data else 'describe' %}
+      <option value="describe" {% if selected_kind == 'describe' %}selected{% endif %}>describe</option>
+      <option value="lql" {% if selected_kind == 'lql' %}selected{% endif %}>lql</option>
+      <option value="infer" {% if selected_kind == 'infer' %}selected{% endif %}>infer</option>
+      <option value="walk_model" {% if selected_kind == 'walk_model' %}selected{% endif %}>walk_model</option>
+    </select>
+
+    <label for="default_engine">Default engine (optional override)</label>
+    <select id="default_engine" name="default_engine">
+      {% set de = form_data.get('default_engine', '') if form_data else '' %}
+      <option value="" {% if not de %}selected{% endif %}>— from kind —</option>
+      <option value="describe" {% if de == 'describe' %}selected{% endif %}>describe</option>
+      <option value="lql" {% if de == 'lql' %}selected{% endif %}>lql</option>
+      <option value="infer" {% if de == 'infer' %}selected{% endif %}>infer</option>
+      <option value="walk_model" {% if de == 'walk_model' %}selected{% endif %}>walk_model</option>
+    </select>
+
+    <label for="template">Template (prompt for describe / infer / walk_model)</label>
+    <input id="template" name="template" type="text" value="{{ form_data.template if form_data else '{subject}' }}" placeholder="{subject}">
+
+    <label for="lql_template">LQL query template (for kind lql)</label>
+    <textarea id="lql_template" name="lql_template" rows="4" placeholder="STATS or DESCRIBE ...">{{ form_data.lql_template if form_data else '' }}</textarea>
+
+    <label for="describe_band">Describe band (describe recipes)</label>
+    <select id="describe_band" name="describe_band">
+      {% set db = form_data.get('describe_band', 'knowledge') if form_data else 'knowledge' %}
+      {% for band_name in ["knowledge", "syntax", "output", "all"] %}
+      <option value="{{ band_name }}" {% if db == band_name %}selected{% endif %}>{{ band_name }}</option>
+      {% endfor %}
+    </select>
+
+    <label class="checkbox-row">
+      <input type="checkbox" name="describe_verbose" {% if form_data and form_data.describe_verbose %}checked{% endif %}>
+      <span>Verbose describe (describe recipes)</span>
+    </label>
+
+    <label for="infer_top_k_predictions">Top-k predictions (infer / walk_model)</label>
+    <input id="infer_top_k_predictions" name="infer_top_k_predictions" type="number" min="1" value="{{ form_data.get('infer_top_k_predictions', 5) if form_data else 5 }}">
+
+    <label for="walk_top_k">WalkModel top_k features</label>
+    <input id="walk_top_k" name="walk_top_k" type="number" min="1" value="{{ form_data.get('walk_top_k', 8192) if form_data else 8192 }}">
+
+    <label for="description">Description</label>
+    <textarea id="description" name="description" rows="3">{{ form_data.description if form_data else '' }}</textarea>
+
+    <button type="submit">Save recipe</button>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>Saved Recipes</h2>
+  {% if recipes %}
+  <div class="result-list">
+    {% for recipe in recipes %}
+    <article class="result-card">
+      <div class="panel-header">
+        <strong><a href="/recipes/{{ recipe.id }}">{{ recipe.name }}</a></strong>
+        <span>{{ recipe.kind }}</span>
+      </div>
+      <div class="muted">{{ recipe.description or "No description." }}</div>
+      <div><code>{{ recipe.lql_template or recipe.template }}</code></div>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p>No recipes saved yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

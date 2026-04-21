@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel-header">
+    <h2>{{ run.title }}</h2>
+    <span>{{ run.engine }}</span>
+  </div>
+  <dl class="kv-grid">
+    <dt>Status</dt><dd>{{ run.status }}</dd>
+    <dt>Kind</dt><dd>{{ run.kind }}</dd>
+    <dt>Created</dt><dd>{{ run.created_at }}</dd>
+    <dt>Duration</dt><dd>{{ run.duration_ms }} ms</dd>
+    <dt>Workspace</dt><dd><code>{{ run.workspace_path }}</code></dd>
+    <dt>Input</dt><dd><code>{{ run.input_text }}</code></dd>
+    <dt>Summary</dt><dd>{{ run.summary }}</dd>
+  </dl>
+</section>
+
+<section class="panel">
+  <h2>Raw Result</h2>
+  <pre>{{ run.raw|to_pretty_json }}</pre>
+</section>
+{% endblock %}

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title }} | LARQL Workbench</title>
+    <link rel="stylesheet" href="{{ request.url_for('static', path='app.css') }}">
+  </head>
+  <body>
+    <header class="site-header">
+      <div>
+        <h1 class="site-title">LARQL Workbench</h1>
+        <p class="site-subtitle">Terminal-first workspace for vindex browse and LQL runs.</p>
+      </div>
+      <div class="shortcut-hint">Shortcuts: <code>g w</code> workspace, <code>g s</code> studio, <code>g e</code> explorer, <code>g q</code> LQL, <code>g r</code> recipes, <code>g u</code> runs</div>
+    </header>
+
+    <nav class="site-nav" aria-label="Primary">
+      {% for key, label, href in nav_items %}
+      <a href="{{ href }}" class="nav-link {% if current_page == key %}active{% endif %}">{{ label }}</a>
+      {% endfor %}
+    </nav>
+
+    {% if notice %}
+    <section class="banner notice">{{ notice }}</section>
+    {% endif %}
+    {% if error %}
+    <section class="banner error">{{ error }}</section>
+    {% endif %}
+    {% if page_error %}
+    <section class="banner error">{{ page_error }}</section>
+    {% endif %}
+
+    <section class="workspace-strip">
+      {% if current_workspace %}
+      <div class="workspace-strip-main">
+        <strong>{{ current_workspace.display_name }}</strong>
+        <span>{{ current_workspace.model }}</span>
+        <span>{{ current_workspace.num_layers }} layers</span>
+        <span>{{ current_workspace.hidden_size }} hidden</span>
+        <span>{{ current_workspace.vocab_size }} vocab</span>
+      </div>
+      <div class="badges">
+        <span class="badge">browse: ready</span>
+        <span class="badge {% if current_workspace.supports_infer %}ok{% endif %}">infer: {% if current_workspace.supports_infer %}ready{% else %}off{% endif %}</span>
+        <span class="badge {% if current_workspace.supports_trace %}ok{% endif %}">trace: {% if current_workspace.supports_trace %}ready{% else %}off{% endif %}</span>
+        <span class="badge {% if current_workspace.supports_mlx %}ok{% endif %}">mlx: {% if current_workspace.supports_mlx %}ready{% else %}off{% endif %}</span>
+        <span class="badge {% if current_workspace.relation_count %}ok{% endif %}">labels: {% if current_workspace.relation_count %}{{ current_workspace.relation_count }} types{% else %}sparse{% endif %}</span>
+      </div>
+      {% if current_workspace.relation_count %}
+      <details class="relation-label-sources" id="relation-label-sources">
+        <summary>Relation label sources ({{ current_workspace.relation_count }} types from classifier)</summary>
+        <p class="muted">From <code>vindex.relations()</code>: cluster id, feature count, sample tokens. Describe edges use these names when assigned; each edge also has <code>source</code> (probe / cluster / none).</p>
+        <table class="relation-label-table">
+          <thead>
+            <tr><th>Name</th><th>Features</th><th>Cluster</th><th>Sample tokens</th></tr>
+          </thead>
+          <tbody>
+            {% for rel in current_workspace.relation_labels %}
+            <tr>
+              <td><code>{{ rel.name }}</code></td>
+              <td>{{ rel.count }}</td>
+              <td>{{ rel.cluster_id }}</td>
+              <td>{% if rel.top_tokens %}{{ rel.top_tokens|join(", ") }}{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% if current_workspace.relation_count > (current_workspace.relation_labels|length) %}
+        <p class="muted">Showing top {{ current_workspace.relation_labels|length }} by count (UI cap).</p>
+        {% endif %}
+      </details>
+      {% endif %}
+      {% if current_workspace.warnings %}
+      <ul class="warnings">
+        {% for warning in current_workspace.warnings %}
+        <li>{{ warning }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% elif workspace_error %}
+      <div class="banner error">{{ workspace_error }}</div>
+      {% else %}
+      <div class="workspace-empty">No workspace open yet.</div>
+      {% endif %}
+    </section>
+
+    <main class="page-shell">
+      {% block content %}{% endblock %}
+    </main>
+
+    <script>
+      document.addEventListener("keydown", (event) => {
+        if (event.target && ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) {
+          return;
+        }
+        if (event.key === "g") {
+          window.__larqlNavPrefix = true;
+          setTimeout(() => { window.__larqlNavPrefix = false; }, 700);
+          return;
+        }
+        if (!window.__larqlNavPrefix) return;
+        const routes = { w: "/workspace", s: "/studio", e: "/explorer", q: "/lql", r: "/recipes", u: "/runs" };
+        const route = routes[event.key];
+        if (route) {
+          window.location.href = route;
+        }
+      });
+    </script>
+  </body>
+</html>

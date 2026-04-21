@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel">
+  <h2>Runs</h2>
+  {% if runs %}
+  <div class="result-list">
+    {% for run in runs %}
+    <article class="result-card">
+      <div class="panel-header">
+        <strong><a href="/runs/{{ run.id }}">{{ run.title }}</a></strong>
+        <span>{{ run.engine }}</span>
+      </div>
+      <div class="muted">{{ run.created_at }} | {{ run.duration_ms }} ms</div>
+      <div>{{ run.summary }}</div>
+      <div class="muted"><code>{{ run.input_text }}</code></div>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p>No runs yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

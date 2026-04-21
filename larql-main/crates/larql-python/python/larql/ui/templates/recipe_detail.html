@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel-header">
+    <h2>{{ recipe.name }}</h2>
+    <span>{{ recipe.kind }}</span>
+  </div>
+  <p>{{ recipe.description or "No description." }}</p>
+  <div class="muted">Source: <code>{% if recipe.kind == 'lql' and recipe.lql_template %}{{ recipe.lql_template }}{% else %}{{ recipe.template }}{% endif %}</code></div>
+
+  <form method="post" action="/recipes/{{ recipe.id }}/run" class="stack-form">
+    {% for name, value in variables.items() %}
+    <label for="{{ name }}">{{ name|capitalize }}</label>
+    <input id="{{ name }}" name="{{ name }}" type="text" value="{{ value }}" placeholder="{{ name }}">
+    {% endfor %}
+    <button type="submit">Run recipe</button>
+  </form>
+
+  <form method="post" action="/recipes/{{ recipe.id }}/delete" class="inline-form">
+    <button type="submit" class="danger">Delete recipe</button>
+  </form>
+</section>
+
+{% if rendered_text %}
+<section class="panel">
+  <h2>Rendered Input</h2>
+  <pre>{{ rendered_text }}</pre>
+</section>
+{% endif %}
+
+{% if run %}
+<section class="panel">
+  <div class="panel-header">
+    <h2>{{ run.summary }}</h2>
+    <span>{{ run.duration_ms }} ms</span>
+  </div>
+  {% if run.raw.predictions %}
+  <ul class="predictions">
+    {% for p in run.raw.predictions %}
+    <li><strong>{{ p.token }}</strong> — {{ "%.2f"|format(p.probability * 100) }}%</li>
+    {% endfor %}
+  </ul>
+  {% elif run.raw.edges %}
+  <div class="result-list">
+    {% for edge in run.raw.edges %}
+    <article class="result-card">
+      <div class="result-main">
+        <strong>{{ edge.relation or "?" }}</strong>
+        <span class="arrow">-&gt;</span>
+        <span>{{ edge.target }}</span>
+      </div>
+      <div class="muted">score {{ "%.1f"|format(edge.gate_score) }} | layer {{ edge.layer }}</div>
+    </article>
+    {% endfor %}
+  </div>
+  {% elif run.raw.lines %}
+  <pre>{% for line in run.raw.lines %}{{ line }}
+{% endfor %}</pre>
+  {% endif %}
+  <details>
+    <summary>Raw JSON</summary>
+    <pre>{{ run.raw|to_pretty_json }}</pre>
+  </details>
+</section>
+{% endif %}
+{% endblock %}
