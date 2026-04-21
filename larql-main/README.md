@@ -393,6 +393,55 @@ cargo bench -p larql-vindex --bench vindex_scaling   # production-dim KNN (Gemma
 cargo bench -p larql-compute --bench matmul          # CPU/Metal matmul backends
 ```
 
+## CI/CD
+
+This repository ships GitHub Actions workflows for Rust CI, security scanning,
+release artifacts, and optional Python wheel publication:
+
+- `ci.yml`: PR/push checks (`cargo fmt --check`, clippy with `-D warnings`,
+  and workspace tests) from `larql-main`, with Linux/macOS coverage.
+- `security.yml`: scheduled and on-demand `cargo audit` and `cargo deny`
+  checks, with JSON reports uploaded as artifacts.
+- `release.yml`: tag-triggered (`v*`) multi-platform Rust binary builds with
+  release archives, `SHA256SUMS.txt`, SPDX SBOM, and artifact provenance
+  attestation attached to GitHub Releases.
+- `python-release.yml`: optional maturin wheel build/test/publish flow for
+  `crates/larql-python` using PyPI trusted publishing (OIDC) via the `pypi`
+  environment.
+
+For local parity with CI checks, run:
+```bash
+cd larql-main
+make ci
+```
+
+### Commit Signing (SSH + 1Password)
+
+Contributors can use SSH-based Git commit signing via 1Password:
+
+```bash
+git config --global user.signingkey "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILiHwlVLPp3ce/UitSGugaK1OfJYmLTH98orIuaGpUFd"
+git config --global gpg.format ssh
+git config --global gpg.ssh.program "/opt/1Password/op-ssh-sign"
+git config --global commit.gpgsign true
+```
+
+Verify configuration:
+
+```bash
+git config --global --get user.signingkey
+git config --global --get gpg.format
+git config --global --get gpg.ssh.program
+git config --global --get commit.gpgsign
+```
+
+Optional signing check:
+
+```bash
+git commit --allow-empty -m "test: verify ssh signing"
+git log -1 --show-signature
+```
+
 The `compile_demo` example proves the full flow on a real Gemma 4B
 vindex: `INSERT Atlantis → Poseidon`, `COMPILE CURRENT INTO VINDEX`,
 then `USE` the compiled vindex in a fresh session and verify
