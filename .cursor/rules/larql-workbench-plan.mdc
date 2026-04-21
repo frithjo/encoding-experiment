@@ -1,0 +1,28 @@
+---
+description: LARQL workbench must follow larql-main/plan.md
+globs:
+  - larql-main/crates/larql-python/python/larql/ui/**
+  - larql-main/crates/larql-python/tests/test_ui.py
+  - larql-main/plan.md
+alwaysApply: false
+---
+
+# LARQL Workbench — plan.md compliance
+
+The authoritative spec is **`larql-main/plan.md`**. Read it before editing workbench code.
+
+## Non-negotiables
+
+- **Terminal browser only:** The intended user experience is **only** a browser **in the terminal** via **`larql-terminal-browser`** (`crates/larql-terminal-browser`)—not a desktop-first layout with a narrow breakpoint. The **display port is user-resizable** (compact to generous); **high resolution** and **GPU acceleration** (with **CPU fallback**) are goals per `plan.md`. **Images, video, and streaming** are in scope for the client. Do not treat hover-heavy patterns as acceptable defaults.
+- **Do not** ship UI architecture that contradicts the plan (server-rendered pages + partial routes, minimal JS e.g. `fetch`, `/api/*` as specified, `/trace` when in scope, background runs + polling for long jobs) **without amending `plan.md` in the same PR**.
+- **Do** follow **Routing Spec**, **Rollout Plan** phases, and **terminal viewport** constraints.
+- **Do** keep execution aligned with **real** `larql` Python APIs, not aspirational docs.
+
+## Process
+
+If the implementation must diverge from a written section, update the relevant section in `plan.md` and add rationale in the PR. See **Normative compliance** in `plan.md`.
+
+## References
+
+- `larql-main/crates/larql-python/AGENTS.md`
+- `larql-main/plan.md` → Implementation Plan checklist
