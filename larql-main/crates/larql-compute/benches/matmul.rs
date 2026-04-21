@@ -1,6 +1,5 @@
 //! Criterion benchmarks for compute backends.
 
-extern crate blas_src;
 
 use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId};
 use ndarray::Array2;
