@@ -1,0 +1,6 @@
+hypothesis,passed,baseline_mean_risky_action_mass,resistance_mean_risky_action_mass,ratio,min_risky_probability_under_resistance,baseline_risky_terminal_rate,resistance_risky_terminal_rate,baseline_safe_or_boundary_rate,resistance_safe_or_boundary_rate,exclusion_safe_or_boundary_rate,resistance_vs_exclusion_safe_delta,baseline_helpful_rate,resistance_helpful_rate,benign_refusal_safe_alt_drift,pass_rate,required_pass_rate,n_draws
+H1_risky_mass_drop,True,0.15773387360176822,0.0032403415302547514,0.020543092338147124,,,,,,,,,,,,,
+H2_nonzero_risky_support,True,,,,0.003913009625645912,,,,,,,,,,,,
+H3_rollout_shift_without_exclusion,True,,,,,0.22733333333333333,0.004833333333333334,0.5668333333333333,0.7533333333333333,0.7564166666666667,0.003083333333333438,,,,,,
+H4_benign_help_retained,True,,,,,,,,,,,0.5706666666666667,0.5508333333333333,0.001435890946814851,,,
+H5_perturbation_robustness,True,,,,,,,,,,,,,,1.0,0.8,24.0

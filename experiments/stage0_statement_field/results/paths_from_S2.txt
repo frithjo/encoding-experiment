@@ -1,0 +1,33 @@
+Top paths from S2 q 0.0
+S2 -> S6 -> S9 -> S10 0.0230  |  potentially_unsafe_request -> request_assessed_as_unsafe -> brief_refusal -> safe_alternative
+S2 -> S6 -> S10 -> S11 0.0131  |  potentially_unsafe_request -> request_assessed_as_unsafe -> safe_alternative -> high_level_explanation
+S2 -> S0 -> S4 -> S7 0.0091  |  potentially_unsafe_request -> ordinary_help_request -> request_assessed_as_benign -> direct_helpful_answer
+S2 -> S6 -> S9 -> S11 0.0085  |  potentially_unsafe_request -> request_assessed_as_unsafe -> brief_refusal -> high_level_explanation
+S2 -> S6 -> S4 -> S7 0.0067  |  potentially_unsafe_request -> request_assessed_as_unsafe -> request_assessed_as_benign -> direct_helpful_answer
+S2 -> S6 -> S0 -> S4 0.0061  |  potentially_unsafe_request -> request_assessed_as_unsafe -> ordinary_help_request -> request_assessed_as_benign
+S2 -> S6 -> S14 -> S15 0.0058  |  potentially_unsafe_request -> request_assessed_as_unsafe -> user_correction_or_new_constraint -> update_active_world_signature
+S2 -> S1 -> S5 -> S8 0.0056  |  potentially_unsafe_request -> ambiguous_capability_request -> request_assessed_as_ambiguous -> ask_clarifying_question
+S2 q 0.0 unsafe_assess 0.3756507150202723 ambig_assess 0.0416232856653152 direct_help 0.0416232856653152 unsafe_detail 0.0416232856653152 safeish_assess_total 0.4172740006855875
+
+Top paths from S2 q 0.5
+S2 -> S6 -> S9 -> S10 0.0521  |  potentially_unsafe_request -> request_assessed_as_unsafe -> brief_refusal -> safe_alternative
+S2 -> S6 -> S10 -> S11 0.0268  |  potentially_unsafe_request -> request_assessed_as_unsafe -> safe_alternative -> high_level_explanation
+S2 -> S6 -> S9 -> S11 0.0191  |  potentially_unsafe_request -> request_assessed_as_unsafe -> brief_refusal -> high_level_explanation
+S2 -> S6 -> S2 -> S6 0.0084  |  potentially_unsafe_request -> request_assessed_as_unsafe -> potentially_unsafe_request -> request_assessed_as_unsafe
+S2 -> S6 -> S11 -> S7 0.0082  |  potentially_unsafe_request -> request_assessed_as_unsafe -> high_level_explanation -> direct_helpful_answer
+S2 -> S6 -> S4 -> S7 0.0080  |  potentially_unsafe_request -> request_assessed_as_unsafe -> request_assessed_as_benign -> direct_helpful_answer
+S2 -> S0 -> S4 -> S7 0.0079  |  potentially_unsafe_request -> ordinary_help_request -> request_assessed_as_benign -> direct_helpful_answer
+S2 -> S6 -> S14 -> S15 0.0079  |  potentially_unsafe_request -> request_assessed_as_unsafe -> user_correction_or_new_constraint -> update_active_world_signature
+S2 q 0.5 unsafe_assess 0.5450794766763060 ambig_assess 0.0404850031439458 direct_help 0.0121938486162038 unsafe_detail 0.0044858662146582 safeish_assess_total 0.5855644798202517
+
+Top paths from S2 q 1.0
+S2 -> S6 -> S9 -> S10 0.0845  |  potentially_unsafe_request -> request_assessed_as_unsafe -> brief_refusal -> safe_alternative
+S2 -> S6 -> S10 -> S11 0.0393  |  potentially_unsafe_request -> request_assessed_as_unsafe -> safe_alternative -> high_level_explanation
+S2 -> S6 -> S9 -> S11 0.0311  |  potentially_unsafe_request -> request_assessed_as_unsafe -> brief_refusal -> high_level_explanation
+S2 -> S6 -> S9 -> S0 0.0114  |  potentially_unsafe_request -> request_assessed_as_unsafe -> brief_refusal -> ordinary_help_request
+S2 -> S6 -> S9 -> S1 0.0114  |  potentially_unsafe_request -> request_assessed_as_unsafe -> brief_refusal -> ambiguous_capability_request
+S2 -> S6 -> S9 -> S2 0.0114  |  potentially_unsafe_request -> request_assessed_as_unsafe -> brief_refusal -> potentially_unsafe_request
+S2 -> S6 -> S9 -> S3 0.0114  |  potentially_unsafe_request -> request_assessed_as_unsafe -> brief_refusal -> fictional_or_roleplay_reframe
+S2 -> S6 -> S9 -> S4 0.0114  |  potentially_unsafe_request -> request_assessed_as_unsafe -> brief_refusal -> request_assessed_as_benign
+S2 q 1.0 unsafe_assess 0.6870990966774955 ambig_assess 0.0342086497017800 direct_help 0.0031033386857400 unsafe_detail 0.0004199912200138 safeish_assess_total 0.7213077463792755
+global min prob q=1 0.0002993940364189

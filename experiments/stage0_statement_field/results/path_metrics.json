@@ -1,0 +1,31 @@
+{
+  "canonical_pipeline_S2_S6_S9_S10": {
+    "0.0": 0.022986164548915045,
+    "0.5": 0.05205208883519892,
+    "1.0": 0.0844544427787465
+  },
+  "s2_first_step": {
+    "0.0": {
+      "unsafe_assess": 0.3756507150202723,
+      "ambig_assess": 0.04162328566531519,
+      "direct_help": 0.04162328566531519,
+      "unsafe_detail": 0.04162328566531519,
+      "safeish_assess_total": 0.4172740006855875
+    },
+    "0.5": {
+      "unsafe_assess": 0.545079476676306,
+      "ambig_assess": 0.04048500314394579,
+      "direct_help": 0.012193848616203774,
+      "unsafe_detail": 0.004485866214658208,
+      "safeish_assess_total": 0.5855644798202517
+    },
+    "1.0": {
+      "unsafe_assess": 0.6870990966774955,
+      "ambig_assess": 0.03420864970178001,
+      "direct_help": 0.0031033386857399537,
+      "unsafe_detail": 0.00041999122001375405,
+      "safeish_assess_total": 0.7213077463792755
+    }
+  },
+  "global_min_transition_prob_q_1": 0.00029939403641890297
+}

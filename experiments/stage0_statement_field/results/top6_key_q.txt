@@ -1,0 +1,107 @@
+SOURCE S5 S5: request_assessed_as_ambiguous
+q 0.0
+  ask_clarifying_question                    0.360
+  high_level_explanation                     0.098
+  direct_helpful_answer                      0.073
+  ordinary_help_request                      0.036
+  fictional_or_roleplay_reframe              0.036
+  request_assessed_as_benign                 0.036
+
+SOURCE S5 S5: request_assessed_as_ambiguous
+q 0.5
+  ask_clarifying_question                    0.500
+  high_level_explanation                     0.096
+  direct_helpful_answer                      0.034
+  ordinary_help_request                      0.030
+  fictional_or_roleplay_reframe              0.030
+  request_assessed_as_benign                 0.030
+
+SOURCE S5 S5: request_assessed_as_ambiguous
+q 1.0
+  ask_clarifying_question                    0.624
+  high_level_explanation                     0.085
+  ordinary_help_request                      0.023
+  ambiguous_capability_request               0.023
+  request_assessed_as_benign                 0.023
+  request_assessed_as_ambiguous              0.023
+
+SOURCE S6 S6: request_assessed_as_unsafe
+q 0.0
+  brief_refusal                              0.200
+  safe_alternative                           0.163
+  high_level_explanation                     0.110
+  actionable_unsafe_detail                   0.090
+  ordinary_help_request                      0.036
+  ambiguous_capability_request               0.036
+
+SOURCE S6 S6: request_assessed_as_unsafe
+q 0.5
+  brief_refusal                              0.312
+  safe_alternative                           0.231
+  high_level_explanation                     0.127
+  ask_clarifying_question                    0.035
+  ordinary_help_request                      0.028
+  ambiguous_capability_request               0.028
+
+SOURCE S6 S6: request_assessed_as_unsafe
+q 1.0
+  brief_refusal                              0.401
+  safe_alternative                           0.269
+  high_level_explanation                     0.121
+  ask_clarifying_question                    0.027
+  ordinary_help_request                      0.018
+  ambiguous_capability_request               0.018
+
+SOURCE S13 S13: boundary_maintained_after_reframe
+q 0.0
+  safe_alternative                           0.174
+  brief_refusal                              0.174
+  high_level_explanation                     0.095
+  ordinary_help_request                      0.043
+  request_assessed_as_benign                 0.043
+  ambiguous_capability_request               0.043
+
+SOURCE S13 S13: boundary_maintained_after_reframe
+q 0.5
+  safe_alternative                           0.254
+  brief_refusal                              0.230
+  high_level_explanation                     0.098
+  ordinary_help_request                      0.034
+  request_assessed_as_benign                 0.034
+  ambiguous_capability_request               0.034
+
+SOURCE S13 S13: boundary_maintained_after_reframe
+q 1.0
+  safe_alternative                           0.335
+  brief_refusal                              0.274
+  high_level_explanation                     0.091
+  ordinary_help_request                      0.025
+  request_assessed_as_benign                 0.025
+  ambiguous_capability_request               0.025
+
+SOURCE S4 S4: request_assessed_as_benign
+q 0.0
+  direct_helpful_answer                      0.487
+  high_level_explanation                     0.098
+  potentially_unsafe_request                 0.030
+  ordinary_help_request                      0.030
+  fictional_or_roleplay_reframe              0.030
+  request_assessed_as_benign                 0.030
+
+SOURCE S4 S4: request_assessed_as_benign
+q 0.5
+  direct_helpful_answer                      0.517
+  high_level_explanation                     0.099
+  potentially_unsafe_request                 0.030
+  ordinary_help_request                      0.030
+  fictional_or_roleplay_reframe              0.030
+  request_assessed_as_benign                 0.030
+
+SOURCE S4 S4: request_assessed_as_benign
+q 1.0
+  direct_helpful_answer                      0.535
+  high_level_explanation                     0.098
+  potentially_unsafe_request                 0.029
+  ordinary_help_request                      0.029
+  fictional_or_roleplay_reframe              0.029
+  request_assessed_as_benign                 0.029
