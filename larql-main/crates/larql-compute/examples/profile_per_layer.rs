@@ -1,6 +1,5 @@
 //! Micro-benchmark: single-layer Q4_K QKV + FFN to isolate per-layer cost.
 
-extern crate blas_src;
 
 fn main() {
     #[cfg(not(feature = "metal"))]

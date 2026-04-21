@@ -34,7 +34,7 @@ fn main() {
     // Run forward to get realistic hidden state at L14
     let prompt = "The capital of France is";
     let encoding = model.tokenizer().encode(prompt, true).unwrap();
-    let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+    let token_ids: Vec<u32> = encoding.ids.clone();
     let mut h = larql_inference::forward::embed_tokens_pub(weights, &token_ids);
     for layer in 0..14 {
         let (h_pa, _, _) = larql_inference::attention::run_attention_block_gpu(

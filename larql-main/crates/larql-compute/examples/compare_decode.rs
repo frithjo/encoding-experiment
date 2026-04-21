@@ -3,7 +3,6 @@
 //! This is the production decode path: Q4_K QKV → KV cache attend → Q4_K O → Q4_0 FFN.
 //! Usage: cargo run --release --features metal -p larql-compute --example bench_decode_q4k
 
-extern crate blas_src;
 
 fn main() {
     #[cfg(not(feature = "metal"))]

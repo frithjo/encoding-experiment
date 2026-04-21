@@ -13,6 +13,8 @@
 extern crate larql_compute; // provides BLAS
 use std::time::Instant;
 
+use larql_core::mmap::Mmap;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = std::env::args().nth(1)
         .unwrap_or_else(|| "output/gemma3-4b-v2.vindex/down_features.bin".into());
@@ -26,7 +28,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 1. Raw sequential read from mmap (no hints)
     {
-        let mmap = unsafe { memmap2::Mmap::map(&file)? };
+        let mmap = unsafe { Mmap::map(&file)? };
         // Warmup: touch all pages
         let mut sink = 0u64;
         for chunk in mmap.chunks(4096) {
@@ -49,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 2. Mmap with MADV_SEQUENTIAL + MADV_WILLNEED
     {
-        let mmap = unsafe { memmap2::Mmap::map(&file)? };
+        let mmap = unsafe { Mmap::map(&file)? };
         #[cfg(unix)]
         unsafe {
             let ptr = mmap.as_ptr() as *mut libc::c_void;
@@ -76,7 +78,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 3. Full sequential read (sum all bytes, force cache-hot)
     {
-        let mmap = unsafe { memmap2::Mmap::map(&file)? };
+        let mmap = unsafe { Mmap::map(&file)? };
         #[cfg(unix)]
         unsafe {
             let ptr = mmap.as_ptr() as *mut libc::c_void;
@@ -107,7 +109,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 4. BLAS gemv on one layer (105 MB) — what the walk actually does
     {
-        let mmap = unsafe { memmap2::Mmap::map(&file)? };
+        let mmap = unsafe { Mmap::map(&file)? };
         #[cfg(unix)]
         unsafe {
             let ptr = mmap.as_ptr() as *mut libc::c_void;

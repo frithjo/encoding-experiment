@@ -1,6 +1,5 @@
 //! Correctness tests: verify all backends produce matching output.
 
-extern crate blas_src;
 
 use ndarray::Array2;
 use larql_compute::cpu_backend;

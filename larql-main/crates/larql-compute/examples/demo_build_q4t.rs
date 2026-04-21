@@ -13,12 +13,12 @@
 //!   cargo run --release -p larql-compute --example build_q4_transposed -- \
 //!     --vindex output/gemma3-4b-v2.vindex
 
-extern crate blas_src;
 
 use std::io::Write;
 use std::path::Path;
 use std::time::Instant;
 use larql_compute::cpu::q4::quantize_q4_0;
+use larql_core::mmap::Mmap;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
@@ -59,11 +59,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Read source files
     let gate_file = std::fs::File::open(dir.join("gate_vectors.bin"))?;
-    let gate_mmap = unsafe { memmap2::Mmap::map(&gate_file)? };
+    let gate_mmap = unsafe { Mmap::map(&gate_file)? };
     let up_file = std::fs::File::open(dir.join("up_features.bin"))?;
-    let up_mmap = unsafe { memmap2::Mmap::map(&up_file)? };
+    let up_mmap = unsafe { Mmap::map(&up_file)? };
     let down_file = std::fs::File::open(dir.join("down_features.bin"))?;
-    let down_mmap = unsafe { memmap2::Mmap::map(&down_file)? };
+    let down_mmap = unsafe { Mmap::map(&down_file)? };
 
     let f32_per_layer = inter * hidden;
     let bytes_per_layer = f32_per_layer * 4;

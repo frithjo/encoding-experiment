@@ -6,7 +6,6 @@
 //! Usage:
 //!   cargo run --release -p larql-compute --features metal --example bench_kv_cache
 
-extern crate blas_src;
 
 #[allow(unused_imports)]
 use std::time::Instant;

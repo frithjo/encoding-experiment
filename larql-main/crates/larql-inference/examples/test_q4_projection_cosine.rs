@@ -4,7 +4,6 @@
 //! Usage:
 //!   cargo run --release -p larql-inference --example test_q4_projection_cosine
 
-extern crate blas_src;
 
 use larql_inference::{InferenceModel, forward::forward_to_layer};
 use larql_models::quant::ggml::{quantize_q4_0, dequantize_q4_0};
@@ -26,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let prompt = "The capital of France is";
     let encoding = tokenizer.encode(prompt, true).map_err(|e| format!("{e}"))?;
-    let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+    let token_ids: Vec<u32> = encoding.ids.clone();
 
     println!("Prompt: \"{prompt}\" ({} tokens)\n", token_ids.len());
     println!("{:>5} {:>8} {:>8} {:>8} {:>8}", "Layer", "Q cos", "K cos", "V cos", "O cos");

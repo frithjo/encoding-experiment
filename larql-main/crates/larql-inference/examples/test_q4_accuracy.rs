@@ -6,7 +6,6 @@
 //! Usage:
 //!   cargo run --release -p larql-inference --example test_q4_accuracy
 
-extern crate blas_src;
 
 use larql_inference::{InferenceModel, predict};
 use larql_models::quant::ggml::{quantize_q4_0, dequantize_q4_0};
@@ -87,7 +86,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
     for prompt in &prompts {
         let encoding = tokenizer.encode(*prompt, true).map_err(|e| format!("{e}"))?;
-        let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+        let token_ids: Vec<u32> = encoding.ids.clone();
         let result = predict(weights, tokenizer, &token_ids, 3);
         let preds: Vec<String> = result.predictions.iter()
             .map(|(t, p)| format!("{t} ({:.1}%)", p * 100.0))

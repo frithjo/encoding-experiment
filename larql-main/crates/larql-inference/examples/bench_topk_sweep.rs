@@ -54,7 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut ground: Vec<(String, f64)> = Vec::new();
     for (prompt, _) in &prompts {
         let enc = tokenizer.encode(*prompt, true).map_err(|e| format!("{e}"))?;
-        let ids: Vec<u32> = enc.get_ids().to_vec();
+        let ids: Vec<u32> = enc.ids.clone();
         let r = predict(weights, tokenizer, &ids, 5);
         let (tok, prob) = r.predictions.first().map(|(t, p)| (t.clone(), *p)).unwrap_or_default();
         println!("  {prompt} -> {tok} ({:.1}%)", prob * 100.0);
@@ -73,7 +73,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Warmup
         let enc = tokenizer.encode(prompts[0].0, true).map_err(|e| format!("{e}"))?;
-        let ids: Vec<u32> = enc.get_ids().to_vec();
+        let ids: Vec<u32> = enc.ids.clone();
         let _ = predict_with_ffn(weights, tokenizer, &ids, 5, &walk_ffn);
 
         let mut correct = 0;
@@ -83,7 +83,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         for (i, (prompt, expected)) in prompts.iter().enumerate() {
             let enc = tokenizer.encode(*prompt, true).map_err(|e| format!("{e}"))?;
-            let ids: Vec<u32> = enc.get_ids().to_vec();
+            let ids: Vec<u32> = enc.ids.clone();
             let r = predict_with_ffn(weights, tokenizer, &ids, 5, &walk_ffn);
             let (tok, prob) = r.predictions.first().map(|(t, p)| (t.clone(), *p)).unwrap_or_default();
 

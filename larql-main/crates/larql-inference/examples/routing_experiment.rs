@@ -99,7 +99,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for entity in entities {
             let prompt = template.replace("{}", entity);
             let encoding = tokenizer.encode(prompt.as_str(), true).map_err(|e| format!("{e}"))?;
-            let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+            let token_ids: Vec<u32> = encoding.ids.clone();
 
             let trace = trace_forward_full(
                 weights, &token_ids, &all_layers,

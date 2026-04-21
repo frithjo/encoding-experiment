@@ -74,7 +74,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let prompt = "The capital of France is";
     let encoding = tokenizer.encode(prompt, true).map_err(|e| format!("{e}"))?;
-    let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+    let token_ids: Vec<u32> = encoding.ids.clone();
     println!("Prompt: \"{prompt}\" ({} tokens)\n", token_ids.len());
 
     // ── Dense baseline ──

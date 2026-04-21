@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let prompt = "The capital of France is";
     let encoding = tokenizer.encode(prompt, true).map_err(|e| format!("{e}"))?;
-    let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+    let token_ids: Vec<u32> = encoding.ids.clone();
     let seq_len = token_ids.len();
     println!("Prompt: \"{prompt}\" ({seq_len} tokens, hidden={hidden})\n");
 

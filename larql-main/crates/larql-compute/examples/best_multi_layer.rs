@@ -6,7 +6,6 @@
 //! Usage:
 //!   cargo run --release -p larql-compute --features metal --example bench_pipeline
 
-extern crate blas_src;
 
 use std::time::Instant;
 use ndarray::Array2;

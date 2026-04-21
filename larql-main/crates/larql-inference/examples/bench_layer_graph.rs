@@ -24,7 +24,7 @@ use larql_vindex::{SilentLoadCallbacks, VectorIndex};
 
 fn bench(
     weights: &larql_inference::ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     token_ids: &[u32],
     graph: &dyn larql_inference::LayerGraph,
     n: usize,
@@ -81,7 +81,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let prompt = "The capital of France is";
     let encoding = tokenizer.encode(prompt, true).map_err(|e| format!("{e}"))?;
-    let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+    let token_ids: Vec<u32> = encoding.ids.clone();
 
     println!("=== Production Pipeline Benchmark ===");
     println!("Prompt: \"{prompt}\" ({} tokens)", token_ids.len());

@@ -7,7 +7,6 @@
 //!
 //! Requires: ollama running locally with gemma3:4b loaded.
 
-extern crate blas_src;
 
 fn main() {
     #[cfg(not(feature = "metal"))]

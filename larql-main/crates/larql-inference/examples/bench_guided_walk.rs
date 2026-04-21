@@ -69,7 +69,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("--- {tname}: \"{test_prompt}\" ---\n");
 
         let encoding = tokenizer.encode(*test_prompt, true).map_err(|e| format!("{e}"))?;
-        let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+        let token_ids: Vec<u32> = encoding.ids.clone();
 
         // 1. Dense baseline
         let _ = predict(weights, tokenizer, &token_ids, 5);

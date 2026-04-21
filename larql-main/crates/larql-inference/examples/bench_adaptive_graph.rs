@@ -55,7 +55,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for (tname, prompt) in &prompts {
         let encoding = tokenizer.encode(*prompt, true).map_err(|e| format!("{e}"))?;
-        let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+        let token_ids: Vec<u32> = encoding.ids.clone();
 
         println!("--- {tname}: \"{prompt}\" ({} tokens) ---", token_ids.len());
 

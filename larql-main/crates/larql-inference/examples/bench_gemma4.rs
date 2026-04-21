@@ -151,10 +151,10 @@ fn main() {
     println!("\n--- Full Forward Pass ---\n");
 
     let tokenizer_path = path.join("tokenizer.json");
-    let tokenizer = tokenizers::Tokenizer::from_file(&tokenizer_path).expect("tokenizer");
+    let tokenizer = larql_tokenizer::load_tokenizer(&tokenizer_path).expect("tokenizer");
 
     let full_us = bench("predict (5 tokens, all layers)", 3, || {
-        let _ = predict(&weights, &tokenizer, &token_ids, 5);
+        let _ = predict(&weights, &*tokenizer, &token_ids, 5);
     });
 
     let per_layer = full_us / weights.num_layers as f64;
@@ -223,7 +223,7 @@ fn main() {
 
     // ── Summary ──
     println!("\n--- Summary ---\n");
-    let result = predict(&weights, &tokenizer, &token_ids, 3);
+    let result = predict(&weights, &*tokenizer, &token_ids, 3);
     println!("  Model: {model_name}");
     println!("  Predict: {:.0} ms ({:.1} qps)", full_us / 1000.0, 1_000_000.0 / full_us);
     println!("  Top prediction: {} ({:.1}%)",

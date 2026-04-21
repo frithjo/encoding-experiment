@@ -1,4 +1,4 @@
-extern crate blas_src;
+// blas_src link is provided by larql-tensor (renamed as `ndarray`) via the `blas` feature.
 
 pub mod attention;
 pub mod capture;
@@ -19,8 +19,7 @@ pub mod walker;
 pub use larql_models;
 pub use larql_vindex;
 pub use ndarray;
-pub use safetensors;
-pub use tokenizers;
+pub use larql_tokenizer;
 
 // Backend re-exports (from larql-compute).
 pub use larql_compute::{ComputeBackend, MatMulOp, default_backend, cpu_backend, dot_proj_gpu, matmul_gpu};

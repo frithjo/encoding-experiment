@@ -1,6 +1,5 @@
 //! Raw kernel dispatch: JUST the Q4_K matvec, nothing else. Measures pure GPU cost.
 
-extern crate blas_src;
 
 fn main() {
     #[cfg(not(feature = "metal"))]

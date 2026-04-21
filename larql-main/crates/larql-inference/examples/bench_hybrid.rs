@@ -63,7 +63,7 @@ fn main() {
     // Tokenize
     let prompt = "The capital of France is";
     let encoding = model.tokenizer().encode(prompt, true).unwrap();
-    let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+    let token_ids: Vec<u32> = encoding.ids.clone();
     eprintln!("  prompt: \"{prompt}\" ({} tokens)\n", token_ids.len());
 
     let iters = 3;

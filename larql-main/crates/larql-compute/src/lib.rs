@@ -29,7 +29,6 @@
 //!   multi-layer pipeline, zero-copy mmap buffers.
 //! - `cuda`: (planned) CUDA GPU backend.
 
-extern crate blas_src;
 
 pub mod backend;
 pub mod cpu;

@@ -136,7 +136,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (prompt, expected) in &prompts {
         let encoding = tokenizer.encode(prompt.as_str(), true)
             .map_err(|e| format!("tokenize: {e}"))?;
-        let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+        let token_ids: Vec<u32> = encoding.ids.clone();
         let result = predict(weights, tokenizer, &token_ids, 5);
         let (top1, prob) = result.predictions.first()
             .map(|(t, p)| (t.clone(), *p))
@@ -188,7 +188,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for (i, (prompt, expected)) in prompts.iter().enumerate() {
             let encoding = tokenizer.encode(prompt.as_str(), true)
                 .map_err(|e| format!("tokenize: {e}"))?;
-            let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+            let token_ids: Vec<u32> = encoding.ids.clone();
 
             let result = if boundary == num_layers {
                 // All dense — skip router overhead

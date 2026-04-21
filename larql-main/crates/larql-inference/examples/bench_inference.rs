@@ -114,7 +114,7 @@ fn main() {
         .tokenizer()
         .encode(prompt, true)
         .expect("tokenize failed");
-    let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+    let token_ids: Vec<u32> = encoding.ids.clone();
     println!("  Prompt: \"{prompt}\" ({} tokens)\n", token_ids.len());
 
     // Full predict

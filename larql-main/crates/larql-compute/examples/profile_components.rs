@@ -1,6 +1,5 @@
 //! Component-level profiling: each operation isolated over 34 layers.
 
-extern crate blas_src;
 
 fn main() {
     #[cfg(not(feature = "metal"))]

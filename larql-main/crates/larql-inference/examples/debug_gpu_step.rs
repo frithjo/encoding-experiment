@@ -29,7 +29,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Embedding
     let encoding = model.tokenizer().encode("Hello", true).unwrap();
-    let ids: Vec<u32> = encoding.get_ids().to_vec();
+    let ids: Vec<u32> = encoding.ids.clone();
     let h = larql_inference::forward::embed_tokens_pub(weights, &ids);
     let x: Vec<f32> = h.row(0).to_vec();
     let x_nonzero = x.iter().filter(|v| v.abs() > 1e-10).count();

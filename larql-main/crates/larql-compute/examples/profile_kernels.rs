@@ -7,7 +7,6 @@
 //! Usage:
 //!   cargo run --release -p larql-compute --features metal --example bench_kernel_variants
 
-extern crate blas_src;
 
 #[allow(unused_imports)]
 use std::ffi::c_void;

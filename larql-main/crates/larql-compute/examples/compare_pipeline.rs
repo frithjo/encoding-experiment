@@ -3,7 +3,6 @@
 //! Exercises the new fused Q4_K QKV shader through the full_pipeline_q4 path.
 //! Usage: cargo run --release --features metal -p larql-compute --example bench_q4k_pipeline
 
-extern crate blas_src;
 
 fn main() {
     #[cfg(not(feature = "metal"))]

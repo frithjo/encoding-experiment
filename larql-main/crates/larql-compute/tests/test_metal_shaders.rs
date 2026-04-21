@@ -8,7 +8,6 @@
 
 #![cfg(feature = "metal")]
 
-extern crate blas_src;
 
 use ndarray::Array2;
 use larql_compute::{ComputeBackend, cpu::q4};

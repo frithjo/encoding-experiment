@@ -12,7 +12,6 @@
 //!
 //! Usage: cargo run --release --features metal -p larql-compute --example demo_architecture
 
-extern crate blas_src;
 
 fn main() {
     use larql_compute::{default_backend, cpu_backend};

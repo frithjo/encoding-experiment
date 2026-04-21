@@ -4,7 +4,6 @@
 //!   cargo run --release -p larql-compute --example bench_q4
 //!   cargo run --release -p larql-compute --features metal --example bench_q4
 
-extern crate blas_src;
 
 use std::time::Instant;
 use larql_compute::{default_backend, cpu_backend};

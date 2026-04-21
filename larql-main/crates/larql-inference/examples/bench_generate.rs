@@ -39,7 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cached_layers: Vec<usize> = (0..=12).collect();
     let prompt = "The capital of France is";
     let encoding = tokenizer.encode(prompt, true).map_err(|e| format!("{e}"))?;
-    let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+    let token_ids: Vec<u32> = encoding.ids.clone();
     let cache = CachedLayerGraph::build(weights, &token_ids, &cached_layers, &dense_ffn);
 
     println!("╔═══════════════════════════════════════════════╗");

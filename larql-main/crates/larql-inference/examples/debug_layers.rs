@@ -17,7 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ffn_format = larql_compute::QuantFormat::Q4_K;
 
     let encoding = model.tokenizer().encode("The capital of France is", true).unwrap();
-    let ids: Vec<u32> = encoding.get_ids().to_vec();
+    let ids: Vec<u32> = encoding.ids.clone();
     let h = larql_inference::forward::embed_tokens_pub(weights, &ids);
     let x: Vec<f32> = h.row(0).to_vec();
 

@@ -53,7 +53,7 @@ fn main() {
             .tokenizer()
             .encode(*prompt, true)
             .expect("tokenize failed");
-        let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+        let token_ids: Vec<u32> = encoding.ids.clone();
 
         let start = Instant::now();
         let result = predict(model.weights(), model.tokenizer(), &token_ids, 5);
@@ -78,7 +78,7 @@ fn main() {
         .tokenizer()
         .encode(prompt, true)
         .expect("tokenize failed");
-    let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+    let token_ids: Vec<u32> = encoding.ids.clone();
 
     let capture_layers = vec![0, 16, 25, 33];
     let start = Instant::now();
