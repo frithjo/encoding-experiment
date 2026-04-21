@@ -151,27 +151,35 @@ mod walker_tests {
     }
 
     fn write_safetensors(dir: &Path, tensors: &HashMap<String, (Vec<f32>, Vec<usize>)>) {
-        let mut data_map: HashMap<String, safetensors::tensor::TensorView<'_>> = HashMap::new();
-        let mut byte_bufs: HashMap<String, Vec<u8>> = HashMap::new();
+        // Hand-roll safetensors format: 8-byte LE header length, JSON header, contiguous tensor data.
+        let mut names: Vec<&String> = tensors.keys().collect();
+        names.sort();
 
-        // First pass: convert f32 to bytes
-        for (name, (values, _shape)) in tensors {
+        let mut header = serde_json::Map::new();
+        let mut offset: u64 = 0;
+        let mut data_blob: Vec<u8> = Vec::new();
+        for name in &names {
+            let (values, shape) = &tensors[*name];
             let bytes: Vec<u8> = values.iter().flat_map(|f| f.to_le_bytes()).collect();
-            byte_bufs.insert(name.clone(), bytes);
-        }
-
-        // Second pass: create TensorView references
-        for (name, (_, shape)) in tensors {
-            let bytes = &byte_bufs[name];
-            data_map.insert(
-                name.clone(),
-                safetensors::tensor::TensorView::new(safetensors::Dtype::F32, shape.clone(), bytes)
-                    .unwrap(),
+            let len = bytes.len() as u64;
+            header.insert(
+                (*name).clone(),
+                serde_json::json!({
+                    "dtype": "F32",
+                    "shape": shape,
+                    "data_offsets": [offset, offset + len],
+                }),
             );
+            data_blob.extend_from_slice(&bytes);
+            offset += len;
         }
 
-        let serialized = safetensors::tensor::serialize(&data_map, &None).unwrap();
-        std::fs::write(dir.join("model.safetensors"), serialized).unwrap();
+        let header_bytes = serde_json::to_vec(&header).unwrap();
+        let mut out = Vec::new();
+        out.extend_from_slice(&(header_bytes.len() as u64).to_le_bytes());
+        out.extend_from_slice(&header_bytes);
+        out.extend_from_slice(&data_blob);
+        std::fs::write(dir.join("model.safetensors"), out).unwrap();
     }
 
     fn write_mock_tokenizer(dir: &Path, vocab_size: usize) {
@@ -232,7 +240,7 @@ mod walker_tests {
                 .unwrap();
         let config = larql_inference::walker::weight_walker::WalkConfig {
             top_k: 3,
-            min_score: 0.0,
+            activation_floor: 0.0,
         };
         let mut graph = larql_core::Graph::new();
         let mut callbacks = larql_inference::walker::weight_walker::SilentWalkCallbacks;
@@ -274,7 +282,7 @@ mod walker_tests {
 
         let config = larql_inference::walker::weight_walker::WalkConfig {
             top_k: 2,
-            min_score: 0.0,
+            activation_floor: 0.0,
         };
         let mut graph = larql_core::Graph::new();
         let mut callbacks = larql_inference::walker::weight_walker::SilentWalkCallbacks;
@@ -331,7 +339,7 @@ mod walker_tests {
                 .unwrap();
         let config = larql_inference::walker::weight_walker::WalkConfig {
             top_k: 3,
-            min_score: 0.0,
+            activation_floor: 0.0,
         };
         let mut graph = larql_core::Graph::new();
         let mut callbacks = larql_inference::walker::weight_walker::SilentWalkCallbacks;
@@ -341,8 +349,8 @@ mod walker_tests {
             .unwrap();
 
         let stats = &result.stats;
-        assert!(stats.mean_confidence >= 0.0);
-        assert!(stats.max_confidence <= 1.0);
+        assert!(stats.confidence_mean >= 0.0);
+        assert!(stats.confidence_max <= 1.0);
         assert!(stats.mean_selectivity >= 0.0);
         assert!(stats.mean_c_in >= 0.0);
         assert!(stats.mean_c_out >= 0.0);
@@ -377,7 +385,7 @@ mod walker_tests {
                 .unwrap();
         let config = larql_inference::walker::weight_walker::WalkConfig {
             top_k: 2,
-            min_score: 0.0,
+            activation_floor: 0.0,
         };
         let mut graph = larql_core::Graph::new();
         let mut callbacks = larql_inference::walker::weight_walker::SilentWalkCallbacks;
