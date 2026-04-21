@@ -26,6 +26,16 @@ pub struct SelectRequest {
     pub order_by: Option<String>,
     #[serde(default = "default_order")]
     pub order: String,
+    #[serde(default)]
+    pub fields: Option<Vec<String>>,
+    #[serde(default)]
+    pub nearest: Option<NearestRequest>,
+}
+
+#[derive(Deserialize)]
+pub struct NearestRequest {
+    pub entity: String,
+    pub layer: u32,
 }
 
 fn default_limit() -> usize { 20 }
@@ -36,6 +46,11 @@ fn select_edges(
     req: &SelectRequest,
 ) -> Result<serde_json::Value, ServerError> {
     let start = std::time::Instant::now();
+
+    // Handle NEAREST clause - KNN lookup
+    if let Some(ref nearest) = req.nearest {
+        return select_nearest(model, nearest, req.limit);
+    }
 
     let patched = model.patched.blocking_read();
     let all_layers = patched.loaded_layers();
@@ -128,6 +143,16 @@ fn select_edges(
             if let Some(ref rel) = r.relation {
                 edge["relation"] = serde_json::json!(rel);
             }
+            // Apply field filtering if specified
+            if let Some(ref fields) = req.fields {
+                let mut filtered = serde_json::Map::new();
+                for field in fields {
+                    if let Some(val) = edge.get(field) {
+                        filtered.insert(field.clone(), val.clone());
+                    }
+                }
+                edge = serde_json::Value::Object(filtered);
+            }
             edge
         })
         .collect();
@@ -138,6 +163,115 @@ fn select_edges(
         "edges": edges,
         "total": total,
         "latency_ms": (latency_ms * 10.0).round() / 10.0,
+    }))
+}
+
+fn select_nearest(
+    model: &LoadedModel,
+    nearest: &NearestRequest,
+    limit: usize,
+) -> Result<serde_json::Value, ServerError> {
+    let patched = model.patched.blocking_read();
+    let path = &model.path;
+
+    // Load embeddings and tokenizer
+    let (embed, embed_scale) = larql_vindex::load_vindex_embeddings(path)
+        .map_err(|e| ServerError::Internal(format!("failed to load embeddings: {}", e)))?;
+    let tokenizer = larql_vindex::load_vindex_tokenizer(path)
+        .map_err(|e| ServerError::Internal(format!("failed to load tokenizer: {}", e)))?;
+
+    let encoding = tokenizer
+        .encode(nearest.entity.as_str(), false)
+        .map_err(|e| ServerError::Internal(format!("tokenize error: {}", e)))?;
+    let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+
+    if token_ids.is_empty() {
+        return Ok(serde_json::json!({
+            "edges": [],
+            "total": 0,
+            "message": "entity not found",
+        }));
+    }
+
+    // Build query from entity embedding
+    let hidden = embed.shape()[1];
+    let query = if token_ids.len() == 1 {
+        embed.row(token_ids[0] as usize).mapv(|v| v * embed_scale)
+    } else {
+        let mut avg = larql_vindex::ndarray::Array1::<f32>::zeros(hidden);
+        for &tok in &token_ids {
+            avg += &embed.row(tok as usize).mapv(|v| v * embed_scale);
+        }
+        avg.mapv(|v| v / token_ids.len() as f32)
+    };
+
+    // Scan features at specified layer and compute cosine similarity
+    let layer = nearest.layer as usize;
+    let num_features = patched.num_features(layer);
+    let mut similarities: Vec<(usize, f32)> = Vec::new();
+
+    for feat_idx in 0..num_features {
+        if let Some(meta) = patched.feature_meta(layer, feat_idx) {
+            let encoding = tokenizer
+                .encode(meta.top_token.trim(), false)
+                .map_err(|e| ServerError::Internal(format!("tokenize error: {}", e)))?;
+            let feat_token_ids: Vec<u32> = encoding.get_ids().to_vec();
+
+            if !feat_token_ids.is_empty() {
+                let feat_embed = if feat_token_ids.len() == 1 {
+                    embed.row(feat_token_ids[0] as usize).mapv(|v| v * embed_scale)
+                } else {
+                    let mut avg = larql_vindex::ndarray::Array1::<f32>::zeros(hidden);
+                    for &tok in &feat_token_ids {
+                        avg += &embed.row(tok as usize).mapv(|v| v * embed_scale);
+                    }
+                    avg.mapv(|v| v / feat_token_ids.len() as f32)
+                };
+
+                // Cosine similarity
+                let dot = query.dot(&feat_embed);
+                let norm_q = query.iter().map(|x| x * x).sum::<f32>().sqrt();
+                let norm_f = feat_embed.iter().map(|x| x * x).sum::<f32>().sqrt();
+                let sim = if norm_q > 0.0 && norm_f > 0.0 {
+                    dot / (norm_q * norm_f)
+                } else {
+                    0.0
+                };
+
+                similarities.push((feat_idx, sim));
+            }
+        }
+    }
+
+    // Sort by similarity descending
+    similarities.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    similarities.truncate(limit);
+
+    let edges: Vec<serde_json::Value> = similarities
+        .iter()
+        .map(|(feat_idx, sim)| {
+            let meta = patched.feature_meta(layer, *feat_idx);
+            let top_token = meta.as_ref().map(|m| m.top_token.trim()).unwrap_or("?");
+            let c_score = meta.as_ref().map(|m| m.c_score).unwrap_or(0.0);
+            let relation = model.probe_labels.get(&(layer, *feat_idx)).cloned();
+
+            let mut edge = serde_json::json!({
+                "layer": layer,
+                "feature": feat_idx,
+                "target": top_token,
+                "similarity": sim,
+                "c_score": c_score,
+            });
+            if let Some(ref rel) = relation {
+                edge["relation"] = serde_json::json!(rel);
+            }
+            edge
+        })
+        .collect();
+
+    Ok(serde_json::json!({
+        "edges": edges,
+        "total": similarities.len(),
     }))
 }
 
