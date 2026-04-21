@@ -1,0 +1,56 @@
+{
+  "version": 2,
+  "model": "test/synthetic-ui-trace",
+  "family": "llama",
+  "source": {
+    "huggingface_repo": "test/synthetic-ui-trace",
+    "huggingface_revision": null,
+    "safetensors_sha256": null,
+    "extracted_at": "2026-05-05T11:53:41Z",
+    "larql_version": "0.1.0"
+  },
+  "checksums": {
+    "lm_head.bin": "fa606f41f17f8ca8ca53aca6333689882afd1b0b1984e5cb5083e20bffde1c91",
+    "embeddings.bin": "fa606f41f17f8ca8ca53aca6333689882afd1b0b1984e5cb5083e20bffde1c91",
+    "up_weights.bin": "f8de74a99b531121c0fcf862d8c799e8aeb8e565b13a48391598b52730035225",
+    "down_meta.bin": "111f4a88472100fe9b841321cd8ea42d83839b18a30a450f0c6854325ffb2785",
+    "attn_weights.bin": "262b9b51842f02b9ce7fedab2561122b809eadafb39c2e228a32fcd041a4c0fb",
+    "down_weights.bin": "e52c900dcf68930ed5d8e3d7edb8b7d905a09eff7f4e05fb022782fbbf32d773",
+    "gate_vectors.bin": "9af915c7b34abcbe0f1f237a844aaa2d4d8b85bdd11c43ec59c08d514190c068",
+    "norms.bin": "a834ffb02981aa1f080d8686bd1f1f8f571e895ef8a6deef865cf90023a76e19"
+  },
+  "num_layers": 2,
+  "hidden_size": 8,
+  "intermediate_size": 4,
+  "vocab_size": 16,
+  "embed_scale": 1.0,
+  "extract_level": "all",
+  "dtype": "f32",
+  "layer_bands": null,
+  "layers": [
+    {
+      "layer": 0,
+      "num_features": 4,
+      "offset": 0,
+      "length": 128
+    },
+    {
+      "layer": 1,
+      "num_features": 4,
+      "offset": 128,
+      "length": 128
+    }
+  ],
+  "down_top_k": 5,
+  "has_model_weights": true,
+  "model_config": {
+    "model_type": "llama",
+    "head_dim": 8,
+    "num_q_heads": 1,
+    "num_kv_heads": 1,
+    "rope_base": 10000.0,
+    "sliding_window": null,
+    "moe": null,
+    "attention_k_eq_v": false
+  }
+}

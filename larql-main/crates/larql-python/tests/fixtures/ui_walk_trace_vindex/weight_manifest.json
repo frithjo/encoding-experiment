@@ -1,0 +1,195 @@
+[
+  {
+    "key": "layers.0.self_attn.q_proj.weight",
+    "kind": "tensor",
+    "shape": [
+      8,
+      8
+    ],
+    "offset": 0,
+    "length": 256,
+    "file": "attn_weights.bin"
+  },
+  {
+    "key": "layers.0.self_attn.k_proj.weight",
+    "kind": "tensor",
+    "shape": [
+      8,
+      8
+    ],
+    "offset": 256,
+    "length": 256,
+    "file": "attn_weights.bin"
+  },
+  {
+    "key": "layers.0.self_attn.v_proj.weight",
+    "kind": "tensor",
+    "shape": [
+      8,
+      8
+    ],
+    "offset": 512,
+    "length": 256,
+    "file": "attn_weights.bin"
+  },
+  {
+    "key": "layers.0.self_attn.o_proj.weight",
+    "kind": "tensor",
+    "shape": [
+      8,
+      8
+    ],
+    "offset": 768,
+    "length": 256,
+    "file": "attn_weights.bin"
+  },
+  {
+    "key": "layers.1.self_attn.q_proj.weight",
+    "kind": "tensor",
+    "shape": [
+      8,
+      8
+    ],
+    "offset": 1024,
+    "length": 256,
+    "file": "attn_weights.bin"
+  },
+  {
+    "key": "layers.1.self_attn.k_proj.weight",
+    "kind": "tensor",
+    "shape": [
+      8,
+      8
+    ],
+    "offset": 1280,
+    "length": 256,
+    "file": "attn_weights.bin"
+  },
+  {
+    "key": "layers.1.self_attn.v_proj.weight",
+    "kind": "tensor",
+    "shape": [
+      8,
+      8
+    ],
+    "offset": 1536,
+    "length": 256,
+    "file": "attn_weights.bin"
+  },
+  {
+    "key": "layers.1.self_attn.o_proj.weight",
+    "kind": "tensor",
+    "shape": [
+      8,
+      8
+    ],
+    "offset": 1792,
+    "length": 256,
+    "file": "attn_weights.bin"
+  },
+  {
+    "key": "layers.0.mlp.up_proj.weight",
+    "kind": "tensor",
+    "shape": [
+      4,
+      8
+    ],
+    "offset": 0,
+    "length": 128,
+    "file": "up_weights.bin"
+  },
+  {
+    "key": "layers.0.mlp.down_proj.weight",
+    "kind": "tensor",
+    "shape": [
+      8,
+      4
+    ],
+    "offset": 0,
+    "length": 128,
+    "file": "down_weights.bin"
+  },
+  {
+    "key": "layers.1.mlp.up_proj.weight",
+    "kind": "tensor",
+    "shape": [
+      4,
+      8
+    ],
+    "offset": 128,
+    "length": 128,
+    "file": "up_weights.bin"
+  },
+  {
+    "key": "layers.1.mlp.down_proj.weight",
+    "kind": "tensor",
+    "shape": [
+      8,
+      4
+    ],
+    "offset": 128,
+    "length": 128,
+    "file": "down_weights.bin"
+  },
+  {
+    "key": "layers.0.input_layernorm.weight",
+    "kind": "vector",
+    "shape": [
+      8
+    ],
+    "offset": 0,
+    "length": 32,
+    "file": "norms.bin"
+  },
+  {
+    "key": "layers.0.post_attention_layernorm.weight",
+    "kind": "vector",
+    "shape": [
+      8
+    ],
+    "offset": 32,
+    "length": 32,
+    "file": "norms.bin"
+  },
+  {
+    "key": "layers.1.input_layernorm.weight",
+    "kind": "vector",
+    "shape": [
+      8
+    ],
+    "offset": 64,
+    "length": 32,
+    "file": "norms.bin"
+  },
+  {
+    "key": "layers.1.post_attention_layernorm.weight",
+    "kind": "vector",
+    "shape": [
+      8
+    ],
+    "offset": 96,
+    "length": 32,
+    "file": "norms.bin"
+  },
+  {
+    "key": "norm.weight",
+    "kind": "vector",
+    "shape": [
+      8
+    ],
+    "offset": 128,
+    "length": 32,
+    "file": "norms.bin"
+  },
+  {
+    "key": "lm_head.weight",
+    "kind": "tensor",
+    "shape": [
+      16,
+      8
+    ],
+    "offset": 0,
+    "length": 512,
+    "file": "lm_head.bin"
+  }
+]
