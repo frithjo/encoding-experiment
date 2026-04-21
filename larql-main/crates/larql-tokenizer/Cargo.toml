@@ -1,0 +1,17 @@
+[package]
+name = "larql-tokenizer"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Tokenizer trait + HF and vocab-only impls for LARQL"
+
+[dependencies]
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokenizers = { version = "0.21", optional = true }
+
+[features]
+default = ["hf"]
+hf = ["dep:tokenizers"]
