@@ -1,12 +1,16 @@
-## Carbonyl UI Spec
+## LARQL Workbench UI Spec (terminal browser)
 
-This spec defines a **terminal-first web workbench** for LARQL recipes and prompt generation, rendered inside Carbonyl. The product should stay aligned with the **actual shipped Python bindings**, not the broader aspirational docs: the main execution surfaces today are `larql.load(...)`, `larql.session(...)`, `Vindex.describe(...)`, `Vindex.infer(...)`, `WalkModel.predict(...)`, `WalkModel.trace(...)`, and the optional MLX loaders in `larql.mlx`, `larql.streaming`, and `larql.walk_ffn`. The core design goal is a **simple, inspectable, keyboard-first HTML UI** that remains usable in a narrow terminal browser while still exposing serious LARQL capabilities.
+This spec defines a **terminal-browser–native web workbench** for LARQL recipes and prompt generation.
+
+**Hard requirement — browser in the terminal only:** The only **intended and supported** user experience is a normal web UI rendered **inside the terminal** via the **first-party** Rust client `crates/larql-terminal-browser` (stub today; will embed or drive a Chromium-class engine for real HTML/CSS/JS in the TTY). **Display port:** The client’s **viewport must be user-resizable** (terminal window / embedding surface) with a **generous** default where the environment allows—users scale it to their needs; do **not** treat a tiny fixed character grid as the only target. **Resolution:** Prefer **high logical resolution** (sharp text and media); higher is better. **Performance profile:** **GPU acceleration is allowed and encouraged** when drivers and hardware support it (compositing, video decode, etc.). **CPU/software fallback** should remain viable where no GPU is available. Keep the client **as light as possible** (memory, background work, dependencies). Monospace-friendly typography and keyboard-first interaction remain normative. The workbench is **not** a desktop web application with a “narrow” or responsive secondary mode, and **not** a layout designed for full-width desktop first and then shrunk. Do **not** ship a separate desktop-first primary layout, multi-column dashboard, or split-pane default. Opening the same local URL in a full-size desktop browser may be useful for **development or debugging** only; it is **not** a first-class layout target, and implementations must **not** depend on wide viewports or hover-heavy desktop patterns to be usable. Third-party terminal browsers are **not** required dependencies; they may be used only as optional references during development.
+
+The product should stay aligned with the **actual shipped Python bindings**, not the broader aspirational docs: the main execution surfaces today are `larql.load(...)`, `larql.session(...)`, `Vindex.describe(...)`, `Vindex.infer(...)`, `WalkModel.predict(...)`, `WalkModel.trace(...)`, and the optional MLX loaders in `larql.mlx`, `larql.streaming`, and `larql.walk_ffn`. The core design goal is a **simple, inspectable, keyboard-first HTML UI** that exposes serious LARQL capabilities within that terminal constraint.
 
 ### Grounding assumptions
 - The UI runs locally against a local `.vindex`.
 - The first release targets the Python package at `crates/larql-python/python/larql`.
-- Carbonyl is Chromium-based, so modern HTML/CSS/JS work, but the UI should still behave like a restrained terminal app rather than a dense desktop dashboard.
-- The first release should prefer **server-rendered HTML + HTMX**, with minimal JS and no SPA requirement.
+- The terminal browser client will use a real engine (Chromium-class), so modern HTML/CSS/JS work, **including images, video, and streaming media** (`<video>`, MSE, common codecs where the engine allows)—the workbench is not a text-only TUI. Layout, density, and interaction are specified **for** the terminal-embedded viewport (resizable, from compact to generous); avoid desktop-first patterns that only happen to work when shrunk.
+- The first release should prefer **server-rendered HTML** with **minimal JS** (browser-native `fetch` for partial HTML swaps when needed) and **no SPA** and **no third-party JS libraries** in the default stack—avoid vendored UI frameworks unless `plan.md` is amended with rationale.
 - The UI should not present features as “ready” unless they are clearly supported by the current Python API.
 
 A few implementation facts that matter directly to the spec:
@@ -71,7 +75,7 @@ Create a UI that lets users:
 - make advanced LARQL capabilities feel approachable
 - preserve reproducibility of every run
 - stay robust under large models and long-running inference
-- remain legible and efficient inside Carbonyl
+- remain legible and efficient in the terminal viewport
 
 ### Non-goals for v1
 - full patch lifecycle UI
@@ -87,8 +91,8 @@ These are out because the current Python layer is not yet the right stable abstr
 
 ## Design Principles
 
-1. **Terminal-first, not text-only**  
-   Use HTML, forms, tabs, cards, and tables, but optimize for narrow widths, low visual noise, keyboard navigation, and stable layouts.
+1. **Terminal browser only, not text-only**  
+   Use HTML, forms, tabs, cards, and tables, and **optimize for a resizable terminal-browser viewport** from compact to **generous** width/height: low visual noise, keyboard navigation, stable stacked layouts at small sizes, and sensible use of space when the user enlarges the display port. **Media** (images, video, streaming) is in scope for the client. This is the sole supported interaction surface—not “mobile + desktop” responsive tiers centered on a wide layout.
 
 2. **One dominant task per screen**  
    Every page should have a clear primary action and one main result region.
@@ -131,7 +135,7 @@ Wants raw LQL and low ceremony access to the underlying engine.
 - prompt rendering with variables
 - browse/query/generation/trace workflows
 - run history and result persistence
-- Carbonyl-optimized layout and interaction design
+- terminal-viewport–optimized layout and interaction design
 - compare mode for repeated runs
 - keyboard shortcuts and focus management
 
@@ -399,7 +403,7 @@ Terminal-optimized stacked layout:
 4. rendered preview
 5. results
 
-At wider terminal sizes, preview/results may become two panes. Default should still work vertically.
+At **larger** display-port sizes (user-resized terminal or large embedding), preview/results may become two panes. Default should still work vertically on compact viewports.
 
 ### Sections
 
@@ -573,7 +577,7 @@ Default to a layer table, not charts:
 - attn contribution
 - ffn contribution
 
-Charts can be added later, but table-first is safer for Carbonyl.
+Charts can be added later, but table-first is safer for the terminal viewport.
 
 ---
 
@@ -639,21 +643,28 @@ All important information and actions must be visible or focusable without hover
 For `infer`, `trace`, and MLX:
 - user submits job
 - UI shows stable pending state
-- page polls or HTMX-refreshes status region
+- page polls or `fetch`-driven partial replacement of the status region
 - result replaces pending state when done
 
 Use polling first; SSE can come later.
 
 ---
 
-## Carbonyl-Specific UX Constraints
+## Terminal viewport UX constraints
+
+### Display port and resolution
+- **Resizable:** The terminal browser **window/viewport is user-resizable**; do not assume a single fixed size. Prefer a **generous** default when the environment allows; users may shrink for focus or expand for detail.
+- **Resolution:** Treat **high logical resolution** as a goal—sharper rendering is better.
+- **GPU acceleration:** **Permitted and preferred** when available (typical Chromium GPU compositing, hardware video decode, etc.). Do not shy away from GPU paths for performance or quality.
+- **CPU / software fallback:** The client should still run on **CPU/software** paths where no usable GPU exists (headless VMs, remote sessions, minimal drivers). Avoid features that **only** work with a GPU unless documented as optional enhancements.
+- **Lightweight:** Keep the client **as light as feasible** (process count, idle cost, dependency surface) while meeting fidelity and media requirements.
 
 ### Layout constraints
-- target comfortable use at `~100x30`
-- max content width around `80-120ch`
-- stack panels before shrinking them too far
-- avoid 3-column layouts
-- avoid wide data tables as the primary presentation
+- **Baseline (small):** remain usable on modest terminals (order of **~80×24** text cells or equivalent)—stacked single column, no reliance on wide tables as the only view.
+- **Generous:** when the display port is large, layouts may use **more width** (comfortable line lengths beyond a fixed `80-120ch` cap), side-by-side regions, and richer previews—still keyboard-first, not hover-dependent.
+- stack panels before shrinking them too far on **narrow** viewports
+- avoid 3-column layouts on narrow viewports; multi-column is acceptable when space allows
+- avoid wide data tables as the **only** presentation—offer wrapped or stacked fallbacks on small viewports
 
 ### Typography
 - monospace-friendly
@@ -678,9 +689,13 @@ But must:
 - wrap gracefully
 - allow stacked card fallback on narrow widths
 
+### Media (images, video, streaming)
+- **Images:** Supported (`<img>`, inline SVG where appropriate); must render correctly in the terminal browser client.
+- **Video and streaming:** **Required** at the client level: HTML5 **video**, **streaming** playback where the embedded engine supports it (e.g. progressive download, **MSE** / adaptive streams as available). The workbench may show few media-heavy views in v1, but the **client must not** be specified as “no video” or “no streaming.”
+
 ### Avoid in v1
 - drag/drop
-- resizable panes
+- complex in-app multi-pane splitters (user **resizing the terminal / client viewport** is required; fancy nested draggable panes are not)
 - canvas-dependent graph viewers
 - complex charting libraries
 - dense nested accordions
@@ -701,7 +716,7 @@ But must:
 - `/runs`
 - `/runs/{run_id}`
 
-### Partial routes for HTMX
+### Partial routes (server-rendered HTML fragments)
 - `/partials/workspace-status`
 - `/partials/recipe-editor`
 - `/partials/run-controls`
@@ -733,10 +748,9 @@ But must:
 ## Backend Architecture
 
 ### Recommended stack
-- FastAPI
+- Starlette (ASGI; no FastAPI / Pydantic in the UI dependency set)
 - Jinja2 templates
-- HTMX
-- small Alpine.js only if necessary
+- **No required JS libraries** — use native `fetch` / DOM for partial updates; add Alpine or similar only if necessary and document in `plan.md`
 - plain CSS with strong utility classes or a tiny custom design system
 
 ### App package layout
@@ -1040,7 +1054,7 @@ Each result card should have:
 - show disabled inference on browse-only workspace
 - persist run history
 - rerun prior run
-- maintain usable layout in Carbonyl-sized viewport
+- maintain usable layout from compact terminal sizes through **generous, user-resized** display ports
 
 ### Suggested automated tests
 - unit tests for recipe rendering
@@ -1053,11 +1067,13 @@ Each result card should have:
   - error states
 
 ### Manual verification
-Run inside Carbonyl and verify:
+Run inside the first-party terminal browser (or, during development, any Chromium-class terminal browser) and verify at **multiple** viewport sizes (compact and generous):
 - navigation works by keyboard
 - no critical controls require hover
 - forms remain legible at narrow width
 - no layout collapse under long prompts/results
+- text and UI remain sharp when the display port supports **high logical resolution** (use **GPU acceleration** when available)
+- where the workbench surfaces images or video, **playback and streaming** behave correctly in the terminal client
 
 ---
 
@@ -1111,20 +1127,21 @@ That gets a real product in users’ hands without betting early on the heaviest
 
 ## Normative compliance (process)
 
-This file is the **authoritative specification** for the Carbonyl / LARQL workbench (`crates/larql-python/python/larql/ui/` and related routing, execution adapters, and tests that define the same UX contract).
+This file is the **authoritative specification** for the LARQL workbench (`crates/larql-python/python/larql/ui/` and related routing, execution adapters, and tests that define the same UX contract), consumed by the **first-party** terminal client in `crates/larql-terminal-browser`.
 
-**Strict compliance rule:** From the adoption of this section onward, changes that touch the workbench **must** conform to the requirements and structure described here (routing, HTMX + partials vs full pages, API routes, phases, capability gating, Carbonyl constraints, etc.). If an implementation intentionally diverges from an existing section (for example shipping non-HTMX interaction patterns, omitting listed routes, or skipping long-running-run behavior), the **same change set** must **amend this document** so the spec and the code stay aligned. Drive-by shortcuts that contradict the plan without updating it are not allowed.
+**Strict compliance rule:** From the adoption of this section onward, changes that touch the workbench **must** conform to the requirements and structure described here (routing, partial routes vs full pages, API routes, phases, capability gating, **terminal-browser-only UX**, terminal viewport constraints, etc.). If an implementation intentionally diverges from an existing section (for example omitting listed routes, adding a third-party JS UI dependency without documenting it here, or skipping long-running-run behavior), the **same change set** must **amend this document** so the spec and the code stay aligned. Drive-by shortcuts that contradict the plan without updating it are not allowed.
 
 **Amendment expectations:** A deliberate plan change should include a short rationale (e.g. in the PR body) and edits to the affected sections or checklist items in this file.
 
 **Checklist:** The **Implementation Plan** checklist below is the ordered backlog for closing gaps against this spec; treat unchecked items as required work until done or explicitly rescoped in `plan.md`.
 
 ## Implementation Plan
-[x] Add a local web app entrypoint under `crates/larql-python/python/larql/ui/` using FastAPI + Jinja + HTMX and keep routing server-rendered by default.  
-[ ] Add workspace inspection and caching services that wrap `larql.load(...)`, `larql.session(...)`, and optionally `WalkModel(...)`, then expose capability badges and warnings.  
-[ ] Add recipe models, validation, rendering, and persistence for probe/generation recipes with template variables and engine defaults.  
-[ ] Add the `Studio`, `Explorer`, `LQL`, `Trace`, `Recipes`, and `Runs` page routes plus matching partials for HTMX updates.  
-[ ] Add execution services that normalize `describe`, `LQL`, `infer`, `walk_model`, trace, and later MLX outputs into a single run artifact schema.  
-[ ] Add background run handling for long-running engines with polling-based status updates and stable pending/error/result states.  
-[ ] Add Carbonyl-first styling and interaction rules: stacked layouts, keyboard shortcuts, visible focus, no hover-only actions, and narrow-width-friendly result views.  
-[ ] Add automated tests for recipe rendering, capability detection, API route behavior, and error states, then manually verify the UI inside Carbonyl at terminal-like dimensions.
+[x] Add a local web app entrypoint under `crates/larql-python/python/larql/ui/` using Starlette + Jinja with routing server-rendered by default and minimal JS (no required third-party JS libraries).  
+[x] Add workspace inspection and caching services that wrap `larql.load(...)`, `larql.session(...)`, and optionally `WalkModel(...)`, then expose capability badges and warnings.  
+[x] Add `Trace` workbench screen: `/trace` + `trace.html`, `UiExecutor.run_trace` via `WalkModel.trace`, `RunRecord` kind `trace`, keyboard shortcut <kbd>g</kbd> <kbd>t</kbd>, UI gated when `supports_trace` is false (browse-only vindex). Automated tests cover a full trace run using the committed fixture `crates/larql-python/tests/fixtures/ui_walk_trace_vindex/` (regenerate via `crates/larql-vindex` binary `ui_test_vindex`; see `tests/fixtures/README.md`).  
+[x] Add recipe models, validation, rendering, and persistence for probe/generation recipes with template variables and engine defaults (`RecipeRecord` kinds `probe` / `generation`, `validate_recipe`, tags/notes/options/variable_defs, `execution_engine_for_recipe`; HTML form + JSON `POST /api/recipes`).  
+[x] Add the `Studio`, `Explorer`, `LQL`, `Trace`, `Recipes`, and `Runs` page routes plus matching partials for incremental updates (`fetch` or full navigation): `/partials/recipes-list`, `/partials/runs-table`, `/partials/trace-summary`, `/partials/result-panel`, `/partials/run-controls`, `/partials/recipe-editor` (existing `/partials/workspace-status` retained). **Amendment:** Routing spec also lists hyphenated paths (`recipe-editor`, etc.); implementation uses the same path strings with hyphens.  
+[x] Add execution services that normalize `describe`, `LQL`, `infer`, `walk_model`, trace, and later MLX outputs into a single run artifact schema (`RunRecord` with shared fields + `raw` JSON; `POST /api/runs` for studio-style dispatch).  
+[x] Add background run handling for long-running engines with polling-based status updates and stable pending/error/result states (`async: true` on `POST /api/trace/run`, `POST /api/runs`, `POST /api/explorer/describe`, `POST /api/lql/query`; `GET /api/runs/{id}` for polling; optional “Background run” path on `/trace` using native `fetch`).  
+[x] Add terminal-viewport–first styling and interaction rules: stacked layouts on small viewports, sensible use of width when the display port is generous, keyboard shortcuts, visible focus, no hover-only actions, and result views that degrade gracefully when narrow (including runs table vs stacked cards in CSS). **Manual:** image/video/streaming smoke in `larql-terminal-browser` remains operator-verified when that client ships media-heavy views.  
+[x] Add automated tests for recipe rendering, capability detection, API route behavior, and error states (`tests/test_ui.py`: partials, `/api/*`, async trace completion, probe/generation helpers). Manual verification at multiple viewport sizes via `larql-terminal-browser` remains as release QA.
