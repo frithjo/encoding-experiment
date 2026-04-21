@@ -56,7 +56,7 @@ bench-all: bench-core bench-inference
 
 # Python extension (managed via uv)
 python-setup:
-	cd crates/larql-python && uv sync --no-install-project --group dev
+	cd crates/larql-python && uv sync --no-install-project --group dev --extra ui
 
 python-build: python-setup
 	cd crates/larql-python && uv run --no-sync maturin develop --release

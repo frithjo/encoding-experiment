@@ -54,9 +54,9 @@ Python bindings are maturin-built under uv (not cargo-run):
 
 ```bash
 cd crates/larql-python
-uv sync --no-install-project --group dev     # create .venv, install dev deps
-uv run --no-sync maturin develop --release   # build PyO3 extension into .venv
-uv run --no-sync pytest tests/               # run binding tests
+uv sync --no-install-project --group dev --extra ui   # dev tools + workbench deps
+uv run --no-sync maturin develop --release           # build PyO3 extension into .venv
+uv run --no-sync pytest tests/                       # binding + UI tests
 ```
 
 Or via the Makefile: `make python-setup | python-build | python-test | python-clean`.
