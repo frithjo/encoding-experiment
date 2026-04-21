@@ -9,6 +9,7 @@ use std::io::{BufReader, Read, Seek};
 use std::path::Path;
 
 use ndarray::{Array2, ShapeBuilder};
+use larql_core::mmap::Mmap;
 
 use crate::weights::ModelWeights;
 use crate::detect::ModelError;
@@ -169,7 +170,7 @@ impl GgufFile {
     #[allow(clippy::type_complexity)]
     pub fn load_tensors(&self) -> Result<(HashMap<String, crate::WeightArray>, HashMap<String, Vec<f32>>), ModelError> {
         let file = std::fs::File::open(&self.path)?;
-        let mmap = unsafe { memmap2::Mmap::map(&file)? };
+        let mmap = unsafe { Mmap::map(&file)? };
 
         let mut tensors = HashMap::new();
         let mut vectors = HashMap::new();
