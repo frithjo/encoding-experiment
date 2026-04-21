@@ -95,7 +95,7 @@ pub fn run(args: QkTemplatesArgs) -> Result<(), Box<dyn std::error::Error>> {
             .tokenizer()
             .encode(prompt.as_str(), true)
             .map_err(|e| format!("tokenize error: {e}"))?;
-        let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+        let token_ids: Vec<u32> = encoding.ids.clone();
         let labels: Vec<String> = token_ids
             .iter()
             .map(|&id| {

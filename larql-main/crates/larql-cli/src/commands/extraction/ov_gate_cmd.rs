@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use clap::Args;
 use larql_inference::ndarray;
-use larql_inference::tokenizers;
+use larql_tokenizer;
 use larql_vindex::load_feature_labels;
 use larql_inference::InferenceModel;
 
@@ -280,7 +280,7 @@ pub fn run(args: OvGateArgs) -> Result<(), Box<dyn std::error::Error>> {
 fn project_top_token(
     embed: &ndarray::ArrayBase<impl ndarray::Data<Elem = f32>, ndarray::Ix2>,
     vector: &[f32],
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
 ) -> String {
     let vocab_size = embed.shape()[0];
     let mut best_idx = 0;
@@ -306,7 +306,7 @@ fn project_top_n(
     embed: &ndarray::ArrayBase<impl ndarray::Data<Elem = f32>, ndarray::Ix2>,
     vector: &[f32],
     n: usize,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
 ) -> Vec<String> {
     let vocab_size = embed.shape()[0];
     let mut scores: Vec<(usize, f32)> = Vec::with_capacity(vocab_size);
@@ -328,8 +328,8 @@ fn project_top_n(
             tokenizer
                 .decode(&[idx as u32], true)
                 .ok()
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
+                .map(|s: String| s.trim().to_string())
+                .filter(|s: &String| !s.is_empty())
         })
         .collect()
 }

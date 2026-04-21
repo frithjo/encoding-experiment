@@ -25,9 +25,9 @@ pub struct AttentionWalkArgs {
     #[arg(long, default_value = "3")]
     top_k: usize,
 
-    /// Minimum score.
+    /// Minimum raw activation for OV logits (attention walk).
     #[arg(long, default_value = "0.0")]
-    min_score: f32,
+    activation_floor: f32,
 
     /// Write layer statistics to a separate file.
     #[arg(long)]
@@ -63,8 +63,8 @@ impl WalkCallbacks for ProgressCallbacks {
             result.layer,
             result.edges_found,
             result.elapsed_ms / 1000.0,
-            s.mean_confidence,
-            s.max_confidence,
+            s.confidence_mean,
+            s.confidence_max,
             s.mean_c_in,
             s.mean_c_out,
         );
@@ -114,7 +114,7 @@ pub fn run(args: AttentionWalkArgs) -> Result<(), Box<dyn std::error::Error>> {
 
     let config = WalkConfig {
         top_k: args.top_k,
-        min_score: args.min_score,
+        activation_floor: args.activation_floor,
     };
 
     let all_layers: Vec<usize> = match args.layer {
@@ -181,8 +181,8 @@ pub fn run(args: AttentionWalkArgs) -> Result<(), Box<dyn std::error::Error>> {
     let mut ranked = results.clone();
     ranked.sort_by(|a, b| {
         b.stats
-            .mean_confidence
-            .partial_cmp(&a.stats.mean_confidence)
+            .confidence_mean
+            .partial_cmp(&a.stats.confidence_mean)
             .unwrap()
     });
     for (i, r) in ranked.iter().take(5).enumerate() {
@@ -190,8 +190,8 @@ pub fn run(args: AttentionWalkArgs) -> Result<(), Box<dyn std::error::Error>> {
             "    #{:2} L{:2}  mean={:.4}  max={:.4}  edges={}",
             i + 1,
             r.layer,
-            r.stats.mean_confidence,
-            r.stats.max_confidence,
+            r.stats.confidence_mean,
+            r.stats.confidence_max,
             r.edges_found,
         );
     }
@@ -209,9 +209,9 @@ pub fn run(args: AttentionWalkArgs) -> Result<(), Box<dyn std::error::Error>> {
                     "heads_walked": r.heads_walked,
                     "edges_found": r.edges_found,
                     "elapsed_ms": r.elapsed_ms,
-                    "mean_confidence": r.stats.mean_confidence,
-                    "max_confidence": r.stats.max_confidence,
-                    "min_confidence": r.stats.min_confidence,
+                    "confidence_mean": r.stats.confidence_mean,
+                    "confidence_max": r.stats.confidence_max,
+                    "confidence_min": r.stats.confidence_min,
                     "mean_c_in": r.stats.mean_c_in,
                     "mean_c_out": r.stats.mean_c_out,
                 })

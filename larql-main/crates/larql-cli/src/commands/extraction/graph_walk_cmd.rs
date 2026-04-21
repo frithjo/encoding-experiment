@@ -62,7 +62,7 @@ pub fn run(args: GraphWalkArgs) -> Result<(), Box<dyn std::error::Error>> {
     for (i, prompt) in prompts.iter().enumerate() {
         let encoding = model.tokenizer().encode(*prompt, true)
             .map_err(|e| format!("tokenize error: {e}"))?;
-        let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+        let token_ids: Vec<u32> = encoding.ids.clone();
 
         // Get or build feature lists
         let fl_ffn = if let Some(ref path) = args.load {

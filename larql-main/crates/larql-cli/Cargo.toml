@@ -11,13 +11,13 @@ name = "larql"
 path = "src/main.rs"
 
 [dependencies]
-larql-core = { path = "../larql-core" }
+larql-core = { path = "../larql-core", features = ["http"] }
 larql-inference = { path = "../larql-inference" }
 larql-models = { path = "../larql-models" }
 larql-lql = { path = "../larql-lql" }
+larql-tokenizer = { path = "../larql-tokenizer" }
 larql-vindex = { path = "../larql-vindex" }
 clap = { version = "4", features = ["derive"] }
 indicatif = "0.17"
-reqwest = { version = "0.12", features = ["blocking", "json"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

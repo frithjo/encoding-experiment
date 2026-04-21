@@ -12,13 +12,13 @@ pub struct FilterArgs {
     #[arg(short, long)]
     output: PathBuf,
 
-    /// Minimum confidence (0.0-1.0).
+    /// Minimum edge confidence (0.0–1.0).
     #[arg(long)]
-    min_confidence: Option<f64>,
+    confidence_floor: Option<f64>,
 
-    /// Maximum confidence (0.0-1.0).
+    /// Maximum edge confidence (0.0–1.0).
     #[arg(long)]
-    max_confidence: Option<f64>,
+    confidence_ceiling: Option<f64>,
 
     /// Minimum layer (inclusive, from edge metadata).
     #[arg(long)]
@@ -69,8 +69,8 @@ pub fn run(args: FilterArgs) -> Result<(), Box<dyn std::error::Error>> {
     let graph = larql_core::load(&args.graph)?;
 
     let config = FilterConfig {
-        min_confidence: args.min_confidence,
-        max_confidence: args.max_confidence,
+        confidence_floor: args.confidence_floor,
+        confidence_ceiling: args.confidence_ceiling,
         min_layer: args.min_layer,
         max_layer: args.max_layer,
         min_selectivity: args.min_selectivity,

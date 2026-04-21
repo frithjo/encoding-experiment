@@ -233,7 +233,7 @@ pub fn run(args: ProjectionTestArgs) -> Result<(), Box<dyn std::error::Error>> {
         let encoding = model.tokenizer()
             .encode(prompt.as_str(), true)
             .map_err(|e| format!("tokenize error: {e}"))?;
-        let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+        let token_ids: Vec<u32> = encoding.ids.clone();
         let seq_len = token_ids.len();
         if seq_len < 3 { continue; }
 

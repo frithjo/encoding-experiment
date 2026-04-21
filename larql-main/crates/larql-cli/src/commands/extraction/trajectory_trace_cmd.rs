@@ -365,7 +365,7 @@ pub fn run(args: TrajectoryTraceArgs) -> Result<(), Box<dyn std::error::Error>> 
             .tokenizer()
             .encode(prompt, true)
             .map_err(|e| format!("tokenize error: {e}"))?;
-        let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+        let token_ids: Vec<u32> = encoding.ids.clone();
 
         let trace = trace_forward(weights, &token_ids, &capture_layers, false, 0);
         let pred = larql_inference::predict(weights, model.tokenizer(), &token_ids, 1);

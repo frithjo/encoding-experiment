@@ -27,13 +27,13 @@ pub struct WeightWalkArgs {
     #[arg(long, default_value = "5")]
     top_k: usize,
 
-    /// Minimum activation score for top-k selection.
+    /// Minimum raw activation for top-k token inclusion (weight / attention walks).
     #[arg(long, default_value = "0.02")]
-    min_score: f32,
+    activation_floor: f32,
 
-    /// Minimum normalized confidence to keep an edge (0.0-1.0). Filters during extraction.
+    /// Minimum normalized confidence to keep an edge (0.0–1.0). Filters during extraction.
     #[arg(long, default_value = "0.0")]
-    min_confidence: f64,
+    confidence_floor: f64,
 
     /// Write layer statistics to a separate file.
     #[arg(long)]
@@ -70,7 +70,7 @@ impl WalkCallbacks for ProgressCallbacks {
             result.layer,
             result.edges_found,
             result.elapsed_ms / 1000.0,
-            s.mean_confidence,
+            s.confidence_mean,
             s.mean_selectivity,
             s.mean_c_in,
             s.mean_c_out,
@@ -121,7 +121,7 @@ pub fn run(args: WeightWalkArgs) -> Result<(), Box<dyn std::error::Error>> {
 
     let config = WalkConfig {
         top_k: args.top_k,
-        min_score: args.min_score,
+        activation_floor: args.activation_floor,
     };
 
     // Determine which layers to walk
@@ -177,12 +177,12 @@ pub fn run(args: WeightWalkArgs) -> Result<(), Box<dyn std::error::Error>> {
     let total_features: usize = results.iter().map(|r| r.features_scanned).sum();
 
     // Apply min-confidence filter if set
-    if args.min_confidence > 0.0 {
+    if args.confidence_floor > 0.0 {
         let before = graph.edge_count();
         let kept: Vec<Edge> = graph
             .edges()
             .iter()
-            .filter(|e| e.confidence >= args.min_confidence)
+            .filter(|e| e.confidence >= args.confidence_floor)
             .cloned()
             .collect();
         let mut filtered = Graph::new();
@@ -195,7 +195,7 @@ pub fn run(args: WeightWalkArgs) -> Result<(), Box<dyn std::error::Error>> {
         eprintln!(
             "\n  Filtered: removed {} edges below c={:.2}, kept {}",
             removed,
-            args.min_confidence,
+            args.confidence_floor,
             graph.edge_count()
         );
     }
@@ -223,7 +223,7 @@ pub fn run(args: WeightWalkArgs) -> Result<(), Box<dyn std::error::Error>> {
             i + 1,
             r.layer,
             r.stats.mean_selectivity,
-            r.stats.mean_confidence,
+            r.stats.confidence_mean,
             r.stats.mean_c_in,
             r.stats.self_loop_pct,
             r.edges_found,
@@ -234,8 +234,8 @@ pub fn run(args: WeightWalkArgs) -> Result<(), Box<dyn std::error::Error>> {
     let mut by_conf = results.clone();
     by_conf.sort_by(|a, b| {
         b.stats
-            .mean_confidence
-            .partial_cmp(&a.stats.mean_confidence)
+            .confidence_mean
+            .partial_cmp(&a.stats.confidence_mean)
             .unwrap()
     });
     for (i, r) in by_conf.iter().take(5).enumerate() {
@@ -243,7 +243,7 @@ pub fn run(args: WeightWalkArgs) -> Result<(), Box<dyn std::error::Error>> {
             "    #{:2} L{:2}  conf={:.4}  sel={:.4}  c_out={:.2}  loops={:.1}%  edges={}",
             i + 1,
             r.layer,
-            r.stats.mean_confidence,
+            r.stats.confidence_mean,
             r.stats.mean_selectivity,
             r.stats.mean_c_out,
             r.stats.self_loop_pct,
@@ -278,8 +278,8 @@ pub fn run(args: WeightWalkArgs) -> Result<(), Box<dyn std::error::Error>> {
                     "features_scanned": r.features_scanned,
                     "edges_found": r.edges_found,
                     "elapsed_ms": r.elapsed_ms,
-                    "mean_confidence": round4(s.mean_confidence),
-                    "max_confidence": round4(s.max_confidence),
+                    "confidence_mean": round4(s.confidence_mean),
+                    "confidence_max": round4(s.confidence_max),
                     "mean_selectivity": round4(s.mean_selectivity),
                     "max_selectivity": round4(s.max_selectivity),
                     "mean_c_in": round4(s.mean_c_in),

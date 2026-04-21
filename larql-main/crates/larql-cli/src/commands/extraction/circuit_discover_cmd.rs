@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use clap::Args;
 use larql_inference::ndarray;
-use larql_inference::tokenizers;
+use larql_tokenizer;
 use larql_vindex::load_feature_labels;
 use larql_inference::InferenceModel;
 
@@ -475,7 +475,7 @@ pub fn run(args: CircuitDiscoverArgs) -> Result<(), Box<dyn std::error::Error>> 
 fn project_top_token(
     embed: &ndarray::ArrayBase<impl ndarray::Data<Elem = f32>, ndarray::Ix2>,
     vector: &[f32],
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
 ) -> String {
     let vocab_size = embed.shape()[0];
     let mut best_idx = 0;

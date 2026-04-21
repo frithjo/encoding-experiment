@@ -177,7 +177,7 @@ pub fn run(args: ExtractIndexArgs) -> Result<(), Box<dyn std::error::Error>> {
         // Find or create tokenizer
         let tok_path = model_path.join("tokenizer.json");
         let tokenizer = if tok_path.exists() {
-            larql_vindex::tokenizers::Tokenizer::from_file(&tok_path)
+            larql_tokenizer::load_tokenizer(&tok_path)
                 .map_err(|e| format!("failed to load tokenizer: {e}"))?
         } else {
             return Err(format!("tokenizer.json not found at {}", model_path.display()).into());
@@ -185,7 +185,7 @@ pub fn run(args: ExtractIndexArgs) -> Result<(), Box<dyn std::error::Error>> {
 
         larql_vindex::build_vindex_streaming(
             &model_path,
-            &tokenizer,
+            &*tokenizer,
             model_name,
             output,
             args.down_top_k,

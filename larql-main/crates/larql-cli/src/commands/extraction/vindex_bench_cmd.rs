@@ -56,7 +56,7 @@ pub fn run(args: VindexBenchArgs) -> Result<(), Box<dyn std::error::Error>> {
     for prompt in &prompts {
         let encoding = model.tokenizer().encode(*prompt, true)
             .map_err(|e| format!("tokenize error: {e}"))?;
-        let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+        let token_ids: Vec<u32> = encoding.ids.clone();
         let start = Instant::now();
         let result = predict(weights, model.tokenizer(), &token_ids, 5);
         let ms = start.elapsed().as_secs_f64() * 1000.0;
@@ -80,7 +80,7 @@ pub fn run(args: VindexBenchArgs) -> Result<(), Box<dyn std::error::Error>> {
         for (i, prompt) in prompts.iter().enumerate() {
             let encoding = model.tokenizer().encode(*prompt, true)
                 .map_err(|e| format!("tokenize error: {e}"))?;
-            let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+            let token_ids: Vec<u32> = encoding.ids.clone();
 
             let start = Instant::now();
             let result = predict_with_ffn(weights, model.tokenizer(), &token_ids, 5, &walk_ffn);
@@ -122,7 +122,7 @@ pub fn run(args: VindexBenchArgs) -> Result<(), Box<dyn std::error::Error>> {
             for (i, prompt) in prompts.iter().enumerate() {
                 let encoding = model.tokenizer().encode(*prompt, true)
                     .map_err(|e| format!("tokenize error: {e}"))?;
-                let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+                let token_ids: Vec<u32> = encoding.ids.clone();
                 let start = Instant::now();
                 let result = predict_with_ffn(weights, model.tokenizer(), &token_ids, 5, &dc_ffn);
                 total_ms += start.elapsed().as_secs_f64() * 1000.0;
@@ -153,7 +153,7 @@ pub fn run(args: VindexBenchArgs) -> Result<(), Box<dyn std::error::Error>> {
     for (i, prompt) in prompts.iter().enumerate() {
         let encoding = model.tokenizer().encode(*prompt, true)
             .map_err(|e| format!("tokenize error: {e}"))?;
-        let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+        let token_ids: Vec<u32> = encoding.ids.clone();
 
         let result = predict_with_ffn(weights, model.tokenizer(), &token_ids, 5, &walk_ffn);
         let (w_tok, w_prob) = result.predictions.first()

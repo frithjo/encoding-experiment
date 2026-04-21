@@ -86,7 +86,7 @@ pub fn run(args: PredictArgs) -> Result<(), Box<dyn std::error::Error>> {
         .tokenizer()
         .encode(args.prompt.as_str(), true)
         .map_err(|e| format!("tokenize error: {e}"))?;
-    let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+    let token_ids: Vec<u32> = encoding.ids.clone();
     eprintln!("  {} tokens: {:?}", token_ids.len(), token_ids);
 
     if args.compare {

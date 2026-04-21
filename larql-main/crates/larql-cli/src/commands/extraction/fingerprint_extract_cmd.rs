@@ -326,7 +326,7 @@ pub fn run(args: FingerprintExtractArgs) -> Result<(), Box<dyn std::error::Error
             let encoding = model.tokenizer()
                 .encode(format!(" {tok_str}").as_str(), false)
                 .map_err(|e| format!("tokenize error: {e}"))?;
-            let ids = encoding.get_ids();
+            let ids = encoding.ids.as_slice();
             if ids.is_empty() { continue; }
             let tok_id = *ids.last().unwrap();
 
@@ -390,7 +390,7 @@ fn round4(v: f32) -> f32 {
 fn top_token(
     embed: &ndarray::ArrayBase<impl ndarray::Data<Elem = f32>, ndarray::Ix2>,
     vector: &[f32],
-    tokenizer: &larql_inference::tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
 ) -> String {
     let vocab_size = embed.shape()[0];
     let mut best_idx = 0;

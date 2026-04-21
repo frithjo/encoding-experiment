@@ -4,7 +4,7 @@ use std::time::Instant;
 use clap::Args;
 use larql_vindex::{
     load_vindex_embeddings, load_vindex_tokenizer,
-    IndexLoadCallbacks, SilentLoadCallbacks, VectorIndex, ndarray, tokenizers,
+    IndexLoadCallbacks, SilentLoadCallbacks, VectorIndex, ndarray,
 };
 use larql_inference::{
     predict_with_ffn, predict_with_router, InferenceModel, LayerFfnRouter, ModelWeights,
@@ -179,7 +179,7 @@ fn run_vindex_walk(
     let encoding = tokenizer
         .encode(args.prompt.as_str(), true)
         .map_err(|e| format!("tokenize error: {e}"))?;
-    let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+    let token_ids: Vec<u32> = encoding.ids.clone();
     vlog!(
         verbose,
         "Prompt: {:?} ({} tokens: {:?})",
@@ -231,7 +231,7 @@ fn run_model_embedding_walk(
         .tokenizer()
         .encode(args.prompt.as_str(), true)
         .map_err(|e| format!("tokenize error: {e}"))?;
-    let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+    let token_ids: Vec<u32> = encoding.ids.clone();
     vlog!(
         verbose,
         "Prompt: {:?} ({} tokens: {:?})",
@@ -317,13 +317,13 @@ fn run_with_vindex_weights(
         load_start.elapsed().as_secs_f64()
     );
 
-    run_predict_inner(&weights, &tokenizer, args, index)
+    run_predict_inner(&weights, &*tokenizer, args, index)
 }
 
 /// Core predict logic shared by model and vindex paths.
 fn run_predict_inner(
     weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: &dyn larql_tokenizer::Tokenizer,
     args: &WalkArgs,
     index: &VectorIndex,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -332,7 +332,7 @@ fn run_predict_inner(
     let encoding = tokenizer
         .encode(args.prompt.as_str(), true)
         .map_err(|e| format!("tokenize error: {e}"))?;
-    let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+    let token_ids: Vec<u32> = encoding.ids.clone();
     vlog!(verbose, "Prompt: {:?} ({} tokens)", args.prompt, token_ids.len());
 
     // Walk FFN forward pass (with trace for analysis output)

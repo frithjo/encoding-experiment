@@ -55,7 +55,7 @@ pub fn run(args: AttentionCaptureArgs) -> Result<(), Box<dyn std::error::Error>>
             .tokenizer()
             .encode(prompt.as_str(), true)
             .map_err(|e| format!("tokenize error: {e}"))?;
-        let ids: Vec<u32> = encoding.get_ids().to_vec();
+        let ids: Vec<u32> = encoding.ids.clone();
         let labels: Vec<String> = ids
             .iter()
             .map(|&id| {

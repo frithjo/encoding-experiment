@@ -115,7 +115,7 @@ fn run_gguf_to_vindex(
         .and_then(|dir| {
             let tok_path = dir.join("tokenizer.json");
             if tok_path.exists() {
-                larql_vindex::tokenizers::Tokenizer::from_file(&tok_path).ok()
+                larql_tokenizer::load_tokenizer(&tok_path).ok()
             } else {
                 None
             }
@@ -130,7 +130,7 @@ fn run_gguf_to_vindex(
     let mut callbacks = SilentCallbacks;
     larql_vindex::build_vindex(
         &weights,
-        tokenizer_ref,
+        &**tokenizer_ref,
         &model_name,
         output,
         10,
@@ -156,7 +156,7 @@ fn run_safetensors_to_vindex(
         .or_else(|_| {
             // Try to load from the model directory
             let tok_path = input.join("tokenizer.json");
-            larql_vindex::tokenizers::Tokenizer::from_file(&tok_path)
+            larql_tokenizer::load_tokenizer(&tok_path)
                 .map_err(|e| larql_vindex::VindexError::Parse(e.to_string()))
         })?;
 
@@ -181,7 +181,7 @@ fn run_safetensors_to_vindex(
     let mut callbacks = SilentCallbacks;
     larql_vindex::build_vindex(
         &weights,
-        &tokenizer,
+        &*tokenizer,
         &model_name,
         output,
         10,

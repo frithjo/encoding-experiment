@@ -41,7 +41,7 @@ pub struct BfsArgs {
 
     /// Minimum edge confidence.
     #[arg(long, default_value = "0.3")]
-    min_confidence: f64,
+    confidence_floor: f64,
 
     /// Resume from checkpoint.
     #[arg(long)]
@@ -149,7 +149,7 @@ pub fn run(args: BfsArgs) -> Result<(), Box<dyn std::error::Error>> {
     let config = BfsConfig {
         max_depth: args.max_depth,
         max_entities: args.max_entities,
-        min_confidence: args.min_confidence,
+        confidence_floor: args.confidence_floor,
         ..Default::default()
     };
 

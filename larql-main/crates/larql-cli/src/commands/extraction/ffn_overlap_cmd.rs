@@ -32,7 +32,7 @@ pub fn run(args: FfnOverlapArgs) -> Result<(), Box<dyn std::error::Error>> {
 
     let encoding = model.tokenizer().encode(args.prompt.as_str(), true)
         .map_err(|e| format!("tokenize error: {e}"))?;
-    let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+    let token_ids: Vec<u32> = encoding.ids.clone();
 
     let layers: Vec<usize> = args.layers.split(',')
         .map(|s| s.trim().parse().unwrap())

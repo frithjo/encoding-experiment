@@ -153,7 +153,7 @@ pub fn run(args: ExtractRoutesArgs) -> Result<(), Box<dyn std::error::Error>> {
                 .tokenizer()
                 .encode(prompt.as_str(), true)
                 .map_err(|e| format!("tokenize error: {e}"))?;
-            let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+            let token_ids: Vec<u32> = encoding.ids.clone();
 
             // Run forward pass with activation capture
             let trace = trace_forward(

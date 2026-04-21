@@ -72,7 +72,7 @@ pub fn run(args: KgBenchArgs) -> Result<(), Box<dyn std::error::Error>> {
     for prompt in &prompts {
         let encoding = model.tokenizer().encode(*prompt, true)
             .map_err(|e| format!("tokenize error: {e}"))?;
-        let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+        let token_ids: Vec<u32> = encoding.ids.clone();
         let entity_tokens: Vec<(usize, f32)> = token_ids.iter().map(|&t| (t as usize, 1.0)).collect();
 
         println!("\n{:?}", prompt);
@@ -119,7 +119,7 @@ pub fn run(args: KgBenchArgs) -> Result<(), Box<dyn std::error::Error>> {
 
     let encoding = model.tokenizer().encode(prompts[0], true)
         .map_err(|e| format!("tokenize error: {e}"))?;
-    let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+    let token_ids: Vec<u32> = encoding.ids.clone();
     let entity_tokens: Vec<(usize, f32)> = token_ids.iter().map(|&t| (t as usize, 1.0)).collect();
 
     // Method 1: Dynamic lookup (HashMap per call)
