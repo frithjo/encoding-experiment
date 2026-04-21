@@ -146,10 +146,11 @@ impl Session {
             .map_err(|e| LqlError::exec("failed to connect to {url}", e))?;
 
         if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().map_err(|e| LqlError::exec("failed to read error response", e))?;
             return Err(LqlError::Execution(format!(
                 "server returned {}: {}",
-                resp.status(),
-                resp.text().unwrap_or_default()
+                status, text
             )));
         }
 
@@ -162,11 +163,24 @@ impl Session {
         let features = stats["features"].as_u64().unwrap_or(0);
 
         // Generate a unique session ID for this connection
-        let session_id = format!("larql-{}-{}", std::process::id(),
+        // Use getrandom to add a random component for better uniqueness
+        let mut random_bytes = [0u8; 8];
+        getrandom::getrandom(&mut random_bytes).unwrap_or_else(|_| {
+            // Fallback to simple hash if getrandom fails
+            let hash = std::collections::hash_map::DefaultHasher::new();
+            let mut hasher = std::collections::hash_map::DefaultHasher::default();
+            std::hash::Hash::hash(&std::process::id(), &mut hasher);
+            std::hash::Hash::hash(&std::time::SystemTime::now(), &mut hasher);
+            let h = std::hash::Hasher::finish(&hasher);
+            random_bytes = h.to_le_bytes();
+        });
+        let random_suffix = u64::from_le_bytes(random_bytes);
+        let session_id = format!("larql-{}-{}-{}", std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
-                .as_millis());
+                .as_nanos(),
+            random_suffix);
 
         self.backend = Backend::Remote {
             url: url.clone(),
@@ -202,6 +216,11 @@ impl Session {
     // status check → parse JSON` dance. These helpers consolidate the
     // pattern so the per-statement methods only have to assemble the
     // request shape and process the response body.
+
+    /// Helper to convert Vec<(String, String)> to Vec<(&str, &str)> for query parameters
+    fn to_query_ref(params: &[(String, String)]) -> Vec<(&str, &str)> {
+        params.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect()
+    }
 
     /// GET `{remote_url}{endpoint}` with optional query parameters,
     /// check the response status, and parse the body as JSON.
@@ -247,7 +266,7 @@ impl Session {
     ) -> Result<serde_json::Value, LqlError> {
         if !resp.status().is_success() {
             let status = resp.status();
-            let text = resp.text().unwrap_or_default();
+            let text = resp.text().map_err(|e| LqlError::exec("failed to read error response", e))?;
             return Err(LqlError::Execution(format!(
                 "{endpoint} failed ({status}): {text}"
             )));
@@ -279,18 +298,18 @@ impl Session {
             None => "all",
         };
 
-        let verbose_s = if verbose { "true".to_string() } else { "false".to_string() };
+        let verbose_s = if verbose { "true" } else { "false" };
         let mode_s = match mode {
             crate::ast::DescribeMode::Verbose => "verbose",
             crate::ast::DescribeMode::Brief => "brief",
             crate::ast::DescribeMode::Raw => "raw",
-        }.to_string();
+        };
         let layer_s = layer.map(|l| l.to_string());
         let mut q: Vec<(String, String)> = vec![
             ("entity".into(), entity.to_string()),
             ("band".into(), band_str.to_string()),
-            ("verbose".into(), verbose_s),
-            ("mode".into(), mode_s),
+            ("verbose".into(), verbose_s.to_string()),
+            ("mode".into(), mode_s.to_string()),
         ];
         if let Some(ref ls) = layer_s {
             q.push(("layer".into(), ls.clone()));
@@ -298,7 +317,7 @@ impl Session {
         if relations_only {
             q.push(("relations_only".into(), "true".into()));
         }
-        let qref: Vec<(&str, &str)> = q.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+        let qref = Self::to_query_ref(&q);
 
         let body = self.remote_get_json("/v1/describe", &qref)?;
 
@@ -401,7 +420,9 @@ impl Session {
                             ..
                         } = op
                         {
-                            if ent.to_lowercase() == entity_lower {
+                            // Cache lowercase comparison to avoid repeated allocations
+                            let ent_lower = ent.to_lowercase();
+                            if ent_lower == entity_lower {
                                 local_edges.push((
                                     relation.as_deref().unwrap_or(""),
                                     target.as_str(),
@@ -720,22 +741,42 @@ impl Session {
     ) -> Result<Vec<String>, LqlError> {
         // Build delete operations from conditions.
         let mut ops = Vec::new();
+        let mut missing_fields = Vec::new();
+        
         let layer = conditions
             .iter()
             .find(|c| c.field == "layer")
             .and_then(|c| match &c.value {
                 crate::ast::Value::Integer(n) => Some(*n as usize),
                 _ => None,
-            })
-            .unwrap_or(0);
+            });
+        
         let feature = conditions
             .iter()
             .find(|c| c.field == "feature")
             .and_then(|c| match &c.value {
                 crate::ast::Value::Integer(n) => Some(*n as usize),
                 _ => None,
-            })
-            .unwrap_or(0);
+            });
+        
+        if layer.is_none() {
+            missing_fields.push("layer");
+        }
+        if feature.is_none() {
+            missing_fields.push("feature");
+        }
+        
+        if !missing_fields.is_empty() {
+            return Err(LqlError::Execution(format!(
+                "DELETE requires {} condition{}: {}",
+                if missing_fields.len() == 1 { "a" } else { "" },
+                if missing_fields.len() == 1 { "" } else { "s" },
+                missing_fields.join(", ")
+            )));
+        }
+        
+        let layer = layer.unwrap();
+        let feature = feature.unwrap();
 
         ops.push(larql_vindex::PatchOp::Delete {
             layer,
@@ -743,18 +784,21 @@ impl Session {
             reason: Some("remote DELETE".into()),
         });
 
+        // Use sensible defaults for patch metadata since remote patches
+        // don't have a local base model reference
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
         let patch = larql_vindex::VindexPatch {
             version: 1,
-            base_model: String::new(),
+            base_model: "remote".to_string(),
             base_checksum: None,
-            created_at: String::new(),
+            created_at: now,
             description: Some(format!("DELETE L{layer} F{feature}")),
             author: None,
             tags: vec![],
             operations: ops,
         };
 
-        let _ = self.remote_post_json(
+        let _result = self.remote_post_json(
             "/v1/patches/apply",
             &serde_json::json!({"patch": patch}),
             false,
@@ -768,22 +812,42 @@ impl Session {
         set: &[crate::ast::Assignment],
         conditions: &[crate::ast::Condition],
     ) -> Result<Vec<String>, LqlError> {
+        let mut missing_fields = Vec::new();
+        
         let layer = conditions
             .iter()
             .find(|c| c.field == "layer")
             .and_then(|c| match &c.value {
                 crate::ast::Value::Integer(n) => Some(*n as usize),
                 _ => None,
-            })
-            .unwrap_or(0);
+            });
+        
         let feature = conditions
             .iter()
             .find(|c| c.field == "feature")
             .and_then(|c| match &c.value {
                 crate::ast::Value::Integer(n) => Some(*n as usize),
                 _ => None,
-            })
-            .unwrap_or(0);
+            });
+        
+        if layer.is_none() {
+            missing_fields.push("layer");
+        }
+        if feature.is_none() {
+            missing_fields.push("feature");
+        }
+        
+        if !missing_fields.is_empty() {
+            return Err(LqlError::Execution(format!(
+                "UPDATE requires {} condition{}: {}",
+                if missing_fields.len() == 1 { "a" } else { "" },
+                if missing_fields.len() == 1 { "" } else { "s" },
+                missing_fields.join(", ")
+            )));
+        }
+        
+        let layer = layer.unwrap();
+        let feature = feature.unwrap();
 
         // Build down_meta from SET assignments.
         let target = set
@@ -803,6 +867,8 @@ impl Session {
             });
 
         let down_meta = target.as_ref().map(|t| {
+            // top_token_id is set to 0; the server is expected to resolve
+            // this from the top_token string if needed for validation.
             larql_vindex::patch::core::PatchDownMeta {
                 top_token: t.clone(),
                 top_token_id: 0,
@@ -817,18 +883,21 @@ impl Session {
             down_meta,
         };
 
+        // Use sensible defaults for patch metadata since remote patches
+        // don't have a local base model reference
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
         let patch = larql_vindex::VindexPatch {
             version: 1,
-            base_model: String::new(),
+            base_model: "remote".to_string(),
             base_checksum: None,
-            created_at: String::new(),
+            created_at: now,
             description: Some(format!("UPDATE L{layer} F{feature}")),
             author: None,
             tags: vec![],
             operations: vec![op],
         };
 
-        let _ = self.remote_post_json(
+        let _result = self.remote_post_json(
             "/v1/patches/apply",
             &serde_json::json!({"patch": patch}),
             false,
@@ -873,6 +942,10 @@ impl Session {
             }));
         }
 
+        // Track unknown fields for warning
+        let supported_fields = ["entity", "relation", "layer", "confidence", "c_score"];
+        let mut unknown_fields = Vec::new();
+
         for cond in conditions {
             match cond.field.as_str() {
                 "entity" => {
@@ -901,8 +974,17 @@ impl Session {
                         _ => {}
                     }
                 }
-                _ => {}
+                _ => {
+                    if !supported_fields.contains(&cond.field.as_str()) {
+                        unknown_fields.push(cond.field.clone());
+                    }
+                }
             }
+        }
+
+        // Warn about unknown fields
+        if !unknown_fields.is_empty() {
+            eprintln!("Warning: SELECT ignored unknown condition fields: {}", unknown_fields.join(", "));
         }
 
         let result = self.remote_post_json(
@@ -1049,7 +1131,7 @@ impl Session {
         if let Some(ref v) = band_filter {
             q.push(("band_filter".into(), v.clone()));
         }
-        let qref: Vec<(&str, &str)> = q.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+        let qref = Self::to_query_ref(&q);
 
         let body = self.remote_get_json("/v1/tokens", &qref)?;
 
@@ -1079,9 +1161,9 @@ impl Session {
             }
         }
 
-        let groups = body["groups"].as_array().cloned().unwrap_or_default();
+        let groups = body["groups"].as_array().map(|arr| arr.iter()).flatten().unwrap_or(std::iter::empty());
         let mut parsed: Vec<(String, HashMap<String, TokenHit>)> = Vec::new();
-        for g in &groups {
+        for g in groups {
             let label = g["label"].as_str().unwrap_or("").to_string();
             let mut hits: HashMap<String, TokenHit> = HashMap::new();
             if let Some(rows) = g["token_hits"].as_array() {
@@ -1193,7 +1275,7 @@ impl Session {
             params.push(("end".to_string(), r.end.to_string()));
         }
 
-        let qref: Vec<(&str, &str)> = params.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+        let qref = Self::to_query_ref(&params);
         let body = self.remote_get_json("/v1/layers", &qref)?;
 
         let mut out = Vec::new();
@@ -1251,7 +1333,7 @@ impl Session {
             params.push(("limit".to_string(), lim.to_string()));
         }
 
-        let qref: Vec<(&str, &str)> = params.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+        let qref = Self::to_query_ref(&params);
         let body = self.remote_get_json("/v1/features", &qref)?;
 
         if let Some(error) = body.get("error") {
@@ -1297,7 +1379,7 @@ impl Session {
             params.push(("limit".to_string(), lim.to_string()));
         }
 
-        let qref: Vec<(&str, &str)> = params.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+        let qref = Self::to_query_ref(&params);
         let body = self.remote_get_json("/v1/entities", &qref)?;
 
         let mut out = Vec::new();
@@ -1330,16 +1412,27 @@ impl Session {
             _ => return Err(LqlError::Execution("not connected to a remote server".into())),
         };
 
-        let pos = local_patches
-            .iter()
-            .position(|p| p.description.as_deref().unwrap_or("unnamed") == name);
+        // Try to parse as index first, then fall back to description match
+        let pos = if let Ok(idx) = name.parse::<usize>() {
+            if idx < local_patches.len() {
+                Some(idx)
+            } else {
+                None
+            }
+        } else {
+            // Fallback to description match for backward compatibility
+            local_patches
+                .iter()
+                .position(|p| p.description.as_deref().unwrap_or("unnamed") == name)
+        };
 
         match pos {
             Some(i) => {
-                local_patches.remove(i);
-                Ok(vec![format!("Removed local patch: {name}")])
+                let removed = local_patches.remove(i);
+                let desc = removed.description.as_deref().unwrap_or("unnamed");
+                Ok(vec![format!("Removed local patch #{}: {}", i, desc)])
             }
-            None => Err(LqlError::Execution(format!("local patch not found: {name}")))
+            None => Err(LqlError::Execution(format!("local patch not found: {name} (use index or description)")))
         }
     }
 }
