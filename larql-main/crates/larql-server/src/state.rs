@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use larql_models::ModelWeights;
-use larql_vindex::{PatchedVindex, VindexConfig, ndarray::Array2, tokenizers};
+use larql_vindex::{PatchedVindex, TokenizerArc, VindexConfig, ndarray::Array2};
 use tokio::sync::RwLock;
 
 use crate::cache::DescribeCache;
@@ -25,7 +25,7 @@ pub struct LoadedModel {
     pub embeddings: Array2<f32>,
     pub embed_scale: f32,
     /// Tokenizer for embedding lookups.
-    pub tokenizer: tokenizers::Tokenizer,
+    pub tokenizer: TokenizerArc,
     /// Whether inference is disabled (--no-infer).
     pub infer_disabled: bool,
     /// Model weights, lazy-loaded on first INFER request.

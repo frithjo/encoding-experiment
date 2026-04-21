@@ -828,17 +828,17 @@ fn test_walk_hits_include_relation_label() {
 // ══════════════════════════════════════════════════════════════
 
 #[test]
-fn test_describe_min_score_filtering() {
+fn test_describe_gate_floor_filtering() {
     let index = test_index();
     let patched = PatchedVindex::new(index);
     let query = Array1::from_vec(vec![1.0, 0.0, 0.0, 0.0]);
     let trace = patched.walk(&query, &[0, 1], 10);
 
-    let min_score = 0.5;
+    let gate_floor = 0.5;
     let mut edges = Vec::new();
     for (_, hits) in &trace.layers {
         for hit in hits {
-            if hit.gate_score >= min_score {
+            if hit.gate_score >= gate_floor {
                 edges.push(hit.meta.top_token.clone());
             }
         }
@@ -846,8 +846,8 @@ fn test_describe_min_score_filtering() {
     // Only hits above threshold should pass
     for (_, hits) in &trace.layers {
         for hit in hits {
-            if hit.gate_score < min_score {
-                assert!(!edges.contains(&hit.meta.top_token) || hit.gate_score >= min_score);
+            if hit.gate_score < gate_floor {
+                assert!(!edges.contains(&hit.meta.top_token) || hit.gate_score >= gate_floor);
             }
         }
     }
@@ -929,10 +929,10 @@ fn test_select_entity_substring_match() {
 }
 
 #[test]
-fn test_select_min_confidence_filter() {
+fn test_select_confidence_floor_filter() {
     let scores = vec![0.1f32, 0.5, 0.8, 0.95];
-    let min = 0.5;
-    let filtered: Vec<f32> = scores.into_iter().filter(|s| *s >= min).collect();
+    let floor = 0.5;
+    let filtered: Vec<f32> = scores.into_iter().filter(|s| *s >= floor).collect();
     assert_eq!(filtered, vec![0.5, 0.8, 0.95]);
 }
 
@@ -1326,17 +1326,17 @@ fn test_stream_infer_modes() {
 
 #[test]
 fn test_grpc_describe_request_fields() {
-    // Mirrors DescribeRequest proto message
+    // Mirrors DescribeRequest proto message (`gate_floor` field)
     let entity = "France";
     let band = "knowledge";
     let verbose = false;
     let limit = 20u32;
-    let min_score = 5.0f32;
+    let gate_floor = 5.0f32;
     assert!(!entity.is_empty());
     assert!(!band.is_empty());
     assert!(!verbose);
     assert!(limit > 0);
-    assert!(min_score > 0.0);
+    assert!(gate_floor > 0.0);
 }
 
 #[test]

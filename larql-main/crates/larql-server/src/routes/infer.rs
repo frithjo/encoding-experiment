@@ -59,7 +59,7 @@ fn run_infer(
         .tokenizer
         .encode(req.prompt.as_str(), true)
         .map_err(|e| ServerError::Internal(format!("tokenize error: {e}")))?;
-    let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+    let token_ids: Vec<u32> = encoding.ids.clone();
 
     if token_ids.is_empty() {
         return Err(ServerError::BadRequest("empty prompt".into()));
@@ -80,7 +80,7 @@ fn run_infer(
         let walk_start = std::time::Instant::now();
         let pred = larql_inference::predict_with_ffn(
             weights,
-            &model.tokenizer,
+            model.tokenizer.as_ref(),
             &token_ids,
             req.top,
             &walk_ffn,
@@ -129,7 +129,7 @@ fn run_infer(
         let dense_start = std::time::Instant::now();
         let pred = larql_inference::predict(
             weights,
-            &model.tokenizer,
+            model.tokenizer.as_ref(),
             &token_ids,
             req.top,
         );

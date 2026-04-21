@@ -11,16 +11,16 @@ name = "larql-server"
 path = "src/main.rs"
 
 [dependencies]
-larql-vindex = { path = "../larql-vindex" }
+larql-core = { path = "../larql-core", features = ["http-async"], optional = true }
+larql-vindex = { path = "../larql-vindex", optional = true }
 larql-inference = { path = "../larql-inference" }
 larql-models = { path = "../larql-models" }
+larql-tokenizer = { path = "../larql-tokenizer" }
 
 axum = { version = "0.8", features = ["ws"] }
 axum-server = { version = "0.7", features = ["tls-rustls"] }
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"
-tonic = "0.13"
-prost = "0.13"
 tower = { version = "0.5", features = ["limit"] }
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 tracing = "0.1"
@@ -31,6 +31,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 
-[build-dependencies]
-tonic-build = "0.13"
-protobuf-src = "2"
+[features]
+default = ["http-async", "huggingface"]
+http-async = ["dep:larql-core", "larql-core/http-async", "dep:larql-vindex"]
+huggingface = ["dep:larql-core", "larql-core/huggingface", "dep:larql-vindex", "larql-vindex/huggingface"]

@@ -61,11 +61,11 @@ fn compute_residuals(
         Ok(e) => e,
         Err(_) => return Vec::new(),
     };
-    let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+    let token_ids: Vec<u32> = encoding.ids.clone();
 
     let walk_ffn = larql_inference::vindex::WalkFfn::new_with_trace(weights, patched, 8092);
     let _result = larql_inference::predict_with_ffn(
-        weights, &model.tokenizer, &token_ids, 1, &walk_ffn,
+        weights, model.tokenizer.as_ref(), &token_ids, 1, &walk_ffn,
     );
 
     walk_ffn.take_residuals().into_iter()
@@ -89,7 +89,7 @@ fn apply_insert(
         Ok(e) => e,
         Err(_) => return (0, false),
     };
-    let target_ids: Vec<u32> = target_encoding.get_ids().to_vec();
+    let target_ids: Vec<u32> = target_encoding.ids.clone();
     let target_id = target_ids.first().copied().unwrap_or(0);
 
     let mut target_embed = vec![0.0f32; hidden];
@@ -130,7 +130,7 @@ fn apply_insert(
                 Ok(e) => e,
                 Err(_) => continue,
             };
-            let ids = enc.get_ids();
+            let ids = enc.ids.as_slice();
             let mut ev = vec![0.0f32; hidden];
             for &tok in ids {
                 let row = model.embeddings.row(tok as usize);

@@ -43,7 +43,7 @@ fn walk_prompt(
         .tokenizer
         .encode(params.prompt.as_str(), true)
         .map_err(|e| ServerError::Internal(format!("tokenize error: {e}")))?;
-    let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+    let token_ids: Vec<u32> = encoding.ids.clone();
 
     if token_ids.is_empty() {
         return Err(ServerError::BadRequest("empty prompt".into()));

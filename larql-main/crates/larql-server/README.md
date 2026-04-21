@@ -78,7 +78,7 @@ Query all knowledge edges for an entity. Edges include probe-confirmed relation 
 
 ```
 GET /v1/describe?entity=France
-GET /v1/describe?entity=France&band=all&verbose=true&limit=10&min_score=5.0
+GET /v1/describe?entity=France&band=all&verbose=true&limit=10&gate_floor=5.0
 ```
 
 ```json
@@ -100,7 +100,7 @@ GET /v1/describe?entity=France&band=all&verbose=true&limit=10&min_score=5.0
 | `band` | `knowledge` | Layer band: syntax, knowledge, output, all |
 | `verbose` | false | Include layer_min, layer_max, count per edge |
 | `limit` | 20 | Max edges |
-| `min_score` | 5.0 | Minimum gate score |
+| `gate_floor` | 5.0 | Minimum gate score (edges below this are dropped) |
 
 #### GET /v1/walk
 
@@ -335,7 +335,7 @@ Cache DESCRIBE responses in memory with a configurable TTL. Useful for popular e
 larql serve output/gemma3-4b.vindex --cache-ttl 300  # 5 minute cache
 ```
 
-Cache keys include: model ID, entity, band, limit, min_score. Expired entries are evicted automatically.
+Cache keys include: model ID, entity, band, limit, gate_floor. Expired entries are evicted automatically.
 
 ## Sessions
 

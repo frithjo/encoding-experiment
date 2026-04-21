@@ -340,7 +340,7 @@ fn main() {
     println!("  1st request: DESCRIBE France → 12ms (computed)");
     println!("  2nd request: DESCRIBE France → <1ms (cached)");
     println!("  After 5 min: DESCRIBE France → 12ms (expired, recomputed)");
-    println!("\nCache key: model:entity:band:limit:min_score");
+    println!("\nCache key: model:entity:band:limit:gate_floor");
 
     // ── 11. RATE LIMITING ──
     section("Rate limiting (--rate-limit)");

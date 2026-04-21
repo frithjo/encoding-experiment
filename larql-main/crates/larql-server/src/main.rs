@@ -4,7 +4,6 @@ mod auth;
 mod cache;
 mod error;
 mod etag;
-mod grpc;
 mod ratelimit;
 mod routes;
 mod session;
@@ -81,10 +80,6 @@ struct Cli {
     log_level: String,
 
     /// gRPC port (enables gRPC server alongside HTTP).
-    #[arg(long)]
-    grpc_port: Option<u16>,
-
-    /// TLS certificate path for HTTPS.
     #[arg(long)]
     tls_cert: Option<PathBuf>,
 
@@ -291,23 +286,6 @@ async fn main() -> Result<(), BoxError> {
 
     // Trace middleware.
     app = app.layer(tower_http::trace::TraceLayer::new_for_http());
-
-    // gRPC server (if --grpc-port set).
-    if let Some(grpc_port) = cli.grpc_port {
-        let grpc_addr = format!("{}:{}", cli.host, grpc_port).parse()?;
-        let grpc_state = Arc::clone(&state);
-        info!("gRPC: listening on {}", grpc_addr);
-        tokio::spawn(async move {
-            let svc = grpc::VindexGrpcService { state: grpc_state };
-            if let Err(e) = tonic::transport::Server::builder()
-                .add_service(grpc::proto::vindex_service_server::VindexServiceServer::new(svc))
-                .serve(grpc_addr)
-                .await
-            {
-                tracing::error!("gRPC server error: {}", e);
-            }
-        });
-    }
 
     let addr = format!("{}:{}", cli.host, cli.port);
 

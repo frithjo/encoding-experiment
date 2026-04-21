@@ -50,12 +50,12 @@ pub(crate) fn explain_infer(
         .map_err(ServerError::InferenceUnavailable)?;
     let encoding = model.tokenizer.encode(req.prompt.as_str(), true)
         .map_err(|e| ServerError::Internal(format!("tokenize: {e}")))?;
-    let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+    let token_ids: Vec<u32> = encoding.ids.clone();
 
     // Decode tokens for attention display (None for special tokens like BOS/EOS)
     let token_strs: Vec<Option<String>> = if req.with_attention {
         token_ids.iter().map(|&id| {
-            larql_inference::decode_token(&model.tokenizer, id)
+            larql_inference::decode_token(model.tokenizer.as_ref(), id)
         }).collect()
     } else {
         Vec::new()
@@ -66,12 +66,12 @@ pub(crate) fn explain_infer(
 
     let (predictions_raw, attention_captures, lens_residuals) = if req.with_attention {
         let r = larql_inference::predict_with_ffn_attention(
-            weights, &model.tokenizer, &token_ids, req.top, &walk_ffn,
+            weights, model.tokenizer.as_ref(), &token_ids, req.top, &walk_ffn,
         );
         (r.predictions, r.attention, r.residuals)
     } else {
         let r = larql_inference::predict_with_ffn(
-            weights, &model.tokenizer, &token_ids, req.top, &walk_ffn,
+            weights, model.tokenizer.as_ref(), &token_ids, req.top, &walk_ffn,
         );
         (r.predictions, Vec::new(), Vec::new())
     };
@@ -80,7 +80,7 @@ pub(crate) fn explain_infer(
     // Build logit lens: layer → (top_token, probability)
     let lens_map: std::collections::HashMap<usize, (String, f64)> = lens_residuals.iter()
         .filter_map(|(layer, residual)| {
-            let pred = larql_inference::logit_lens_top1(weights, &model.tokenizer, residual)?;
+            let pred = larql_inference::logit_lens_top1(weights, model.tokenizer.as_ref(), residual)?;
             Some((*layer, pred))
         })
         .collect();

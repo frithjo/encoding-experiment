@@ -1,19 +1,17 @@
 //! Router setup — maps URL paths to handlers.
 
 pub mod describe;
-pub mod entities;
 pub mod explain;
-pub mod features;
 pub mod health;
 pub mod infer;
 pub mod insert;
-pub mod layers;
 pub mod models;
 pub mod patches;
 pub mod relations;
 pub mod select;
 pub mod stats;
 pub mod stream;
+pub mod tokens;
 pub mod walk;
 pub mod walk_ffn;
 
@@ -42,9 +40,7 @@ pub fn single_model_router(state: Arc<AppState>) -> Router {
         .route("/v1/stream", get(stream::handle_stream))
         .route("/v1/health", get(health::handle_health))
         .route("/v1/models", get(models::handle_models))
-        .route("/v1/layers", get(layers::handle_layers))
-        .route("/v1/features", get(features::handle_features))
-        .route("/v1/entities", get(entities::handle_entities))
+        .route("/v1/tokens", get(tokens::handle_tokens))
         .with_state(state)
 }
 
@@ -64,8 +60,6 @@ pub fn multi_model_router(state: Arc<AppState>) -> Router {
         .route("/v1/{model_id}/patches/{name}", delete(patches::handle_remove_patch_multi))
         .route("/v1/{model_id}/explain-infer", post(explain::handle_explain_multi))
         .route("/v1/{model_id}/insert", post(insert::handle_insert_multi))
-        .route("/v1/{model_id}/layers", get(layers::handle_layers_multi))
-        .route("/v1/{model_id}/features", get(features::handle_features_multi))
-        .route("/v1/{model_id}/entities", get(entities::handle_entities_multi))
+        .route("/v1/{model_id}/tokens", get(tokens::handle_tokens_multi))
         .with_state(state)
 }

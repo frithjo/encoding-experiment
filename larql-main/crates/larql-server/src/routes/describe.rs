@@ -22,8 +22,8 @@ pub struct DescribeParams {
     pub verbose: bool,
     #[serde(default = "default_limit")]
     pub limit: usize,
-    #[serde(default = "default_min_score")]
-    pub min_score: f32,
+    #[serde(default = "default_gate_floor")]
+    pub gate_floor: f32,
     /// Single layer (same semantics as LQL `DESCRIBE … AT LAYER n`).
     #[serde(default)]
     pub layer: Option<u32>,
@@ -36,7 +36,9 @@ pub struct DescribeParams {
 
 fn default_band() -> String { "knowledge".into() }
 fn default_limit() -> usize { 20 }
-fn default_min_score() -> f32 { 5.0 }
+fn default_gate_floor() -> f32 {
+    larql_vindex::DESCRIBE_GATE_FLOOR_DEFAULT
+}
 
 /// EXPLAIN WALK–style lines (matches `larql_lql::exec_explain` formatting).
 fn describe_followup_explain_walk(model: &LoadedModel, prompt: &str, scan_layers: &[usize]) -> Vec<String> {
@@ -44,7 +46,7 @@ fn describe_followup_explain_walk(model: &LoadedModel, prompt: &str, scan_layers
         Ok(e) => e,
         Err(_) => return Vec::new(),
     };
-    let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+    let token_ids: Vec<u32> = encoding.ids.clone();
     if token_ids.is_empty() {
         return Vec::new();
     }
@@ -88,7 +90,7 @@ fn describe_entity(
         .tokenizer
         .encode(params.entity.as_str(), false)
         .map_err(|e| ServerError::Internal(format!("tokenize error: {e}")))?;
-    let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+    let token_ids: Vec<u32> = encoding.ids.clone();
 
     if token_ids.is_empty() {
         return Ok(serde_json::json!({
@@ -161,7 +163,7 @@ fn describe_entity(
     );
 
     let mut ranked =
-        larql_vindex::collect_describe_edges_from_trace(&trace, &params.entity, params.min_score);
+        larql_vindex::collect_describe_edges_from_trace(&trace, &params.entity, params.gate_floor);
     if params.relations_only {
         ranked.retain(|e| model.probe_labels.contains_key(&(e.best_layer, e.best_feature)));
     }
@@ -255,7 +257,7 @@ async fn describe_with_cache(
             &params.entity,
             &params.band,
             params.limit,
-            params.min_score,
+            params.gate_floor,
             &layer_key,
             params.relations_only,
         );

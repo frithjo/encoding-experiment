@@ -33,7 +33,7 @@ impl DescribeCache {
         entity: &str,
         band: &str,
         limit: usize,
-        min_score: f32,
+        gate_floor: f32,
         layer_key: &str,
         relations_only: bool,
     ) -> String {
@@ -43,7 +43,7 @@ impl DescribeCache {
             entity,
             band,
             limit,
-            min_score as u32,
+            gate_floor as u32,
             layer_key,
             if relations_only { 1 } else { 0 }
         )

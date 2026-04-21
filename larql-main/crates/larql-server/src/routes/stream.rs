@@ -111,7 +111,7 @@ async fn handle_stream_describe(
             return;
         }
     };
-    let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+    let token_ids: Vec<u32> = encoding.ids.clone();
     if token_ids.is_empty() {
         let _ = socket
             .send(Message::Text(
@@ -285,7 +285,7 @@ async fn handle_stream_infer(
             return;
         }
     };
-    let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+    let token_ids: Vec<u32> = encoding.ids.clone();
     if token_ids.is_empty() {
         let _ = socket
             .send(Message::Text(
@@ -298,11 +298,11 @@ async fn handle_stream_infer(
     let start = std::time::Instant::now();
 
     let pred = if mode == "dense" {
-        larql_inference::predict(weights, &model.tokenizer, &token_ids, top_k)
+        larql_inference::predict(weights, model.tokenizer.as_ref(), &token_ids, top_k)
     } else {
         let patched = model.patched.blocking_read();
         let walk_ffn = larql_inference::WalkFfn::new(weights, &*patched, 8092);
-        larql_inference::predict_with_ffn(weights, &model.tokenizer, &token_ids, top_k, &walk_ffn)
+        larql_inference::predict_with_ffn(weights, model.tokenizer.as_ref(), &token_ids, top_k, &walk_ffn)
     };
 
     // Stream each prediction.

@@ -21,7 +21,7 @@ pub struct SelectRequest {
     #[serde(default = "default_limit")]
     pub limit: usize,
     #[serde(default)]
-    pub min_confidence: Option<f32>,
+    pub confidence_floor: Option<f32>,
     #[serde(default)]
     pub order_by: Option<String>,
     #[serde(default = "default_order")]
@@ -90,7 +90,7 @@ fn select_edges(
                         continue;
                     }
                 }
-                if let Some(min_c) = req.min_confidence {
+                if let Some(min_c) = req.confidence_floor {
                     if meta.c_score < min_c {
                         continue;
                     }
@@ -183,7 +183,7 @@ fn select_nearest(
     let encoding = tokenizer
         .encode(nearest.entity.as_str(), false)
         .map_err(|e| ServerError::Internal(format!("tokenize error: {}", e)))?;
-    let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+    let token_ids: Vec<u32> = encoding.ids.clone();
 
     if token_ids.is_empty() {
         return Ok(serde_json::json!({
@@ -215,7 +215,7 @@ fn select_nearest(
             let encoding = tokenizer
                 .encode(meta.top_token.trim(), false)
                 .map_err(|e| ServerError::Internal(format!("tokenize error: {}", e)))?;
-            let feat_token_ids: Vec<u32> = encoding.get_ids().to_vec();
+            let feat_token_ids: Vec<u32> = encoding.ids.clone();
 
             if !feat_token_ids.is_empty() {
                 let feat_embed = if feat_token_ids.len() == 1 {

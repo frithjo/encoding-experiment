@@ -77,7 +77,7 @@ fn enrich_patch_ops(model: &crate::state::LoadedModel, patch: &mut larql_vindex:
             if gate_vector_b64.is_none() {
                 let encoding = model.tokenizer.encode(entity.as_str(), false);
                 if let Ok(enc) = encoding {
-                    let ids = enc.get_ids();
+                    let ids = enc.ids.as_slice();
                     if !ids.is_empty() {
                         let mut embed = vec![0.0f32; hidden];
                         for &tok in ids {
