@@ -120,6 +120,19 @@ impl RelationClassifier {
         self.probe_count
     }
 
+    /// Aggregated feature counts per probe relation name (from `feature_labels.json` only).
+    /// Sorted by decreasing count, then name. Empty when there are no probe labels.
+    pub fn probe_relation_counts(&self) -> Vec<(String, usize)> {
+        use std::collections::HashMap;
+        let mut counts: HashMap<String, usize> = HashMap::new();
+        for label in self.probe_labels.values() {
+            *counts.entry(label.clone()).or_default() += 1;
+        }
+        let mut v: Vec<_> = counts.into_iter().collect();
+        v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        v
+    }
+
     /// Number of discovered clusters.
     pub fn num_clusters(&self) -> usize {
         self.clusters.as_ref().map(|c| c.k).unwrap_or(0)
@@ -311,5 +324,25 @@ mod tests {
     fn from_nonexistent_vindex() {
         let rc = RelationClassifier::from_vindex(std::path::Path::new("/nonexistent"));
         assert!(rc.is_none());
+    }
+
+    #[test]
+    fn probe_relation_counts_aggregate() {
+        let mut probes = std::collections::HashMap::new();
+        probes.insert((0, 1), "capital".to_string());
+        probes.insert((0, 2), "capital".to_string());
+        probes.insert((1, 0), "language".to_string());
+        let rc = RelationClassifier {
+            clusters: None,
+            feature_assignments: std::collections::HashMap::new(),
+            probe_labels: probes,
+            probe_count: 3,
+        };
+        let counts = rc.probe_relation_counts();
+        assert_eq!(counts.len(), 2);
+        assert_eq!(counts[0].0, "capital");
+        assert_eq!(counts[0].1, 2);
+        assert_eq!(counts[1].0, "language");
+        assert_eq!(counts[1].1, 1);
     }
 }
