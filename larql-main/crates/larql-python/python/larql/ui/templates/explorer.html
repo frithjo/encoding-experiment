@@ -5,11 +5,17 @@
 <section class="panel relation-label-sources">
   <h2>Relation labels</h2>
   {% if current_workspace.relation_count %}
-  <p class="muted">Edge <strong>relation</strong> strings come from the cluster classifier when available. Edge <code>source</code> is <strong>probe</strong> (probe head), <strong>cluster</strong> (cluster label), or <strong>none</strong>. Verbose mode surfaces more cluster-backed labels.</p>
+  <p class="muted"><code>vindex.relations()</code> lists <strong>cluster</strong> relation types only (from <code>relation_clusters.json</code>). Edge <code>source</code> is <strong>probe</strong>, <strong>cluster</strong>, or <strong>none</strong>. Verbose surfaces more cluster-backed labels.</p>
   <p class="relation-label-chips muted">{% for rel in current_workspace.relation_labels[:16] %}<code>{{ rel.name }}</code>{% if not loop.last %} · {% endif %}{% endfor %}{% if current_workspace.relation_count > 16 %} <span>…</span>{% endif %}</p>
   <p class="muted"><a href="#relation-label-sources">Full table (counts, tokens)</a> in the workspace strip.</p>
+  {% elif current_workspace.num_probe_labels %}
+  <p class="muted">No cluster catalogue — <code>relations()</code> is empty — but <strong>{{ current_workspace.num_probe_labels }}</strong> probe-labelled feature(s) exist. Use <code>vindex.probe_relations()</code> for aggregated names, or describe for edges (<code>source: probe</code>).</p>
+  {% if current_workspace.probe_relation_labels %}
+  <p class="relation-label-chips muted">{% for pr in current_workspace.probe_relation_labels[:16] %}<code>{{ pr.name }}</code> ({{ pr.count }}){% if not loop.last %} · {% endif %}{% endfor %}{% if current_workspace.probe_relation_labels|length > 16 %} …{% endif %}</p>
+  {% endif %}
+  <p class="muted"><a href="#relation-label-sources">Tables in workspace strip</a></p>
   {% else %}
-  <p class="muted">This vindex reports no relation cluster labels (<code>vindex.relations()</code> empty). Describe still returns edges; relation text may be sparse or <code>?</code> unless verbose fills in cluster names.</p>
+  <p class="muted">No cluster catalogue and no probe labels. <code>relations()</code> is empty; describe edges may be sparse or use <code>?</code> for relation.</p>
   {% endif %}
 </section>
 {% endif %}

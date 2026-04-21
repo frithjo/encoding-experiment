@@ -121,6 +121,27 @@ def create_app(store: UiStore | None = None) -> FastAPI:
             )
         return RedirectResponse("/studio?notice=Workspace+loaded", status_code=status.HTTP_303_SEE_OTHER)
 
+    @app.get("/partials/workspace-status")
+    async def partial_workspace_status(request: Request):
+        cur = app.state.store.current_workspace_path()
+        if cur:
+            app.state.workspace_manager.drop_workspace_cache(cur)
+        workspace = None
+        workspace_error = None
+        try:
+            workspace = app.state.workspace_manager.get_current()
+        except WorkspaceError as exc:
+            workspace_error = str(exc)
+        return templates.TemplateResponse(
+            request,
+            "partials/workspace_status.html",
+            {
+                "request": request,
+                "current_workspace": workspace,
+                "workspace_error": workspace_error,
+            },
+        )
+
     def _studio_variable_names(
         *,
         variables_form: dict[str, str] | None,

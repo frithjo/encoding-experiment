@@ -359,6 +359,13 @@ class TestRelations:
         assert isinstance(rels, list)
         # Synthetic vindex has no relation_clusters.json, so empty is fine
 
+    def test_probe_relations_list(self, vindex):
+        prs = vindex.probe_relations()
+        assert isinstance(prs, list)
+        for p in prs:
+            assert hasattr(p, "name")
+            assert hasattr(p, "count")
+
     def test_cluster_centre_none(self, vindex):
         # No clusters in synthetic vindex
         centre = vindex.cluster_centre("capital")

@@ -94,6 +94,29 @@ pre {
   border-color: #8a3c3c;
 }
 
+.workspace-strip-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.5rem;
+}
+
+.btn-refresh {
+  border: 1px solid #5b5b5b;
+  background: #222;
+  color: #f2f2f2;
+  padding: 0.25rem 0.6rem;
+  cursor: pointer;
+}
+
+.btn-refresh:hover {
+  border-color: #8dc7ff;
+}
+
+.btn-refresh:focus-visible {
+  outline: 2px solid #8dc7ff;
+  outline-offset: 2px;
+}
+
 .workspace-strip-main,
 .panel-header,
 .result-main {

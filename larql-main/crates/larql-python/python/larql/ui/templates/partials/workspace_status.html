@@ -1,0 +1,89 @@
+<section class="workspace-strip" id="workspace-status">
+  <div class="workspace-strip-toolbar">
+    <button type="button" class="btn-refresh" title="Refresh workspace status from disk"
+      hx-get="/partials/workspace-status"
+      hx-target="#workspace-status"
+      hx-swap="outerHTML">Refresh</button>
+  </div>
+  {% if current_workspace %}
+  <div class="workspace-strip-main">
+    <strong>{{ current_workspace.display_name }}</strong>
+    <span>{{ current_workspace.model }}</span>
+    <span>{{ current_workspace.num_layers }} layers</span>
+    <span>{{ current_workspace.hidden_size }} hidden</span>
+    <span>{{ current_workspace.vocab_size }} vocab</span>
+  </div>
+  <div class="badges">
+    <span class="badge">browse: ready</span>
+    <span class="badge {% if current_workspace.supports_infer %}ok{% endif %}">infer: {% if current_workspace.supports_infer %}ready{% else %}off{% endif %}</span>
+    <span class="badge {% if current_workspace.supports_trace %}ok{% endif %}">trace: {% if current_workspace.supports_trace %}ready{% else %}off{% endif %}</span>
+    <span class="badge {% if current_workspace.supports_mlx %}ok{% endif %}">mlx: {% if current_workspace.supports_mlx %}ready{% else %}off{% endif %}</span>
+    <span class="badge {% if current_workspace.relation_count or current_workspace.num_probe_labels %}ok{% endif %}">labels: {% if current_workspace.relation_count %}{{ current_workspace.relation_count }} clusters{% endif %}{% if current_workspace.relation_count and current_workspace.num_probe_labels %} · {% endif %}{% if current_workspace.num_probe_labels %}{{ current_workspace.num_probe_labels }} probes{% endif %}{% if not current_workspace.relation_count and not current_workspace.num_probe_labels %}sparse{% endif %}</span>
+  </div>
+  {% if current_workspace.relation_count or current_workspace.probe_relation_labels %}
+  <div class="relation-labels-wrap" id="relation-label-sources">
+  {% if current_workspace.relation_count %}
+  <details class="relation-label-sources">
+    <summary>Cluster relation catalogue ({{ current_workspace.relation_count }} from <code>relations()</code>)</summary>
+    <p class="muted">Cluster types from <code>relation_clusters.json</code> (sorted by feature count). Rows skipped in Rust if the label looks like a garbage path. Describe edges use these names when assigned; each edge also has <code>source</code> (probe / cluster / none).</p>
+    <table class="relation-label-table">
+      <thead>
+        <tr><th>Name</th><th>Features</th><th>Cluster</th><th>Sample tokens</th></tr>
+      </thead>
+      <tbody>
+        {% for rel in current_workspace.relation_labels %}
+        <tr>
+          <td><code>{{ rel.name }}</code></td>
+          <td>{{ rel.count }}</td>
+          <td>{{ rel.cluster_id }}</td>
+          <td>{% if rel.top_tokens %}{{ rel.top_tokens|join(", ") }}{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if current_workspace.relation_count > (current_workspace.relation_labels|length) %}
+    <p class="muted">Showing top {{ current_workspace.relation_labels|length }} by count (UI cap).</p>
+    {% endif %}
+  </details>
+  {% endif %}
+  {% if current_workspace.probe_relation_labels %}
+  <details class="relation-label-sources probe-relation-sources">
+    <summary>Probe relations (aggregated from <code>probe_relations()</code>)</summary>
+    <p class="muted">Names from <code>feature_labels.json</code> only (counts = features per name). Distinct from <code>relations()</code> (cluster catalogue).</p>
+    <table class="relation-label-table">
+      <thead>
+        <tr><th>Name</th><th>Features</th></tr>
+      </thead>
+      <tbody>
+        {% for pr in current_workspace.probe_relation_labels %}
+        <tr>
+          <td><code>{{ pr.name }}</code></td>
+          <td>{{ pr.count }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if current_workspace.probe_relation_name_count > (current_workspace.probe_relation_labels|length) %}
+    <p class="muted">Showing {{ current_workspace.probe_relation_labels|length }} of {{ current_workspace.probe_relation_name_count }} distinct probe name(s) (UI cap).</p>
+    {% endif %}
+  </details>
+  {% endif %}
+  </div>
+  {% elif current_workspace.num_probe_labels %}
+  <p class="relation-label-sources relation-probe-only" id="relation-label-sources">
+    <span class="muted">Probe-only: {{ current_workspace.num_probe_labels }} labelled feature(s). <code>vindex.probe_relations()</code> returned no rows — check <code>feature_labels.json</code> format.</span>
+  </p>
+  {% endif %}
+  {% if current_workspace.warnings %}
+  <ul class="warnings">
+    {% for warning in current_workspace.warnings %}
+    <li>{{ warning }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% elif workspace_error %}
+  <div class="banner error">{{ workspace_error }}</div>
+  {% else %}
+  <div class="workspace-empty">No workspace open yet.</div>
+  {% endif %}
+</section>

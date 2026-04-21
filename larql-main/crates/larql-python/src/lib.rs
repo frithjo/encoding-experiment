@@ -9,7 +9,7 @@ mod session;
 mod walk;
 mod trace_py;
 
-use vindex::{PyVindex, PyFeatureMeta, PyWalkHit, PyDescribeEdge, PyRelation};
+use vindex::{PyVindex, PyFeatureMeta, PyWalkHit, PyDescribeEdge, PyRelation, PyProbeRelation};
 use session::PySession;
 use walk::PyWalkModel;
 use trace_py::{PyResidualTrace, PyAnswerWaypoint, PyLayerSummary, PyTraceStore, PyBoundaryStore, PyBoundaryWriter};
@@ -761,6 +761,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyWalkHit>()?;
     m.add_class::<PyDescribeEdge>()?;
     m.add_class::<PyRelation>()?;
+    m.add_class::<PyProbeRelation>()?;
     m.add_class::<PySession>()?;
     m.add_class::<PyWalkModel>()?;
     m.add_class::<PyResidualTrace>()?;

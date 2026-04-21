@@ -20,6 +20,7 @@ from larql._native import (
     WalkHit,
     DescribeEdge,
     Relation,
+    ProbeRelation,
     Session,
     WalkModel,
 
@@ -118,6 +119,7 @@ __all__ = [
     "WalkHit",
     "DescribeEdge",
     "Relation",
+    "ProbeRelation",
     "Session",
 
     # Graph types

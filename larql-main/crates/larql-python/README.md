@@ -153,7 +153,8 @@ session.vindex.gate_vectors(layer=26)  # numpy access on same session
 | `describe(entity, band="knowledge", verbose=False)` | Find all knowledge edges |
 | `has_edge(entity, relation=None)` | Check if entity has edges |
 | `get_target(entity, relation)` | Get target token for entity+relation |
-| `relations()` | List all relation types with counts |
+| `relations()` | Cluster-derived relation types (`Relation`: `name`, `cluster_id`, `count`, `top_tokens`), sorted by decreasing count. Empty if there is no cluster catalogue (e.g. missing `relation_clusters.json` or zero clusters); **probe-only** vindexes return `[]` while `describe()` can still attach probe labels. Garbage-like cluster labels are skipped in Rust. Use `stats()` for `num_clusters` / `num_probe_labels`. |
+| `probe_relations()` | Probe-only relation names from `feature_labels.json`, aggregated per name (`ProbeRelation`: `name`, `count`). Sorted by decreasing count. Empty if there are no probe entries. Complements `relations()` (clusters vs probes). |
 | `cluster_centre(relation)` | Relation direction vector as numpy |
 | `typical_layer(relation)` | Most common layer for a relation |
 | `stats()` | Model metadata as dict |
@@ -212,7 +213,8 @@ session.vindex.gate_vectors(layer=26)  # numpy access on same session
 | `DescribeEdge` | `relation`, `target`, `gate_score`, `layer`, `feature`, `source`, `confidence`, `also` |
 | `WalkHit` | `layer`, `feature`, `gate_score`, `top_token`, `target`, `meta` |
 | `FeatureMeta` | `top_token`, `top_token_id`, `c_score`, `top_k` |
-| `Relation` | `name`, `cluster_id`, `count`, `top_tokens` |
+| `Relation` | `name`, `cluster_id`, `count`, `top_tokens` (one row per cluster catalogue entry, not probe-only features) |
+| `ProbeRelation` | `name`, `count` (aggregated features per probe relation name from `feature_labels.json`) |
 
 ## Project Structure
 

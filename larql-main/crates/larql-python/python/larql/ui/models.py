@@ -57,9 +57,15 @@ class WorkspaceSummary:
     supports_streaming: bool
     supports_walk_ffn: bool
     warnings: list[str] = field(default_factory=list)
-    # From vindex.relations() — cluster classifier labels (sorted by count desc); capped for UI.
+    # From vindex.relations() — cluster catalogue only (sorted by count desc); capped for UI.
     relation_count: int = 0
     relation_labels: list[dict[str, Any]] = field(default_factory=list)
+    # From vindex.stats() when RelationClassifier is loaded (may be non-zero when relation_count is 0).
+    num_clusters: int = 0
+    num_probe_labels: int = 0
+    # From vindex.probe_relations() — aggregated probe names; capped for UI.
+    probe_relation_name_count: int = 0
+    probe_relation_labels: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

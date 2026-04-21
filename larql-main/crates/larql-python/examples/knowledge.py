@@ -24,7 +24,7 @@ for entity in ["France", "Einstein", "Python"]:
         print(f"  {rel:>15} → {e.target:<15} score={e.gate_score:.0f} L{e.layer}{also}")
     print()
 
-# Relations
+# Relations (cluster catalogue from relation_clusters.json; empty on probe-only vindexes)
 print("Top relations:")
 for r in vindex.relations()[:10]:
     print(f"  {r.name:<25} count={r.count}")

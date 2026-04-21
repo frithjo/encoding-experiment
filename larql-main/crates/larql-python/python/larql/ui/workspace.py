@@ -12,7 +12,8 @@ from .store import UiStore
 
 RELATION_LABEL_PREVIEW_CAP = 60
 TOP_TOKENS_PER_RELATION = 8
-_WORKSPACE_CACHE_VERSION = 2
+_WORKSPACE_CACHE_VERSION = 5
+PROBE_RELATION_PREVIEW_CAP = 60
 
 
 class WorkspaceError(RuntimeError):
@@ -29,6 +30,15 @@ class WorkspaceManager:
         if not current_path:
             return None
         return self.open(current_path)
+
+    def drop_workspace_cache(self, path: str | None = None) -> None:
+        """Drop cached WorkspaceSummary so the next open() reloads from disk."""
+        if path is None:
+            self._cache.clear()
+            return
+        norm_path = str(Path(path).expanduser().resolve())
+        cache_key = f"{_WORKSPACE_CACHE_VERSION}:{norm_path}"
+        self._cache.pop(cache_key, None)
 
     def open(self, path: str) -> WorkspaceSummary:
         norm_path = str(Path(path).expanduser().resolve())
@@ -60,6 +70,9 @@ class WorkspaceManager:
         relations = vindex.relations()
         layer_bands = vindex.layer_bands()
 
+        num_clusters = int(stats.get("num_clusters", 0) or 0)
+        num_probe_labels = int(stats.get("num_probe_labels", 0) or 0)
+
         relation_count = len(relations)
         relation_labels: list[dict[str, Any]] = []
         for rel in relations[:RELATION_LABEL_PREVIEW_CAP]:
@@ -73,15 +86,27 @@ class WorkspaceManager:
                 }
             )
 
+        probe_rels = vindex.probe_relations()
+        probe_relation_name_count = len(probe_rels)
+        probe_relation_labels: list[dict[str, Any]] = []
+        for pr in probe_rels[:PROBE_RELATION_PREVIEW_CAP]:
+            probe_relation_labels.append({"name": pr.name, "count": pr.count})
+
         mlx_available = find_spec("mlx") is not None and find_spec("mlx_lm") is not None
         has_model_weights = bool(index_config.get("has_model_weights", False))
-        has_relation_labels = relation_count > 0
+        has_relation_labels = relation_count > 0 or num_probe_labels > 0
         has_layer_bands = layer_bands is not None
         warnings: list[str] = []
         if not has_model_weights:
             warnings.append("No model weights. Browse and LQL ready. Inference and trace disabled.")
-        if not has_relation_labels:
-            warnings.append("No relation labels detected. Describe still works, but labels may be sparse.")
+        if relation_count == 0 and num_probe_labels == 0:
+            warnings.append(
+                "No cluster relation catalogue (relations() empty) and no probe labels — describe edges may be sparse."
+            )
+        elif relation_count == 0 and num_probe_labels > 0:
+            warnings.append(
+                "No cluster catalogue (relations() empty); probe labels present — describe may still show relations with source=probe."
+            )
         if not mlx_available:
             warnings.append("MLX deps missing. MLX generation disabled.")
 
@@ -106,6 +131,10 @@ class WorkspaceManager:
             warnings=warnings,
             relation_count=relation_count,
             relation_labels=relation_labels,
+            num_clusters=num_clusters,
+            num_probe_labels=num_probe_labels,
+            probe_relation_name_count=probe_relation_name_count,
+            probe_relation_labels=probe_relation_labels,
         )
         self._cache[cache_key] = summary
         self.store.set_current_workspace_path(norm_path)

@@ -128,6 +128,21 @@ def client(tmp_path: Path) -> TestClient:
     return TestClient(app)
 
 
+def test_partial_workspace_status_no_workspace(client: TestClient) -> None:
+    response = client.get("/partials/workspace-status")
+    assert response.status_code == 200
+    assert "workspace-strip" in response.text
+    assert "No workspace open yet." in response.text
+
+
+def test_partial_workspace_status_loaded(client: TestClient, vindex_path: str) -> None:
+    client.post("/workspace", data={"path": vindex_path}, follow_redirects=True)
+    response = client.get("/partials/workspace-status")
+    assert response.status_code == 200
+    assert "workspace-strip" in response.text
+    assert "test/synthetic-ui" in response.text
+
+
 def test_workspace_open_and_explorer_run(client: TestClient, vindex_path: str) -> None:
     response = client.post("/workspace", data={"path": vindex_path}, follow_redirects=True)
     assert response.status_code == 200

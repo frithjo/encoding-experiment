@@ -119,6 +119,24 @@ impl PyRelation {
     }
 }
 
+// ── PyProbeRelation ──
+
+#[pyclass(name = "ProbeRelation")]
+#[derive(Clone)]
+pub struct PyProbeRelation {
+    #[pyo3(get)]
+    pub name: String,
+    #[pyo3(get)]
+    pub count: usize,
+}
+
+#[pymethods]
+impl PyProbeRelation {
+    fn __repr__(&self) -> String {
+        format!("ProbeRelation(name='{}', count={})", self.name, self.count)
+    }
+}
+
 // ── PyFeatureMeta ──
 
 #[pyclass(name = "FeatureMeta")]
@@ -638,7 +656,12 @@ impl PyVindex {
     //  Relations & Clusters
     // ══════════════════════════════════════════════
 
-    /// List all known relation types with counts and cluster info.
+    /// List cluster-derived relation types (counts, sample tokens), sorted by decreasing `count`.
+    ///
+    /// Returns an empty list when the classifier has no cluster catalogue (`relation_clusters.json`
+    /// missing or zero clusters), including probe-only vindexes: `describe()` may still attach
+    /// probe labels, but those names are not enumerated here. Long path-like cluster labels are
+    /// filtered in Rust.
     fn relations(&self) -> Vec<PyRelation> {
         let rc = match &self.classifier {
             Some(rc) if rc.has_clusters() => rc,
@@ -661,6 +684,18 @@ impl PyVindex {
 
         rels.sort_by(|a, b| b.count.cmp(&a.count));
         rels
+    }
+
+    /// Probe-only relation names from `feature_labels.json`, aggregated by feature count per name.
+    /// Distinct from [`relations`] (cluster catalogue). Empty when there are no probe labels.
+    fn probe_relations(&self) -> Vec<PyProbeRelation> {
+        let Some(rc) = self.classifier.as_ref() else {
+            return Vec::new();
+        };
+        rc.probe_relation_counts()
+            .into_iter()
+            .map(|(name, count)| PyProbeRelation { name, count })
+            .collect()
     }
 
     /// Get the cluster centre vector for a relation type as numpy array.
