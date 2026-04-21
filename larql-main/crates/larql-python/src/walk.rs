@@ -9,10 +9,12 @@ use std::path::Path;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use ndarray::Array2;
+use larql_core::mmap::Mmap;
 
+use larql_tokenizer::TokenizerError;
 use larql_vindex::{
-    VectorIndex, SilentLoadCallbacks,
-    load_vindex_config, load_vindex_tokenizer, tokenizers,
+    VectorIndex, SilentLoadCallbacks, TokenizerArc,
+    load_vindex_config, load_vindex_tokenizer,
 };
 use larql_inference::{ModelWeights, WalkFfn, predict_with_ffn};
 use larql_inference::ffn::FfnBackend;
@@ -22,7 +24,7 @@ use crate::trace_py;
 /// Mmap'd weight file — kept alive so Array2 views remain valid.
 struct WeightMmap {
     _file: std::fs::File,
-    mmap: memmap2::Mmap,
+    mmap: Mmap,
 }
 
 /// Create ModelWeights backed by mmap'd files.
@@ -62,7 +64,7 @@ fn load_mmap_weights(dir: &Path) -> Result<(ModelWeights, Vec<WeightMmap>), Stri
         let path = dir.join(fname);
         if path.exists() {
             let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
-            let mmap = unsafe { memmap2::Mmap::map(&file) }.map_err(|e| e.to_string())?;
+            let mmap = unsafe { Mmap::map(&file) }.map_err(|e| e.to_string())?;
             mmap_index.insert(fname.to_string(), mmaps.len());
             mmaps.push(WeightMmap { _file: file, mmap });
         }
@@ -70,13 +72,13 @@ fn load_mmap_weights(dir: &Path) -> Result<(ModelWeights, Vec<WeightMmap>), Stri
 
     // Mmap embeddings
     let embed_file = std::fs::File::open(dir.join("embeddings.bin")).map_err(|e| e.to_string())?;
-    let embed_mmap = unsafe { memmap2::Mmap::map(&embed_file) }.map_err(|e| e.to_string())?;
+    let embed_mmap = unsafe { Mmap::map(&embed_file) }.map_err(|e| e.to_string())?;
     let embed_idx = mmaps.len();
     mmaps.push(WeightMmap { _file: embed_file, mmap: embed_mmap });
 
     // Mmap gate_vectors
     let gate_file = std::fs::File::open(dir.join("gate_vectors.bin")).map_err(|e| e.to_string())?;
-    let gate_mmap = unsafe { memmap2::Mmap::map(&gate_file) }.map_err(|e| e.to_string())?;
+    let gate_mmap = unsafe { Mmap::map(&gate_file) }.map_err(|e| e.to_string())?;
     let gate_idx = mmaps.len();
     mmaps.push(WeightMmap { _file: gate_file, mmap: gate_mmap });
 
@@ -236,13 +238,24 @@ impl InferState {
     }
 }
 
+/// Load check for workbench inspection (same work as [`PyWalkModel`] constructor, then drop).
+pub(crate) fn probe_walk_model(path: &str, _top_k: usize) -> Result<(), String> {
+    let dir = Path::new(path);
+    let mut load_cb = SilentLoadCallbacks;
+    let _index = VectorIndex::load_vindex(dir, &mut load_cb).map_err(|e| e.to_string())?;
+    let (_weights, _mmaps) = load_mmap_weights(dir)?;
+    let _tokenizer = load_vindex_tokenizer(dir).map_err(|e| e.to_string())?;
+    let _ = _index;
+    Ok(())
+}
+
 // ── Python class ──
 
 #[pyclass(name = "WalkModel", unsendable)]
 pub struct PyWalkModel {
     weights: ModelWeights,
     index: VectorIndex,
-    tokenizer: tokenizers::Tokenizer,
+    tokenizer: TokenizerArc,
     top_k: usize,
     path: String,
     // Hold mmaps alive — weight arrays reference this memory
@@ -277,12 +290,12 @@ impl PyWalkModel {
     #[pyo3(signature = (prompt, top_k_predictions=5))]
     fn predict(&self, prompt: &str, top_k_predictions: usize) -> PyResult<Vec<(String, f64)>> {
         let encoding = self.tokenizer.encode(prompt, true)
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-        let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+            .map_err(|e: TokenizerError| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+        let token_ids: Vec<u32> = encoding.ids;
 
         let walk_ffn = WalkFfn::new(&self.weights, &self.index, self.top_k);
         let result = predict_with_ffn(
-            &self.weights, &self.tokenizer, &token_ids, top_k_predictions, &walk_ffn
+            &self.weights, self.tokenizer.as_ref(), &token_ids, top_k_predictions, &walk_ffn
         );
 
         Ok(result.predictions)
@@ -433,7 +446,7 @@ impl PyWalkModel {
     ///     t.answer_trajectory("Paris")
     #[pyo3(signature = (prompt, positions="last"))]
     fn trace(&self, prompt: &str, positions: &str) -> PyResult<trace_py::PyResidualTrace> {
-        trace_py::capture_trace(&self.weights, &self.tokenizer, prompt, positions)
+        trace_py::capture_trace(&self.weights, self.tokenizer.clone(), prompt, positions)
     }
 
     fn __repr__(&self) -> String {

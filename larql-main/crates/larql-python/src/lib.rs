@@ -8,6 +8,9 @@ mod vindex;
 mod session;
 mod walk;
 mod trace_py;
+mod workspace_inspect;
+
+use workspace_inspect::inspect_workspace_for_ui;
 
 use vindex::{PyVindex, PyFeatureMeta, PyWalkHit, PyDescribeEdge, PyRelation, PyProbeRelation};
 use session::PySession;
@@ -634,17 +637,17 @@ fn save_csv(graph: &PyGraph, path: &str) -> PyResult<()> {
 ///     output_path: Where to save the result (.larql.json or .larql.bin)
 ///     layer: Optional single layer to walk (default: all)
 ///     top_k: Top-k tokens per feature (default: 5)
-///     min_score: Minimum activation score (default: 0.02)
+///     activation_floor: Minimum raw activation for top-k inclusion (default: 0.02)
 #[pyfunction]
-#[pyo3(signature = (model_path, output_path=None, layer=None, top_k=5, min_score=0.02))]
+#[pyo3(signature = (model_path, output_path=None, layer=None, top_k=5, activation_floor=0.02))]
 fn weight_walk(
     model_path: &str,
     output_path: Option<&str>,
     layer: Option<usize>,
     top_k: usize,
-    min_score: f32,
+    activation_floor: f32,
 ) -> PyResult<PyGraph> {
-    let config = li::WalkConfig { top_k, min_score };
+    let config = li::WalkConfig { top_k, activation_floor };
     let layers: Option<Vec<usize>> = layer.map(|l| vec![l]);
 
     let mut graph = lq::Graph::new();
@@ -677,18 +680,18 @@ fn weight_walk(
 
 /// Walk attention OV circuits from a model. Returns a Graph of routing edges.
 #[pyfunction]
-#[pyo3(signature = (model_path, output_path=None, layer=None, top_k=3, min_score=0.0))]
+#[pyo3(signature = (model_path, output_path=None, layer=None, top_k=3, activation_floor=0.0))]
 fn attention_walk(
     model_path: &str,
     output_path: Option<&str>,
     layer: Option<usize>,
     top_k: usize,
-    min_score: f32,
+    activation_floor: f32,
 ) -> PyResult<PyGraph> {
     let walker = li::AttentionWalker::load(model_path)
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
-    let config = li::WalkConfig { top_k, min_score };
+    let config = li::WalkConfig { top_k, activation_floor };
 
     let mut graph = lq::Graph::new();
     graph.metadata.insert(
@@ -789,6 +792,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Vindex functions (new)
     m.add_function(wrap_pyfunction!(load_vindex, m)?)?;
     m.add_function(wrap_pyfunction!(create_session, m)?)?;
+    m.add_function(wrap_pyfunction!(inspect_workspace_for_ui, m)?)?;
 
     Ok(())
 }

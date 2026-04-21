@@ -18,6 +18,7 @@ from starlette.templating import Jinja2Templates
 from .api import build_api_routes
 from .execution import UiExecutor
 from .models import RecipeRecord, WorkspaceSummary, render_template, template_fields, validate_recipe
+from .runtime_cache import LarqlRuntimeCache, workspace_paths_differ
 from .store import UiStore
 from .workspace import WorkspaceError, WorkspaceManager
 
@@ -83,7 +84,8 @@ def create_app(store: UiStore | None = None) -> Starlette:
 
     ui_store = store or UiStore()
     workspace_manager = WorkspaceManager(ui_store)
-    executor = UiExecutor(ui_store, workspace_manager)
+    runtime_cache = LarqlRuntimeCache()
+    executor = UiExecutor(ui_store, workspace_manager, runtime_cache)
 
     def render(
         request: Request,
@@ -1044,6 +1046,7 @@ def create_app(store: UiStore | None = None) -> Starlette:
             ui_store=ui_store,
             workspace_manager=workspace_manager,
             executor=executor,
+            runtime_cache=runtime_cache,
         )
     )
 
@@ -1055,5 +1058,6 @@ def create_app(store: UiStore | None = None) -> Starlette:
     app.state.store = ui_store
     app.state.workspace_manager = workspace_manager
     app.state.executor = executor
+    app.state.runtime_cache = runtime_cache
     app.state.templates = templates
     return app

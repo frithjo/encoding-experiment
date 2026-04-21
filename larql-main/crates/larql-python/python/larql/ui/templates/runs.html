@@ -10,7 +10,13 @@
     <article class="result-card">
       <div class="panel-header">
         <strong><a href="/runs/{{ run.id }}">{{ run.title }}</a></strong>
-        <span>{{ run.engine }}</span>
+        <span>
+          {% if run.kind == "studio" and run.status == "error" %}
+          Studio (failed) — engine: <code>{{ run.engine }}</code>
+          {% else %}
+          {{ run.engine }}
+          {% endif %}
+        </span>
       </div>
       <div class="muted">{{ run.created_at }} | {{ run.duration_ms }} ms</div>
       <div>{{ run.summary }}</div>

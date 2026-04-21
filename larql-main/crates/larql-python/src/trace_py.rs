@@ -8,22 +8,23 @@ use larql_inference::trace as trace_mod;
 use larql_inference::trace::TracePositions;
 use larql_inference::ffn::WeightFfn;
 use larql_inference::ModelWeights;
-use larql_vindex::tokenizers;
+use larql_tokenizer::TokenizerError;
+use larql_vindex::TokenizerArc;
 
 /// Complete inference trace — the residual stream DAG.
 #[pyclass(name = "ResidualTrace", unsendable)]
 pub struct PyResidualTrace {
     pub(crate) inner: trace_mod::ResidualTrace,
     pub(crate) weights_ptr: *const ModelWeights,
-    pub(crate) tokenizer_ptr: *const tokenizers::Tokenizer,
+    pub(crate) tokenizer: TokenizerArc,
 }
 
 impl PyResidualTrace {
     fn weights(&self) -> &ModelWeights {
         unsafe { &*self.weights_ptr }
     }
-    fn tokenizer(&self) -> &tokenizers::Tokenizer {
-        unsafe { &*self.tokenizer_ptr }
+    fn tokenizer_dyn(&self) -> &dyn larql_tokenizer::Tokenizer {
+        self.tokenizer.as_ref()
     }
 }
 
@@ -48,15 +49,15 @@ impl PyResidualTrace {
     #[pyo3(signature = (layer, position=None, k=5))]
     fn top_k(&self, layer: i32, position: Option<usize>, k: usize) -> Vec<(String, f32)> {
         let pos = position.unwrap_or_else(|| self.inner.tokens.len() - 1);
-        self.inner.top_k(self.weights(), self.tokenizer(), layer, pos, k)
+        self.inner.top_k(self.weights(), self.tokenizer_dyn(), layer, pos, k)
     }
 
     /// Rank of a token at (layer, position).
     #[pyo3(signature = (token, layer, position=None))]
     fn rank_of(&self, token: &str, layer: i32, position: Option<usize>) -> u32 {
         let pos = position.unwrap_or_else(|| self.inner.tokens.len() - 1);
-        let tok_id = match self.tokenizer().encode(format!(" {}", token), true) {
-            Ok(enc) => *enc.get_ids().last().unwrap_or(&0),
+        let tok_id = match self.tokenizer_dyn().encode(&format!(" {}", token), true) {
+            Ok(enc) => *enc.ids.last().unwrap_or(&0),
             Err(_) => return u32::MAX,
         };
         let node = match self.inner.node(layer, pos) {
@@ -70,16 +71,16 @@ impl PyResidualTrace {
 
     /// Track answer rank, probability, and attn/ffn contribution through all layers.
     fn answer_trajectory(&self, answer: &str) -> PyResult<Vec<PyAnswerWaypoint>> {
-        let tok_id = self.tokenizer().encode(format!(" {}", answer), true)
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-        let id = *tok_id.get_ids().last().unwrap_or(&0);
+        let enc = self.tokenizer_dyn().encode(&format!(" {}", answer), true)
+            .map_err(|e: TokenizerError| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+        let id = *enc.ids.last().unwrap_or(&0);
         let traj = self.inner.answer_trajectory(self.weights(), id);
         Ok(traj.into_iter().map(|w| PyAnswerWaypoint { inner: w }).collect())
     }
 
     /// Compact per-layer summary: norms, top prediction, delta norms.
     fn summary(&self) -> Vec<PyLayerSummary> {
-        let summaries = self.inner.layer_summaries(self.weights(), self.tokenizer());
+        let summaries = self.inner.layer_summaries(self.weights(), self.tokenizer_dyn());
         summaries.into_iter().map(|s| PyLayerSummary { inner: s }).collect()
     }
 
@@ -298,13 +299,13 @@ impl PyBoundaryWriter {
 /// Capture a trace from a WalkModel (called from PyWalkModel.trace).
 pub fn capture_trace(
     weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    tokenizer: TokenizerArc,
     prompt: &str,
     positions: &str,
 ) -> PyResult<PyResidualTrace> {
     let encoding = tokenizer.encode(prompt, true)
-        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-    let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+        .map_err(|e: TokenizerError| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+    let token_ids: Vec<u32> = encoding.ids;
 
     let pos = match positions {
         "all" => TracePositions::All,
@@ -322,7 +323,7 @@ pub fn capture_trace(
     Ok(PyResidualTrace {
         inner: trace,
         weights_ptr: weights as *const ModelWeights,
-        tokenizer_ptr: tokenizer as *const tokenizers::Tokenizer,
+        tokenizer,
     })
 }
 

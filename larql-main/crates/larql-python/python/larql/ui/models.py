@@ -288,4 +288,37 @@ class RunRecord:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "RunRecord":
-        return cls(**data)
+        """Load from ``runs.json``; tolerate legacy/partial rows so the UI never bricks."""
+        d = data if isinstance(data, dict) else {}
+        raw = d.get("raw")
+        if not isinstance(raw, dict):
+            raw = {}
+        rid = d.get("id")
+        if not rid:
+            rid = f"migrated-{int(datetime.now(timezone.utc).timestamp() * 1000)}"
+        kind = str(d.get("kind") or d.get("engine") or "unknown")
+        engine = str(d.get("engine") or d.get("kind") or "unknown")
+        recipe_raw = d.get("recipe_id")
+        recipe_id: str | None
+        if recipe_raw is None or recipe_raw == "":
+            recipe_id = None
+        else:
+            recipe_id = str(recipe_raw)
+        try:
+            duration_ms = int(d.get("duration_ms", 0) or 0)
+        except (TypeError, ValueError):
+            duration_ms = 0
+        return cls(
+            id=str(rid),
+            kind=kind,
+            title=str(d.get("title") or "(migrated run)"),
+            workspace_path=str(d.get("workspace_path") or ""),
+            recipe_id=recipe_id,
+            engine=engine,
+            status=str(d.get("status") or "completed"),
+            created_at=str(d.get("created_at") or utc_now_iso()),
+            duration_ms=duration_ms,
+            summary=str(d.get("summary") or ""),
+            input_text=str(d.get("input_text") or ""),
+            raw=raw,
+        )

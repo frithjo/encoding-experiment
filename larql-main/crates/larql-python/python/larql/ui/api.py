@@ -7,26 +7,47 @@ import json
 from dataclasses import replace
 from typing import Any, Callable
 
-import larql
 from starlette import status
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from .execution import UiExecutor
-from .models import RecipeRecord, RunRecord, validate_recipe
+from .models import RecipeRecord, RunRecord, utc_now_iso, validate_recipe
+from .runtime_cache import LarqlRuntimeCache, normalize_workspace_path, workspace_paths_differ
 from .store import UiStore
 from .workspace import WorkspaceError, WorkspaceManager
 
 
-async def _read_json(request: Request) -> dict[str, Any]:
-    if not request.headers.get("content-type", "").startswith("application/json"):
-        return {}
+def _content_type_is_json(content_type: str) -> bool:
+    if not content_type:
+        return False
+    main = content_type.split(";")[0].strip().lower()
+    return main == "application/json"
+
+
+async def parse_json_body(request: Request) -> tuple[dict[str, Any] | None, JSONResponse | None]:
+    """Require ``Content-Type: application/json`` and a non-empty JSON object body."""
+    if not _content_type_is_json(request.headers.get("content-type", "")):
+        return None, JSONResponse(
+            {"error": "Content-Type must be application/json"},
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+        )
+    body = await request.body()
+    if not body.strip():
+        return None, JSONResponse(
+            {"error": "empty body; send a JSON object (e.g. {})"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
     try:
-        body = await request.body()
-        raw = json.loads(body.decode("utf-8") or "{}")
+        raw = json.loads(body.decode("utf-8"))
     except (json.JSONDecodeError, UnicodeError):
-        return {}
-    return raw if isinstance(raw, dict) else {}
+        return None, JSONResponse({"error": "invalid JSON"}, status_code=status.HTTP_400_BAD_REQUEST)
+    if not isinstance(raw, dict):
+        return None, JSONResponse(
+            {"error": "JSON root must be an object"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    return raw, None
 
 
 def _relations_payload(vindex: Any) -> list[dict[str, Any]]:
@@ -40,6 +61,81 @@ def _relations_payload(vindex: Any) -> list[dict[str, Any]]:
             }
         )
     return out
+
+
+def dispatch_rerun_execution(
+    executor: UiExecutor,
+    prev: RunRecord,
+    ws_path: str,
+    *,
+    title: str | None = None,
+    run_id: str | None = None,
+) -> RunRecord:
+    """Replay a prior run against ``ws_path``. Raises ``ValueError`` if unsupported."""
+    ttitle = title if title is not None else prev.title
+    raw = prev.raw
+    if prev.kind == "studio":
+        return executor.run_studio(
+            workspace_path=ws_path,
+            engine=prev.engine,
+            rendered=prev.input_text,
+            recipe_id=prev.recipe_id,
+            title=ttitle,
+            band=str(raw.get("band", "knowledge")),
+            verbose=bool(raw.get("verbose", False)),
+            infer_top_k_predictions=int(raw.get("infer_top_k_predictions", 5)),
+            walk_top_k=int(raw.get("walk_top_k", 8192)),
+            run_id=run_id,
+        )
+    engine = prev.engine
+    if engine == "describe":
+        return executor.run_describe(
+            workspace_path=ws_path,
+            entity=str(raw.get("entity", prev.input_text)),
+            band=str(raw.get("band", "knowledge")),
+            verbose=bool(raw.get("verbose", False)),
+            recipe_id=prev.recipe_id,
+            title=ttitle,
+            run_id=run_id,
+        )
+    if engine == "lql":
+        return executor.run_lql(
+            workspace_path=ws_path,
+            query=str(raw.get("query", prev.input_text)),
+            recipe_id=prev.recipe_id,
+            title=ttitle,
+            run_id=run_id,
+        )
+    if engine == "infer":
+        return executor.run_infer(
+            workspace_path=ws_path,
+            prompt=str(raw.get("prompt", prev.input_text)),
+            top_k_predictions=int(raw.get("top_k_predictions", 5)),
+            recipe_id=prev.recipe_id,
+            title=ttitle,
+            run_id=run_id,
+        )
+    if engine == "walk_model":
+        return executor.run_walk_model(
+            workspace_path=ws_path,
+            prompt=str(raw.get("prompt", prev.input_text)),
+            top_k_predictions=int(raw.get("top_k_predictions", 5)),
+            top_k_features=int(raw.get("walk_top_k_features", 8192)),
+            recipe_id=prev.recipe_id,
+            title=ttitle,
+            run_id=run_id,
+        )
+    if engine == "trace":
+        return executor.run_trace(
+            workspace_path=ws_path,
+            prompt=str(raw.get("prompt", prev.input_text)),
+            positions=str(raw.get("positions", "last")),
+            walk_top_k=int(raw.get("walk_top_k_features", 8192)),
+            recipe_id=prev.recipe_id,
+            title=ttitle,
+            run_id=run_id,
+        )
+    raise ValueError(f"cannot rerun engine {prev.engine!r}")
 
 
 def _schedule_async(app_holder: list[Any], coro_factory: Callable[[], Any]) -> None:
@@ -67,18 +163,25 @@ def build_api_routes(
     ui_store: UiStore,
     workspace_manager: WorkspaceManager,
     executor: UiExecutor,
+    runtime_cache: LarqlRuntimeCache,
 ) -> list[Any]:
     from starlette.routing import Route
 
     async def api_workspace_open(request: Request) -> Response:
-        data = await _read_json(request)
+        data, err = await parse_json_body(request)
+        if err is not None:
+            return err
+        assert data is not None
         path = str(data.get("path", "")).strip()
         if not path:
             return JSONResponse({"error": "path required"}, status_code=status.HTTP_400_BAD_REQUEST)
+        prev_path = ui_store.current_workspace_path()
         try:
             workspace_manager.open(path)
         except WorkspaceError as exc:
             return JSONResponse({"error": str(exc)}, status_code=status.HTTP_400_BAD_REQUEST)
+        if workspace_paths_differ(prev_path, path):
+            runtime_cache.invalidate()
         try:
             summary = workspace_manager.get_current()
         except WorkspaceError as exc:
@@ -95,7 +198,10 @@ def build_api_routes(
         return JSONResponse({"workspace": summary.to_dict()})
 
     async def api_recipes_post(request: Request) -> Response:
-        data = await _read_json(request)
+        data, err = await parse_json_body(request)
+        if err is not None:
+            return err
+        assert data is not None
         try:
             if data.get("id"):
                 recipe = RecipeRecord.from_dict(data)
@@ -136,7 +242,10 @@ def build_api_routes(
         existing = ui_store.get_recipe(rid)
         if existing is None:
             return JSONResponse({"error": "not found"}, status_code=status.HTTP_404_NOT_FOUND)
-        data = await _read_json(request)
+        data, err = await parse_json_body(request)
+        if err is not None:
+            return err
+        assert data is not None
         merged = existing.to_dict()
         merged.update(data)
         merged["id"] = existing.id
@@ -145,6 +254,7 @@ def build_api_routes(
             validate_recipe(recipe)
         except (KeyError, TypeError, ValueError) as exc:
             return JSONResponse({"error": str(exc)}, status_code=status.HTTP_400_BAD_REQUEST)
+        recipe = replace(recipe, updated_at=utc_now_iso())
         ui_store.save_recipe(recipe)
         return JSONResponse({"recipe": recipe.to_dict()})
 
@@ -163,7 +273,10 @@ def build_api_routes(
         return JSONResponse({"run": run.to_dict()})
 
     async def api_runs_post(request: Request) -> Response:
-        data = await _read_json(request)
+        data, err = await parse_json_body(request)
+        if err is not None:
+            return err
+        assert data is not None
         async_flag = bool(data.get("async"))
         try:
             ws_path = str(data.get("workspace_path") or "").strip() or ui_store.current_workspace_path()
@@ -253,7 +366,11 @@ def build_api_routes(
                             old,
                             status="error",
                             summary=str(exc),
-                            raw={**old.raw, "error": str(exc)},
+                            raw={
+                                **old.raw,
+                                "error": str(exc),
+                                "failed_engine": engine,
+                            },
                             duration_ms=0,
                         )
                     )
@@ -266,70 +383,46 @@ def build_api_routes(
         prev = ui_store.get_run(rid)
         if prev is None:
             return JSONResponse({"error": "not found"}, status_code=404)
-        data = await _read_json(request)
+        data, err = await parse_json_body(request)
+        if err is not None:
+            return err
+        assert data is not None
         async_flag = bool(data.get("async"))
+        allow_diff = bool(data.get("allow_different_workspace", False))
         ws_path = prev.workspace_path
+
+        cur = ui_store.current_workspace_path()
+        run_ws = (prev.workspace_path or "").strip()
+        if not allow_diff and cur and run_ws:
+            try:
+                if normalize_workspace_path(cur) != normalize_workspace_path(run_ws):
+                    return JSONResponse(
+                        {
+                            "error": "run workspace differs from current workspace",
+                            "run_workspace": prev.workspace_path,
+                            "current_workspace": cur,
+                            "hint": "set allow_different_workspace true to replay using the run's saved vindex path",
+                        },
+                        status_code=status.HTTP_409_CONFLICT,
+                    )
+            except (OSError, ValueError) as exc:
+                return JSONResponse({"error": f"invalid workspace path: {exc}"}, status_code=400)
+
+        def _prepare_rerun_workspace() -> None:
+            prev_cur = ui_store.current_workspace_path()
+            workspace_manager.open(ws_path)
+            if workspace_paths_differ(prev_cur, ws_path):
+                runtime_cache.invalidate()
 
         async def _rerun_sync() -> Response:
             try:
-                if prev.kind == "studio":
-                    run = executor.run_studio(
-                        workspace_path=ws_path,
-                        engine=prev.engine,
-                        rendered=prev.input_text,
-                        recipe_id=prev.recipe_id,
-                        title=prev.title,
-                        band=str(prev.raw.get("band", "knowledge")),
-                        verbose=bool(prev.raw.get("verbose", False)),
-                        infer_top_k_predictions=int(prev.raw.get("infer_top_k_predictions", 5)),
-                        walk_top_k=int(prev.raw.get("walk_top_k", 8192)),
-                    )
-                    return JSONResponse({"run": run.to_dict()})
-                if prev.engine == "describe":
-                    raw = prev.raw
-                    run = executor.run_describe(
-                        workspace_path=ws_path,
-                        entity=str(raw.get("entity", prev.input_text)),
-                        band=str(raw.get("band", "knowledge")),
-                        verbose=bool(raw.get("verbose", False)),
-                        recipe_id=prev.recipe_id,
-                        title=prev.title,
-                    )
-                elif prev.engine == "lql":
-                    run = executor.run_lql(
-                        workspace_path=ws_path,
-                        query=str(prev.raw.get("query", prev.input_text)),
-                        recipe_id=prev.recipe_id,
-                        title=prev.title,
-                    )
-                elif prev.engine == "infer":
-                    run = executor.run_infer(
-                        workspace_path=ws_path,
-                        prompt=str(prev.raw.get("prompt", prev.input_text)),
-                        top_k_predictions=int(prev.raw.get("top_k_predictions", 5)),
-                        recipe_id=prev.recipe_id,
-                        title=prev.title,
-                    )
-                elif prev.engine == "walk_model":
-                    run = executor.run_walk_model(
-                        workspace_path=ws_path,
-                        prompt=str(prev.raw.get("prompt", prev.input_text)),
-                        top_k_predictions=int(prev.raw.get("top_k_predictions", 5)),
-                        top_k_features=int(prev.raw.get("walk_top_k_features", 8192)),
-                        recipe_id=prev.recipe_id,
-                        title=prev.title,
-                    )
-                elif prev.engine == "trace":
-                    run = executor.run_trace(
-                        workspace_path=ws_path,
-                        prompt=str(prev.raw.get("prompt", prev.input_text)),
-                        positions=str(prev.raw.get("positions", "last")),
-                        walk_top_k=int(prev.raw.get("walk_top_k_features", 8192)),
-                        recipe_id=prev.recipe_id,
-                        title=prev.title,
-                    )
-                else:
-                    return JSONResponse({"error": f"cannot rerun engine {prev.engine}"}, status_code=400)
+                _prepare_rerun_workspace()
+            except WorkspaceError as exc:
+                return JSONResponse({"error": str(exc)}, status_code=400)
+            try:
+                run = dispatch_rerun_execution(executor, prev, ws_path, title=prev.title, run_id=None)
+            except ValueError as exc:
+                return JSONResponse({"error": str(exc)}, status_code=400)
             except Exception as exc:
                 return JSONResponse({"error": str(exc)}, status_code=500)
             return JSONResponse({"run": run.to_dict()})
@@ -354,93 +447,31 @@ def build_api_routes(
 
         async def _bg() -> None:
             try:
-                if prev.kind == "studio":
-
-                    def _w() -> RunRecord:
-                        return executor.run_studio(
-                            workspace_path=ws_path,
-                            engine=prev.engine,
-                            rendered=prev.input_text,
-                            recipe_id=prev.recipe_id,
-                            title=pending.title,
-                            band=str(prev.raw.get("band", "knowledge")),
-                            verbose=bool(prev.raw.get("verbose", False)),
-                            infer_top_k_predictions=int(prev.raw.get("infer_top_k_predictions", 5)),
-                            walk_top_k=int(prev.raw.get("walk_top_k", 8192)),
-                            run_id=new_id,
+                _prepare_rerun_workspace()
+            except WorkspaceError as exc:
+                old = ui_store.get_run(new_id)
+                if old:
+                    ui_store.save_run(
+                        replace(
+                            old,
+                            status="error",
+                            summary=str(exc),
+                            raw={**old.raw, "error": str(exc)},
                         )
+                    )
+                return
+            try:
 
-                    await asyncio.to_thread(_w)
-                elif prev.engine == "describe":
-                    raw = prev.raw
+                def _w() -> RunRecord:
+                    return dispatch_rerun_execution(
+                        executor,
+                        prev,
+                        ws_path,
+                        title=pending.title,
+                        run_id=new_id,
+                    )
 
-                    def _w() -> RunRecord:
-                        return executor.run_describe(
-                            workspace_path=ws_path,
-                            entity=str(raw.get("entity", prev.input_text)),
-                            band=str(raw.get("band", "knowledge")),
-                            verbose=bool(raw.get("verbose", False)),
-                            recipe_id=prev.recipe_id,
-                            title=pending.title,
-                            run_id=new_id,
-                        )
-
-                    await asyncio.to_thread(_w)
-                elif prev.engine == "lql":
-
-                    def _w() -> RunRecord:
-                        return executor.run_lql(
-                            workspace_path=ws_path,
-                            query=str(prev.raw.get("query", prev.input_text)),
-                            recipe_id=prev.recipe_id,
-                            title=pending.title,
-                            run_id=new_id,
-                        )
-
-                    await asyncio.to_thread(_w)
-                elif prev.engine == "infer":
-
-                    def _w() -> RunRecord:
-                        return executor.run_infer(
-                            workspace_path=ws_path,
-                            prompt=str(prev.raw.get("prompt", prev.input_text)),
-                            top_k_predictions=int(prev.raw.get("top_k_predictions", 5)),
-                            recipe_id=prev.recipe_id,
-                            title=pending.title,
-                            run_id=new_id,
-                        )
-
-                    await asyncio.to_thread(_w)
-                elif prev.engine == "walk_model":
-
-                    def _w() -> RunRecord:
-                        return executor.run_walk_model(
-                            workspace_path=ws_path,
-                            prompt=str(prev.raw.get("prompt", prev.input_text)),
-                            top_k_predictions=int(prev.raw.get("top_k_predictions", 5)),
-                            top_k_features=int(prev.raw.get("walk_top_k_features", 8192)),
-                            recipe_id=prev.recipe_id,
-                            title=pending.title,
-                            run_id=new_id,
-                        )
-
-                    await asyncio.to_thread(_w)
-                elif prev.engine == "trace":
-
-                    def _w() -> RunRecord:
-                        return executor.run_trace(
-                            workspace_path=ws_path,
-                            prompt=str(prev.raw.get("prompt", prev.input_text)),
-                            positions=str(prev.raw.get("positions", "last")),
-                            walk_top_k=int(prev.raw.get("walk_top_k_features", 8192)),
-                            recipe_id=prev.recipe_id,
-                            title=pending.title,
-                            run_id=new_id,
-                        )
-
-                    await asyncio.to_thread(_w)
-                else:
-                    raise RuntimeError(f"cannot rerun engine {prev.engine}")
+                await asyncio.to_thread(_w)
             except Exception as exc:
                 old = ui_store.get_run(new_id)
                 if old:
@@ -457,7 +488,10 @@ def build_api_routes(
         return JSONResponse({"run_id": new_id, "status": "pending"}, status_code=status.HTTP_202_ACCEPTED)
 
     async def api_explorer_describe(request: Request) -> Response:
-        data = await _read_json(request)
+        data, err = await parse_json_body(request)
+        if err is not None:
+            return err
+        assert data is not None
         try:
             ws = workspace_manager.get_current()
         except WorkspaceError as exc:
@@ -527,6 +561,9 @@ def build_api_routes(
         return JSONResponse({"run_id": rid, "status": "pending"}, status_code=202)
 
     async def api_explorer_relations(request: Request) -> Response:
+        _, err = await parse_json_body(request)
+        if err is not None:
+            return err
         try:
             ws = workspace_manager.get_current()
         except WorkspaceError as exc:
@@ -537,7 +574,7 @@ def build_api_routes(
 
             def _go() -> list[dict[str, Any]]:
                 workspace_manager.open(ws.path)
-                v = larql.load(ws.path)
+                v = runtime_cache.vindex(ws.path)
                 return _relations_payload(v)
 
             rels = await asyncio.to_thread(_go)
@@ -546,7 +583,10 @@ def build_api_routes(
         return JSONResponse({"relations": rels})
 
     async def api_lql_query(request: Request) -> Response:
-        data = await _read_json(request)
+        data, err = await parse_json_body(request)
+        if err is not None:
+            return err
+        assert data is not None
         try:
             ws = workspace_manager.get_current()
         except WorkspaceError as exc:
@@ -603,7 +643,10 @@ def build_api_routes(
         return JSONResponse({"run_id": rid, "status": "pending"}, status_code=202)
 
     async def api_trace_run(request: Request) -> Response:
-        data = await _read_json(request)
+        data, err = await parse_json_body(request)
+        if err is not None:
+            return err
+        assert data is not None
         try:
             ws = workspace_manager.get_current()
         except WorkspaceError as exc:

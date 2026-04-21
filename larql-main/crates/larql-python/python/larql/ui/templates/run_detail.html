@@ -4,12 +4,18 @@
 <section class="panel">
   <div class="panel-header">
     <h2>{{ run.title }}</h2>
-    <span>{{ run.engine }}</span>
+    <span>
+      {% if run.kind == "studio" and run.status == "error" %}
+      Studio (failed) — engine: <code>{{ run.engine }}</code>
+      {% else %}
+      {{ run.engine }}
+      {% endif %}
+    </span>
   </div>
   <p class="panel-lead">Saved run metadata and raw payload.</p>
   <dl class="kv-grid">
     <dt>Status</dt><dd>{{ run.status }}</dd>
-    <dt>Kind</dt><dd>{{ run.kind }}</dd>
+    <dt>Kind</dt><dd>{% if run.kind == "studio" and run.status == "error" %}studio (async error; see engine){% else %}{{ run.kind }}{% endif %}</dd>
     <dt>Created</dt><dd>{{ run.created_at }}</dd>
     <dt>Duration</dt><dd>{{ run.duration_ms }} ms</dd>
     <dt>Workspace</dt><dd><code>{{ run.workspace_path }}</code></dd>

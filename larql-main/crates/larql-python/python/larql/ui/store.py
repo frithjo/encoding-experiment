@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import threading
 from pathlib import Path
 from typing import Any
@@ -150,7 +151,20 @@ class UiStore:
         if self._runs_list is not None and self._runs_mtime_ns == m:
             return self._runs_list
         payload = self._read_json(p, [])
-        out = [RunRecord.from_dict(item) for item in payload]
+        out: list[RunRecord] = []
+        if isinstance(payload, list):
+            _debug = os.environ.get("LARQL_UI_DEBUG", "").lower() in ("1", "true", "yes")
+            for item in payload:
+                if not isinstance(item, dict):
+                    if _debug:
+                        print(f"[larql-ui] skipped non-dict run row: {item!r}", file=sys.stderr)
+                    continue
+                try:
+                    out.append(RunRecord.from_dict(item))
+                except (TypeError, ValueError) as exc:
+                    if _debug:
+                        print(f"[larql-ui] skipped bad run row: {item!r} ({exc})", file=sys.stderr)
+                    continue
         self._runs_list = out
         self._runs_mtime_ns = m
         return out

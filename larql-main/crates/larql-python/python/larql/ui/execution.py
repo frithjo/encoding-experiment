@@ -6,6 +6,7 @@ from typing import Any
 import larql
 
 from .models import RecipeRecord, RunRecord, execution_engine_for_recipe
+from .runtime_cache import LarqlRuntimeCache
 from .store import UiStore
 from .workspace import WorkspaceManager
 
@@ -51,9 +52,15 @@ def residual_trace_to_raw(t: Any) -> dict[str, Any]:
 
 
 class UiExecutor:
-    def __init__(self, store: UiStore, workspace_manager: WorkspaceManager) -> None:
+    def __init__(
+        self,
+        store: UiStore,
+        workspace_manager: WorkspaceManager,
+        runtime_cache: LarqlRuntimeCache,
+    ) -> None:
         self.store = store
         self.workspace_manager = workspace_manager
+        self._runtime_cache = runtime_cache
 
     def run_describe(
         self,
@@ -67,7 +74,7 @@ class UiExecutor:
         run_id: str | None = None,
     ) -> RunRecord:
         self.workspace_manager.open(workspace_path)
-        vindex = larql.load(workspace_path)
+        vindex = self._runtime_cache.vindex(workspace_path)
         started = perf_counter()
         edges = vindex.describe(entity, band=band, verbose=verbose)
         duration_ms = int((perf_counter() - started) * 1000)
@@ -111,7 +118,7 @@ class UiExecutor:
             raise RuntimeError(
                 "LQL session is not available for this workspace (session probe failed during inspection)."
             )
-        session = larql.session(workspace_path)
+        session = self._runtime_cache.session(workspace_path)
         started = perf_counter()
         lines = session.query(query)
         duration_ms = int((perf_counter() - started) * 1000)
@@ -146,7 +153,7 @@ class UiExecutor:
             raise RuntimeError(
                 "Inference requires model weights. Extract vindex with --level all (or equivalent)."
             )
-        vindex = larql.load(workspace_path)
+        vindex = self._runtime_cache.vindex(workspace_path)
         started = perf_counter()
         preds = vindex.infer(prompt, top_k_predictions=top_k_predictions)
         duration_ms = int((perf_counter() - started) * 1000)

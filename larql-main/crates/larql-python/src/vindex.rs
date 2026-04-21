@@ -15,9 +15,8 @@ use numpy::{PyArray1, PyArray2, IntoPyArray};
 use ndarray::Array1;
 
 use larql_vindex::{
-    VectorIndex, VindexConfig, FeatureMeta, WalkHit,
+    VectorIndex, VindexConfig, FeatureMeta, WalkHit, TokenizerArc,
     SilentLoadCallbacks, load_vindex_config, load_vindex_embeddings, load_vindex_tokenizer,
-    tokenizers,
 };
 
 use larql_lql::relations::RelationClassifier;
@@ -242,7 +241,7 @@ pub struct PyVindex {
     pub(crate) index: VectorIndex,
     pub(crate) embeddings: ndarray::Array2<f32>,
     pub(crate) embed_scale: f32,
-    pub(crate) tokenizer: tokenizers::Tokenizer,
+    pub(crate) tokenizer: TokenizerArc,
     pub(crate) config: VindexConfig,
     pub(crate) path: String,
     pub(crate) classifier: Option<RelationClassifier>,
@@ -282,7 +281,7 @@ impl PyVindex {
     fn compute_embed(&self, text: &str) -> PyResult<Array1<f32>> {
         let encoding = self.tokenizer.encode(text, false)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-        let ids = encoding.get_ids();
+        let ids = &encoding.ids;
         if ids.is_empty() {
             return Err(pyo3::exceptions::PyValueError::new_err("Empty tokenization"));
         }
@@ -305,6 +304,43 @@ impl PyVindex {
 
         let avg = sum / count as f32;
         Ok(avg * self.embed_scale)
+    }
+
+    /// Same as [`PyVindex::relations`] — exposed for `workspace_inspect` (Rust callers).
+    pub(crate) fn relations_list(&self) -> Vec<PyRelation> {
+        let rc = match &self.classifier {
+            Some(rc) if rc.has_clusters() => rc,
+            _ => return Vec::new(),
+        };
+
+        let mut rels = Vec::new();
+        for i in 0..rc.num_clusters() {
+            if let Some((label, count, tops)) = rc.cluster_info(i) {
+                if label.contains('/') && label.len() > 20 {
+                    continue;
+                }
+                rels.push(PyRelation {
+                    name: label.to_string(),
+                    cluster_id: i,
+                    count,
+                    top_tokens: tops.to_vec(),
+                });
+            }
+        }
+
+        rels.sort_by(|a, b| b.count.cmp(&a.count));
+        rels
+    }
+
+    /// Same as [`PyVindex::probe_relations`] — exposed for `workspace_inspect`.
+    pub(crate) fn probe_relations_list(&self) -> Vec<PyProbeRelation> {
+        let Some(rc) = self.classifier.as_ref() else {
+            return Vec::new();
+        };
+        rc.probe_relation_counts()
+            .into_iter()
+            .map(|(name, count)| PyProbeRelation { name, count })
+            .collect()
     }
 }
 
@@ -367,7 +403,7 @@ impl PyVindex {
     fn tokenize(&self, text: &str) -> PyResult<Vec<u32>> {
         let encoding = self.tokenizer.encode(text, false)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-        Ok(encoding.get_ids().to_vec())
+        Ok(encoding.ids)
     }
 
     /// Decode token IDs back to text.
@@ -663,39 +699,13 @@ impl PyVindex {
     /// probe labels, but those names are not enumerated here. Long path-like cluster labels are
     /// filtered in Rust.
     fn relations(&self) -> Vec<PyRelation> {
-        let rc = match &self.classifier {
-            Some(rc) if rc.has_clusters() => rc,
-            _ => return Vec::new(),
-        };
-
-        let mut rels = Vec::new();
-        for i in 0..rc.num_clusters() {
-            if let Some((label, count, tops)) = rc.cluster_info(i) {
-                // Skip garbage labels
-                if label.contains('/') && label.len() > 20 { continue; }
-                rels.push(PyRelation {
-                    name: label.to_string(),
-                    cluster_id: i,
-                    count,
-                    top_tokens: tops.to_vec(),
-                });
-            }
-        }
-
-        rels.sort_by(|a, b| b.count.cmp(&a.count));
-        rels
+        self.relations_list()
     }
 
     /// Probe-only relation names from `feature_labels.json`, aggregated by feature count per name.
     /// Distinct from [`relations`] (cluster catalogue). Empty when there are no probe labels.
     fn probe_relations(&self) -> Vec<PyProbeRelation> {
-        let Some(rc) = self.classifier.as_ref() else {
-            return Vec::new();
-        };
-        rc.probe_relation_counts()
-            .into_iter()
-            .map(|(name, count)| PyProbeRelation { name, count })
-            .collect()
+        self.probe_relations_list()
     }
 
     /// Get the cluster centre vector for a relation type as numpy array.
@@ -812,8 +822,7 @@ impl PyVindex {
         // Tokenize target for metadata
         let target_encoding = self.tokenizer.encode(target, false)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-        let target_ids = target_encoding.get_ids();
-        let target_token_id = target_ids.first().copied().unwrap_or(0);
+        let target_token_id = target_encoding.ids.first().copied().unwrap_or(0);
 
         let meta = FeatureMeta {
             top_token: target.to_string(),
@@ -859,7 +868,7 @@ impl PyVindex {
     ) -> PyResult<()> {
         let token_encoding = self.tokenizer.encode(top_token, false)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-        let token_ids = token_encoding.get_ids();
+        let token_ids = &token_encoding.ids;
         let token_id = token_ids.first().copied().unwrap_or(0);
 
         let meta = FeatureMeta {
@@ -987,12 +996,12 @@ impl PyVindex {
         // Tokenize prompt (with BOS token for correct inference)
         let encoding = self.tokenizer.encode(prompt, true)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-        let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+        let token_ids: Vec<u32> = encoding.ids;
 
         // Run forward pass with walk FFN (mmap'd weights, vindex gate KNN)
         let walk_ffn = larql_inference::WalkFfn::new(&infer_state.weights, &self.index, top_k_features);
         let result = larql_inference::predict_with_ffn(
-            &infer_state.weights, &self.tokenizer, &token_ids, top_k_predictions, &walk_ffn
+            &infer_state.weights, self.tokenizer.as_ref(), &token_ids, top_k_predictions, &walk_ffn
         );
 
         Ok(result.predictions)
@@ -1028,11 +1037,11 @@ impl PyVindex {
 
         let encoding = self.tokenizer.encode(prompt, true)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-        let token_ids: Vec<u32> = encoding.get_ids().to_vec();
+        let token_ids: Vec<u32> = encoding.ids;
 
         let walk_ffn = larql_inference::WalkFfn::new(&infer_state.weights, &self.index, top_k_features);
         let result = larql_inference::predict_with_ffn_trace(
-            &infer_state.weights, &self.tokenizer, &token_ids, top_k_predictions, &walk_ffn
+            &infer_state.weights, self.tokenizer.as_ref(), &token_ids, top_k_predictions, &walk_ffn
         );
 
         let residuals: Vec<Bound<'py, PyArray1<f32>>> = result.residuals.into_iter()
@@ -1072,7 +1081,7 @@ impl PyVindex {
         // Tokenize target — use first token
         let encoding = self.tokenizer.encode(target, false)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-        let token_ids = encoding.get_ids();
+        let token_ids = &encoding.ids;
         if token_ids.is_empty() {
             return Ok(vec![]);
         }

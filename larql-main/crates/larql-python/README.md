@@ -8,16 +8,18 @@ Managed via [uv](https://docs.astral.sh/uv/):
 
 ```bash
 cd crates/larql-python
-uv sync --no-install-project --group dev     # creates .venv + installs dev deps
-uv run --no-sync maturin develop --release   # builds PyO3 extension into .venv
-uv run --no-sync pytest tests/               # run binding tests
+uv sync --no-install-project --group dev --extra ui   # dev tools + UI stack (see pyproject)
+uv run --no-sync maturin develop --release           # builds PyO3 extension into .venv
+uv run --no-sync pytest tests/                       # binding + UI tests
 ```
 
-Optional extras (Apple Silicon only): `uv sync --no-install-project --group dev --extra mlx`.
+Apple Silicon (MLX): add `--extra mlx` to the `uv sync` line. The `mlx` extra pulls `mlx-lm` and its Hugging Face / `transformers` stack — separate from the Rust tokenizer used inside `larql._native`, but required for `larql.mlx` and MLX generation.
 
 ## Workbench UI
 
-Phase 1 terminal-first UI lives under `larql.ui`.
+The workbench under `larql.ui` is **only** specified for a **browser running in the terminal** via the first-party client **`larql-terminal-browser`** (`crates/larql-terminal-browser`)—**resizable** display port (compact to generous), high-resolution rendering (**GPU acceleration** when available; **CPU fallback** otherwise), monospace-friendly typography, keyboard-first. Images, video, and streaming are supported at the client (see `plan.md`). It is **not** a desktop dashboard with a narrow mode; the terminal-embedded viewport is the sole normative target. Third-party terminal browsers are optional for development only.
+
+Engine-adjacent workbench logic (workspace inspection, execution) should live in **Rust** via PyO3 (`larql._native`); the Python package keeps HTTP, persistence, and templates thin. See `AGENTS.md` (Rust-first workbench logic).
 
 ```bash
 cd crates/larql-python
@@ -26,12 +28,16 @@ uv run --no-sync maturin develop --release
 uv run --no-sync larql-ui --host 127.0.0.1 --port 8000
 ```
 
-Open `http://127.0.0.1:8000` in Carbonyl, then:
+Open `http://127.0.0.1:8000` in your terminal browser, then:
 - load local `.vindex`
 - browse with `Explorer`
 - run raw queries in `LQL`
 - save simple `describe` / `lql` recipes
 - inspect run history in `Runs`
+
+**Environment**
+
+- **`LARQL_UI_DEBUG`**: Set to `1`, `true`, or `yes` to enable Jinja2 template auto-reload (the server re-checks template files on each request). Leave unset for normal use so the UI does not stat templates on every request.
 
 ## Quickstart
 
