@@ -3,6 +3,7 @@
 use larql_vindex::{
     FeatureMeta, GateIndex, VectorIndex, VindexConfig, VindexLayerInfo,
 };
+use larql_tokenizer::HfTokenizer;
 use ndarray::{Array1, Array2, ArcArray2};
 
 fn make_top_k(token: &str, id: u32, logit: f32) -> larql_models::TopKEntry {
@@ -1757,7 +1758,7 @@ fn extract_synthetic_model_f32() {
     let mut cb = larql_vindex::SilentBuildCallbacks;
     larql_vindex::build_vindex(
         &weights,
-        &tokenizers::Tokenizer::from_bytes(tok_json).unwrap(),
+        &HfTokenizer::from_bytes(tok_json.as_bytes()).unwrap(),
         "test/synthetic",
         &dir,
         5,
@@ -1770,7 +1771,6 @@ fn extract_synthetic_model_f32() {
     assert!(dir.join("gate_vectors.bin").exists());
     assert!(dir.join("embeddings.bin").exists());
     assert!(dir.join("down_meta.bin").exists());
-    assert!(dir.join("down_meta.bin").exists(), "binary down_meta should be written during extract");
     assert!(dir.join("index.json").exists());
     assert!(dir.join("attn_weights.bin").exists());
     assert!(dir.join("up_weights.bin").exists());
@@ -1823,7 +1823,7 @@ fn extract_synthetic_model_f16() {
     let mut cb = larql_vindex::SilentBuildCallbacks;
     larql_vindex::build_vindex(
         &weights,
-        &tokenizers::Tokenizer::from_bytes(tok_json).unwrap(),
+        &HfTokenizer::from_bytes(tok_json.as_bytes()).unwrap(),
         "test/synthetic-f16",
         &dir,
         5,
@@ -1876,7 +1876,7 @@ fn extract_then_load_weights_round_trip() {
     let mut cb = larql_vindex::SilentBuildCallbacks;
     larql_vindex::build_vindex(
         &weights,
-        &tokenizers::Tokenizer::from_bytes(tok_json).unwrap(),
+        &HfTokenizer::from_bytes(tok_json.as_bytes()).unwrap(),
         "test/weight-rt",
         &dir,
         5,
@@ -1929,7 +1929,7 @@ fn extract_mutate_reload_verifies_mutation() {
     let mut cb = larql_vindex::SilentBuildCallbacks;
     larql_vindex::build_vindex(
         &weights,
-        &tokenizers::Tokenizer::from_bytes(tok_json).unwrap(),
+        &HfTokenizer::from_bytes(tok_json.as_bytes()).unwrap(),
         "test/mutate",
         &dir,
         5,
@@ -1982,7 +1982,7 @@ fn extract_with_patches_bake_down() {
     let mut cb = larql_vindex::SilentBuildCallbacks;
     larql_vindex::build_vindex(
         &weights,
-        &tokenizers::Tokenizer::from_bytes(tok_json).unwrap(),
+        &HfTokenizer::from_bytes(tok_json.as_bytes()).unwrap(),
         "test/patch",
         &dir,
         5,
@@ -2307,14 +2307,26 @@ fn streaming_extract_from_safetensors() {
             (name.clone(), bytes, shape.clone())
         })
         .collect();
-    let views: Vec<(String, safetensors::tensor::TensorView<'_>)> = tensor_bytes.iter()
-        .map(|(name, bytes, shape)| {
-            (name.clone(), safetensors::tensor::TensorView::new(
-                safetensors::Dtype::F32, shape.clone(), bytes,
-            ).unwrap())
-        })
-        .collect();
-    let serialized = safetensors::tensor::serialize(views, &None).unwrap();
+    // Manually construct safetensors format
+    let mut header_json = serde_json::Map::new();
+    let mut offset = 0u64;
+    for (name, bytes, shape) in &tensor_bytes {
+        let tensor_info = serde_json::json!({
+            "dtype": "F32",
+            "shape": shape,
+            "data_offsets": [offset, offset + bytes.len() as u64]
+        });
+        header_json.insert(name.clone(), tensor_info);
+        offset += bytes.len() as u64;
+    }
+
+    let header_bytes = serde_json::to_vec(&header_json).unwrap();
+    let mut serialized = Vec::new();
+    serialized.extend_from_slice(&(header_bytes.len() as u64).to_le_bytes());
+    serialized.extend_from_slice(&header_bytes);
+    for (_, bytes, _) in &tensor_bytes {
+        serialized.extend_from_slice(bytes);
+    }
     std::fs::write(model_dir.join("model.safetensors"), &serialized).unwrap();
 
     // Write tokenizer
@@ -2322,7 +2334,7 @@ fn streaming_extract_from_safetensors() {
     std::fs::write(model_dir.join("tokenizer.json"), tok_json).unwrap();
 
     // Run streaming extraction
-    let tokenizer = larql_vindex::tokenizers::Tokenizer::from_bytes(tok_json.as_bytes()).unwrap();
+    let tokenizer = HfTokenizer::from_bytes(tok_json.as_bytes()).unwrap();
     let mut cb = larql_vindex::SilentBuildCallbacks;
 
     larql_vindex::build_vindex_streaming(
