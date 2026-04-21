@@ -1109,8 +1109,18 @@ That gets a real product in users’ hands without betting early on the heaviest
 - Do you want compare mode in the first milestone, or only after the basic run flow is stable?
 - Should the first trace view use `WalkModel.trace(...)` only, or also expose `Vindex.infer_trace(...)` as a lighter-weight option?
 
+## Normative compliance (process)
+
+This file is the **authoritative specification** for the Carbonyl / LARQL workbench (`crates/larql-python/python/larql/ui/` and related routing, execution adapters, and tests that define the same UX contract).
+
+**Strict compliance rule:** From the adoption of this section onward, changes that touch the workbench **must** conform to the requirements and structure described here (routing, HTMX + partials vs full pages, API routes, phases, capability gating, Carbonyl constraints, etc.). If an implementation intentionally diverges from an existing section (for example shipping non-HTMX interaction patterns, omitting listed routes, or skipping long-running-run behavior), the **same change set** must **amend this document** so the spec and the code stay aligned. Drive-by shortcuts that contradict the plan without updating it are not allowed.
+
+**Amendment expectations:** A deliberate plan change should include a short rationale (e.g. in the PR body) and edits to the affected sections or checklist items in this file.
+
+**Checklist:** The **Implementation Plan** checklist below is the ordered backlog for closing gaps against this spec; treat unchecked items as required work until done or explicitly rescoped in `plan.md`.
+
 ## Implementation Plan
-[ ] Add a local web app entrypoint under `crates/larql-python/python/larql/ui/` using FastAPI + Jinja + HTMX and keep routing server-rendered by default.  
+[x] Add a local web app entrypoint under `crates/larql-python/python/larql/ui/` using FastAPI + Jinja + HTMX and keep routing server-rendered by default.  
 [ ] Add workspace inspection and caching services that wrap `larql.load(...)`, `larql.session(...)`, and optionally `WalkModel(...)`, then expose capability badges and warnings.  
 [ ] Add recipe models, validation, rendering, and persistence for probe/generation recipes with template variables and engine defaults.  
 [ ] Add the `Studio`, `Explorer`, `LQL`, `Trace`, `Recipes`, and `Runs` page routes plus matching partials for HTMX updates.  
