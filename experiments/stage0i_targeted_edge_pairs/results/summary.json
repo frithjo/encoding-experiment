@@ -1,0 +1,14 @@
+{
+  "target_feature": "edge__boundary_assessed__high_level_explanation",
+  "learning_seeds": [
+    0,
+    1,
+    2
+  ],
+  "n_samples_values": [
+    600,
+    1200
+  ],
+  "template_count": 12,
+  "total_pairs": 72
+}

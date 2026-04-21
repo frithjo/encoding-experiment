@@ -1,0 +1,9 @@
+{
+  "n_activation_cells": 18,
+  "n_replication_pairs": 576,
+  "n_replication_templates": 32,
+  "features": [
+    "edge__benign_assessed__clarify",
+    "edge__risky_assessed__refuse"
+  ]
+}

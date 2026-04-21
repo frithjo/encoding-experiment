@@ -1,0 +1,19 @@
+{
+  "target_features": [
+    "edge__boundary_assessed__high_level_explanation",
+    "edge__risky_assessed__refuse",
+    "edge__ambiguous_assessed__clarify",
+    "edge__benign_assessed__clarify"
+  ],
+  "learning_seeds": [
+    0,
+    1,
+    2
+  ],
+  "n_samples_values": [
+    600,
+    1200
+  ],
+  "template_count": 12,
+  "total_pairs": 288
+}

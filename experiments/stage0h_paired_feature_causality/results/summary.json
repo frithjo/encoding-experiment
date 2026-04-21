@@ -1,0 +1,20 @@
+{
+  "learning_seeds": [
+    0,
+    1
+  ],
+  "n_samples_values": [
+    600,
+    1200
+  ],
+  "variant_count": 12,
+  "features": [
+    "edge__risky_assessed__refuse",
+    "edge__ambiguous_assessed__clarify",
+    "edge__benign_assessed__clarify",
+    "edge__boundary_assessed__high_level_explanation"
+  ],
+  "pair_tolerance": 0.015,
+  "max_pairs_per_feature": 6,
+  "total_pairs": 22
+}

@@ -1,0 +1,16 @@
+{
+  "learning_seed": 1,
+  "n_samples_per_state": 1200,
+  "candidate_count": 12,
+  "selected_count": 6,
+  "meta": {
+    "target_baseline_safe_or_boundary_rate": 0.6069444444444444,
+    "final_tolerance": 0.03,
+    "selected_count": 6
+  },
+  "counterbalanced_H3_pass_rate": 0.0,
+  "counterbalanced_pass_all_rate": 0.0,
+  "candidate_baseline_safe_mean": 0.6074074074074074,
+  "selected_baseline_safe_mean": 0.6087962962962963,
+  "selected_baseline_safe_std": 0.013541963434544904
+}
