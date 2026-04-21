@@ -164,8 +164,8 @@ impl Session {
             Statement::ShowEntities { layer, limit } => {
                 self.exec_show_entities(*layer, *limit)
             }
-            Statement::ShowTokens { layer, conditions, verbose, group_by, order_by } => {
-                self.exec_show_tokens(*layer, conditions, *verbose, *group_by, *order_by)
+            Statement::ShowTokens { layer, conditions, verbose, group_by, order_by, limit, export_format } => {
+                self.exec_show_tokens(*layer, conditions, *verbose, *group_by, *order_by, *limit, *export_format)
             }
             Statement::ShowModels => self.exec_show_models(),
             Statement::Extract { model, output, components, layers, extract_level } => {
@@ -231,16 +231,24 @@ impl Session {
             }
             Statement::Stats { .. } => self.remote_stats(),
             Statement::ShowRelations { mode, with_examples, .. } => self.remote_show_relations(*mode, *with_examples),
-            Statement::Insert { entity, relation, target, layer, confidence, alpha: _ } => {
-                // Remote backend doesn't forward ALPHA — the HTTP
-                // protocol doesn't have a schema for it yet. Local
-                // backend honours alpha via `exec_insert`.
-                self.remote_insert(entity, relation, target, *layer, *confidence)
+            Statement::ShowLayers { range } => self.remote_show_layers(range.as_ref()),
+            Statement::ShowFeatures { layer, conditions, limit } => {
+                self.remote_show_features(*layer, conditions, *limit)
+            }
+            Statement::ShowEntities { layer, limit } => {
+                self.remote_show_entities(*layer, *limit)
+            }
+            Statement::Insert { entity, relation, target, layer, confidence, alpha } => {
+                self.remote_insert(entity, relation, target, *layer, *confidence, *alpha)
             }
             Statement::Delete { conditions } => self.remote_delete(conditions),
             Statement::Update { set, conditions } => self.remote_update(set, conditions),
-            Statement::Select { source: _, fields: _, conditions, nearest: _, order: _, limit } => {
-                self.remote_select(conditions, *limit)
+            Statement::Select { source: _, fields, conditions, nearest, order, limit } => {
+                let field_names: Vec<String> = fields.iter().map(|f| match f {
+                    crate::ast::Field::Named(s) => s.clone(),
+                    crate::ast::Field::Star => "*".to_string(),
+                }).collect();
+                self.remote_select(conditions, *limit, &field_names, nearest.as_ref(), order.as_ref())
             }
             Statement::Explain { prompt, mode, layers, band, verbose: _, top, relations_only, with_attention } => {
                 match mode {
@@ -251,6 +259,7 @@ impl Session {
             Statement::ApplyPatch { path } => self.remote_apply_local_patch(path),
             Statement::ShowPatches => self.remote_show_patches(),
             Statement::RemovePatch { path } => self.remote_remove_local_patch(path),
+            Statement::ShowModels => self.remote_show_models(),
             Statement::Pipe { left, right } => {
                 let mut out = self.execute(left)?;
                 out.extend(self.execute(right)?);
@@ -259,7 +268,8 @@ impl Session {
             _ => Err(LqlError::Execution(
                 "this statement is not supported on a remote backend. \
                  Supported: DESCRIBE, WALK, INFER, EXPLAIN INFER, EXPLAIN WALK, SELECT, STATS, \
-                 SHOW RELATIONS, INSERT, DELETE, UPDATE, APPLY PATCH, SHOW PATCHES, REMOVE PATCH, USE. \
+                 SHOW RELATIONS, SHOW MODELS, SHOW LAYERS, SHOW FEATURES, SHOW ENTITIES, INSERT, DELETE, UPDATE, \
+                 APPLY PATCH, SHOW PATCHES, REMOVE PATCH, USE. \
                  TRACE requires a local vindex (USE \"path.vindex\")."
                     .into(),
             )),
