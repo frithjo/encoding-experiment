@@ -66,7 +66,7 @@ hits = vindex.walk("The capital of France is", top=10, layers=range(24, 34))
 
 # Select — query edges
 results = vindex.select(relation="capital", limit=10)
-results = vindex.select(entity="France", min_confidence=0.5)
+results = vindex.select(entity="France", confidence_floor=0.5)
 results = vindex.select(relation="occupation", target_like="composer")
 
 # Relations — list all known relation types
@@ -548,7 +548,7 @@ pip install larql
 
 # From source — managed via uv
 cd crates/larql-python
-uv sync --no-install-project --group dev
+uv sync --no-install-project --group dev --extra ui
 uv run --no-sync maturin develop --release
 
 # Verify

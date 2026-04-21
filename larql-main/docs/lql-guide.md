@@ -218,6 +218,38 @@ SHOW LAYERS RANGE 14-27;
 -- Feature details
 SHOW FEATURES 26 LIMIT 20;
 
+-- Token summary across all layers
+SHOW TOKENS;
+
+-- Token summary at a specific layer
+SHOW TOKENS AT LAYER 26;
+
+-- Token summary grouped by layer band
+SHOW TOKENS GROUP BY BAND;
+
+-- Token summary grouped by layer
+SHOW TOKENS GROUP BY LAYER;
+
+-- Filter by token shape, type, or pattern
+SHOW TOKENS WHERE shape = "title";
+SHOW TOKENS WHERE type = "mixed";
+SHOW TOKENS WHERE token LIKE "par%";
+
+-- Order by different metrics
+SHOW TOKENS ORDER BY MaxScore;
+SHOW TOKENS ORDER BY Distinct;
+SHOW TOKENS ORDER BY EntityLike;
+
+-- Limit results
+SHOW TOKENS LIMIT 10;
+
+-- Export to CSV or JSON
+SHOW TOKENS EXPORT CSV;
+SHOW TOKENS EXPORT JSON;
+
+-- Verbose mode (shows top matching tokens per shape)
+SHOW TOKENS VERBOSE;
+
 -- Available vindexes in current directory
 SHOW MODELS;
 
@@ -227,6 +259,22 @@ SHOW PATCHES;
 -- Knowledge graph coverage
 STATS;
 ```
+
+### SHOW TOKENS Remote Parity
+
+`SHOW TOKENS` guarantees **byte-identical output** between local and remote execution. When connected via `USE REMOTE`, the client:
+
+1. Forwards the query to the server's `/v1/tokens` endpoint
+2. Receives structured JSON with pre-aggregated token groups
+3. Parses the response into the same internal data structures as the local path
+4. Reuses the exact same formatting functions (`render_token_summary`, `export_token_summary`)
+
+This ensures that `SHOW TOKENS` produces identical results whether run against a local `.vindex` or a remote server, including all variants:
+- Flat, grouped (layer/band), filtered, sorted, limited
+- Verbose mode with top matching tokens
+- CSV and JSON exports
+
+The server endpoint returns token data without any text rendering — all formatting happens client-side using shared code from `larql_vindex::token_summary`.
 
 ## Layer Bands
 

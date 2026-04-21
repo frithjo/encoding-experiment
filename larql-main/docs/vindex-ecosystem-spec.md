@@ -266,6 +266,8 @@ Knowledge access works on anything, generation needs compute. Most use cases are
 
 Vindexes publish to HuggingFace as dataset repos. The directory maps 1:1 to the repo structure.
 
+**Note:** HuggingFace integration is optional. The vindex format itself is registry-agnostic and works with local paths or any HTTP server. Enable the `huggingface` feature (`cargo build --features huggingface`) to use HF-specific functionality.
+
 ```bash
 # Build locally
 larql extract-index google/gemma-3-4b-it -o gemma3-4b.vindex --level all
@@ -273,14 +275,21 @@ larql extract-index google/gemma-3-4b-it -o gemma3-4b.vindex --level all
 # Run probes for labels (optional)
 python3 scripts/probe_mlx.py --model google/gemma-3-4b-it --vindex gemma3-4b.vindex
 
-# Publish
+# Publish (requires huggingface feature)
 larql publish gemma3-4b.vindex --repo chrishayuk/gemma-3-4b-it-vindex
 
-# Anyone can now use it
+# Anyone can now use it (requires huggingface feature)
 larql> USE "hf://chrishayuk/gemma-3-4b-it-vindex";
 ```
 
 **Lazy loading.** `USE` downloads only `index.json` first (~5 KB). Gate vectors download on first DESCRIBE (~3 GB at f16). Attention weights download only if INFER is called. You pay for what you use.
+
+**Local-only usage.** Without the `huggingface` feature, you can still use local vindex paths:
+
+```sql
+larql> USE "./gemma3-4b.vindex";
+larql> DESCRIBE "France";
+```
 
 ### 4.2 Patch Publishing
 

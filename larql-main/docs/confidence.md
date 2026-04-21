@@ -112,8 +112,8 @@ Stats file contains per-layer:
 
 | Field | Description |
 |---|---|
-| `mean_confidence` | Average normalized confidence (c_in × c_out) |
-| `max_confidence` | Highest confidence edge |
+| `confidence_mean` | Average normalized confidence (c_in × c_out) |
+| `confidence_max` | Highest confidence edge |
 | `mean_selectivity` | Average normalized selectivity (c_in) |
 | `max_selectivity` | Highest selectivity edge |
 | `mean_c_in` | Average raw input selectivity |

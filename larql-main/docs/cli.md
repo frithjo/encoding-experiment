@@ -156,8 +156,8 @@ larql weight-extract <MODEL> --output <OUTPUT> [OPTIONS]
 | `-o, --output <OUTPUT>` | Output file (`.larql.json` or `.larql.bin`) |
 | `-l, --layer <LAYER>` | Single layer to walk. Default: all layers |
 | `--top-k <TOP_K>` | Top-k tokens per feature [default: 5] |
-| `--min-score <MIN_SCORE>` | Minimum raw activation score for top-k selection [default: 0.02] |
-| `--min-confidence <MIN_CONFIDENCE>` | Minimum normalized confidence [0-1] to keep an edge [default: 0.0] |
+| `--activation-floor <F>` | Minimum raw activation for top-k token inclusion [default: 0.02] |
+| `--confidence-floor <F>` | Minimum normalized confidence [0–1] to keep an edge [default: 0.0] |
 | `--stats <STATS>` | Write layer statistics to a separate JSON file |
 
 **Model resolution:** Accepts a local directory path or a HuggingFace model ID. Model IDs are resolved from the HuggingFace cache at `~/.cache/huggingface/hub/` (or `$HF_HOME/hub/`).
@@ -178,7 +178,7 @@ larql weight-extract google/gemma-3-4b-it --layer 26 -o L26.larql.json
 # Filtered extraction with stats
 larql weight-extract google/gemma-3-4b-it \
     -o knowledge.larql.json \
-    --min-confidence 0.1 \
+    --confidence-floor 0.1 \
     --stats stats.json
 
 # MessagePack output (smaller, faster)
@@ -199,7 +199,7 @@ larql attention-extract <MODEL> --output <OUTPUT> [OPTIONS]
 | `-o, --output <OUTPUT>` | Output file (`.larql.json` or `.larql.bin`) |
 | `-l, --layer <LAYER>` | Single layer to walk. Default: all layers |
 | `--top-k <TOP_K>` | Top-k tokens per head [default: 3] |
-| `--min-score <MIN_SCORE>` | Minimum score [default: 0.0] |
+| `--activation-floor <F>` | Minimum raw activation for OV logits [default: 0.0] |
 
 **How it works:** For each attention head, computes the OV circuit (`O_h @ V_h`), projects all vocab tokens through it, finds the most amplified inputs, and decodes what output tokens each produces.
 
@@ -660,7 +660,7 @@ larql bfs --seeds <SEEDS> --templates <TEMPLATES> --output <OUTPUT> [OPTIONS]
 | `--mock-knowledge <PATH>` | Path to mock knowledge JSON (with `--mock`) |
 | `--max-depth <N>` | Maximum BFS depth [default: 3] |
 | `--max-entities <N>` | Maximum entities to probe [default: 1000] |
-| `--min-confidence <F>` | Minimum edge confidence [default: 0.3] |
+| `--confidence-floor <F>` | Minimum edge confidence [default: 0.3] |
 | `--resume <PATH>` | Resume from a checkpoint file |
 
 **Requires:** Templates JSON file defining prompt templates for each relation. See [format.md](format.md) for template format.

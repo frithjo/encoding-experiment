@@ -148,7 +148,7 @@ GET /v1/describe?entity=France&limit=10
 | `band` | string | Layer band: `syntax`, `knowledge`, `output`, `all` | `knowledge` |
 | `verbose` | bool | Include TF-IDF labels, also-tokens, layer ranges | false |
 | `limit` | int | Max edges to return | 20 |
-| `min_score` | float | Minimum gate score threshold | 5.0 |
+| `gate_floor` | float | Minimum gate score threshold (edges below this are dropped) | 5.0 |
 
 **Response:**
 
@@ -234,7 +234,7 @@ POST /v1/select
 POST /v1/select
 {
   "entity": "France",
-  "min_confidence": 0.5
+  "confidence_floor": 0.5
 }
 ```
 
@@ -585,7 +585,7 @@ Excess requests receive `429 Too Many Requests`.
 
 ### 8.4 DESCRIBE Cache (implemented)
 
-In-memory TTL cache for DESCRIBE results. Keys include model ID, entity, band, limit, min_score.
+In-memory TTL cache for DESCRIBE results. Keys include model ID, entity, band, limit, gate_floor.
 
 ```bash
 larql serve gemma3-4b.vindex --cache-ttl 300  # 5 minute TTL
