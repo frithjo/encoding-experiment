@@ -3,7 +3,7 @@
 {% block content %}
 <section class="panel">
   <h2>Studio</h2>
-  <p>Pick recipe or ad-hoc template, choose engine, fill variables, run or compare batch (single <code>{placeholder}</code> only).</p>
+  <p class="panel-lead">Pick recipe or ad-hoc template, choose engine, fill variables, run or compare batch (single <code>{placeholder}</code> only).</p>
 
   <form id="studio-form" method="post" class="stack-form">
     <label for="recipe_id">Recipe (optional)</label>
@@ -19,10 +19,13 @@
       <option value="describe" {% if form_data.engine == 'describe' %}selected{% endif %}>describe</option>
       <option value="lql" {% if form_data.engine == 'lql' %}selected{% endif %}>lql</option>
       <option value="infer" {% if form_data.engine == 'infer' %}selected{% endif %} {% if not supports_infer %}disabled{% endif %}>infer</option>
-      <option value="walk_model" {% if form_data.engine == 'walk_model' %}selected{% endif %} {% if not supports_infer %}disabled{% endif %}>walk_model</option>
+      <option value="walk_model" {% if form_data.engine == 'walk_model' %}selected{% endif %} {% if not supports_walk_model %}disabled{% endif %}>walk_model</option>
     </select>
     {% if not supports_infer %}
-    <p class="muted">infer / walk_model need model weights in vindex.</p>
+    <p class="muted">infer requires model weights in the vindex.</p>
+    {% endif %}
+    {% if not supports_walk_model %}
+    <p class="muted">walk_model requires mmap weights and a successful WalkModel load (workspace strip).</p>
     {% endif %}
 
     <label for="inline_template">Ad-hoc template (when no recipe)</label>
@@ -35,10 +38,10 @@
       {% endfor %}
     </select>
 
-    <label class="checkbox-row">
-      <input type="checkbox" name="verbose" {% if form_data.verbose %}checked{% endif %}>
-      <span>Verbose describe</span>
-    </label>
+    <div class="checkbox-row">
+      <input type="checkbox" id="studio_verbose" name="verbose" {% if form_data.verbose %}checked{% endif %}>
+      <label for="studio_verbose">Verbose describe</label>
+    </div>
 
     <label for="infer_top_k_predictions">Top-k predictions (infer / walk_model)</label>
     <input id="infer_top_k_predictions" name="infer_top_k_predictions" type="number" min="1" value="{{ form_data.infer_top_k_predictions }}">
@@ -47,11 +50,11 @@
     <input id="walk_top_k" name="walk_top_k" type="number" min="1" value="{{ form_data.walk_top_k }}">
 
     {% if variable_names %}
-    <fieldset>
+    <fieldset class="stack-fieldset">
       <legend>Variables</legend>
       {% for name in variable_names %}
-      <label for="var_{{ name }}">{{ name }}</label>
-      <input id="var_{{ name }}" name="{{ name }}" type="text" value="{{ variables_form[name] if variables_form and name in variables_form else '' }}">
+      <label for="studio_var_{{ loop.index0 }}">{{ name }}</label>
+      <input id="studio_var_{{ loop.index0 }}" name="{{ name }}" type="text" value="{{ variables_form[name] if variables_form and name in variables_form else '' }}" autocomplete="off">
       {% endfor %}
     </fieldset>
     {% endif %}
@@ -60,8 +63,8 @@
     <textarea id="compare_subjects" name="compare_subjects" rows="4" placeholder="France&#10;Germany">{{ form_data.compare_subjects }}</textarea>
 
     <div class="button-row">
-      <button type="submit" formaction="/studio/run" formmethod="post">Run</button>
-      <button type="submit" formaction="/studio/compare" formmethod="post" class="secondary">Compare batch</button>
+      <button type="submit" formaction="/studio/run" formmethod="post" aria-label="Run studio template or ad-hoc query">Run</button>
+      <button type="submit" formaction="/studio/compare" formmethod="post" class="secondary" aria-label="Compare batch across subjects">Compare batch</button>
     </div>
   </form>
 </section>
@@ -75,7 +78,7 @@
   {% if run.raw.predictions %}
   <ul class="predictions">
     {% for p in run.raw.predictions %}
-    <li><strong>{{ p.token }}</strong> — {{ "%.2f"|format(p.probability * 100) }}%</li>
+    <li><strong>{{ p.token }}</strong> — {{ (p.probability * 100) | round(2) }}%</li>
     {% endfor %}
   </ul>
   {% elif run.raw.edges %}
@@ -87,7 +90,7 @@
         <span class="arrow">-&gt;</span>
         <span>{{ edge.target }}</span>
       </div>
-      <div class="muted">L{{ edge.layer }} score {{ "%.1f"|format(edge.gate_score) }}</div>
+      <div class="muted">L{{ edge.layer }} score {{ edge.gate_score | round(1) }}</div>
     </article>
     {% endfor %}
   </div>
@@ -95,7 +98,7 @@
   <pre>{% for line in run.raw.lines %}{{ line }}
 {% endfor %}</pre>
   {% endif %}
-  <details>
+  <details class="tty-details">
     <summary>Raw JSON</summary>
     <pre>{{ run.raw|to_pretty_json }}</pre>
   </details>
@@ -113,9 +116,9 @@
         <span>{{ r.summary }}</span>
       </div>
       {% if r.raw.predictions %}
-      <div class="muted">Top: {{ r.raw.predictions[0].token }} ({{ "%.1f"|format(r.raw.predictions[0].probability * 100) }}%)</div>
+      <div class="muted">Top: {{ r.raw.predictions[0].token }} ({{ (r.raw.predictions[0].probability * 100) | round(1) }}%)</div>
       {% endif %}
-      <details>
+      <details class="tty-details">
         <summary>Raw</summary>
         <pre>{{ r.raw|to_pretty_json }}</pre>
       </details>

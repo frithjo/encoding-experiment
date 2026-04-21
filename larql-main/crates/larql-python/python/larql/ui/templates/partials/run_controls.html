@@ -1,0 +1,13 @@
+{# plan /partials/run-controls — engine capability strip for embedding #}
+<div class="partial-run-controls panel-inline" id="partial-run-controls">
+  {% if workspace %}
+  <p class="muted run-controls-lead">Engines: describe + LQL always; infer / walk_model / trace require weights (see workspace strip).</p>
+  <ul class="engine-chip-list">
+    <li>infer: {% if workspace.supports_infer %}<span class="ok">ready</span>{% else %}<span class="dim">unavailable</span>{% endif %}</li>
+    <li>walk_model: {% if workspace.supports_walk_model %}<span class="ok">ready</span>{% else %}<span class="dim">unavailable</span>{% endif %}</li>
+    <li>trace: {% if workspace.supports_trace %}<span class="ok">ready</span>{% else %}<span class="dim">unavailable</span>{% endif %}</li>
+  </ul>
+  {% else %}
+  <p class="muted">Open a workspace to see engine availability.</p>
+  {% endif %}
+</div>

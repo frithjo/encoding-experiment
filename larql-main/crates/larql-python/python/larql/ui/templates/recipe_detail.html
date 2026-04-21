@@ -6,20 +6,22 @@
     <h2>{{ recipe.name }}</h2>
     <span>{{ recipe.kind }}</span>
   </div>
-  <p>{{ recipe.description or "No description." }}</p>
+  <p class="panel-lead">{{ recipe.description or "No description." }}</p>
   <div class="muted">Source: <code>{% if recipe.kind == 'lql' and recipe.lql_template %}{{ recipe.lql_template }}{% else %}{{ recipe.template }}{% endif %}</code></div>
 
   <form method="post" action="/recipes/{{ recipe.id }}/run" class="stack-form">
     {% for name, value in variables.items() %}
-    <label for="{{ name }}">{{ name|capitalize }}</label>
-    <input id="{{ name }}" name="{{ name }}" type="text" value="{{ value }}" placeholder="{{ name }}">
+    <label for="recipe_var_{{ loop.index0 }}">{{ name }}</label>
+    <input id="recipe_var_{{ loop.index0 }}" name="{{ name }}" type="text" value="{{ value }}" placeholder="{{ name }}" autocomplete="off">
     {% endfor %}
-    <button type="submit">Run recipe</button>
+    <button type="submit" aria-label="Run recipe with variable values">Run recipe</button>
   </form>
 
-  <form method="post" action="/recipes/{{ recipe.id }}/delete" class="inline-form">
-    <button type="submit" class="danger">Delete recipe</button>
-  </form>
+  <div class="button-row">
+    <form method="post" action="/recipes/{{ recipe.id }}/delete" class="inline-form">
+      <button type="submit" class="danger" aria-label="Delete this recipe permanently">Delete recipe</button>
+    </form>
+  </div>
 </section>
 
 {% if rendered_text %}
@@ -38,7 +40,7 @@
   {% if run.raw.predictions %}
   <ul class="predictions">
     {% for p in run.raw.predictions %}
-    <li><strong>{{ p.token }}</strong> — {{ "%.2f"|format(p.probability * 100) }}%</li>
+    <li><strong>{{ p.token }}</strong> — {{ (p.probability * 100) | round(2) }}%</li>
     {% endfor %}
   </ul>
   {% elif run.raw.edges %}
@@ -50,7 +52,7 @@
         <span class="arrow">-&gt;</span>
         <span>{{ edge.target }}</span>
       </div>
-      <div class="muted">score {{ "%.1f"|format(edge.gate_score) }} | layer {{ edge.layer }}</div>
+      <div class="muted">score {{ edge.gate_score | round(1) }} | layer {{ edge.layer }}</div>
     </article>
     {% endfor %}
   </div>
@@ -58,7 +60,7 @@
   <pre>{% for line in run.raw.lines %}{{ line }}
 {% endfor %}</pre>
   {% endif %}
-  <details>
+  <details class="tty-details">
     <summary>Raw JSON</summary>
     <pre>{{ run.raw|to_pretty_json }}</pre>
   </details>

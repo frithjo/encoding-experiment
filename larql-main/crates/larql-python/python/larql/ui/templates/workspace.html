@@ -3,11 +3,11 @@
 {% block content %}
 <section class="panel">
   <h2>Open Workspace</h2>
-  <p>Load local <code>.vindex</code> directory. Explorer and LQL pages use current workspace.</p>
+  <p class="panel-lead">Load local <code>.vindex</code> directory. Explorer and LQL pages use current workspace.</p>
   <form method="post" class="stack-form">
     <label for="path">Workspace path</label>
     <input id="path" name="path" type="text" value="{{ form_path or (current_workspace.path if current_workspace else '') }}" placeholder="/path/to/model.vindex">
-    <button type="submit">Open workspace</button>
+    <button type="submit" aria-label="Open vindex workspace from path">Open workspace</button>
   </form>
 </section>
 

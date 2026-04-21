@@ -4,7 +4,9 @@ import argparse
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Serve LARQL Workbench UI.")
+    parser = argparse.ArgumentParser(
+        description="Serve LARQL Workbench — browser-in-terminal only (first-party larql-terminal-browser); not a desktop UI with a narrow breakpoint.",
+    )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", default=8000, type=int)
     args = parser.parse_args()

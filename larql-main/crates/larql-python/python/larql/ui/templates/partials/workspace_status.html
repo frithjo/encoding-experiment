@@ -1,9 +1,6 @@
 <section class="workspace-strip" id="workspace-status">
   <div class="workspace-strip-toolbar">
-    <button type="button" class="btn-refresh" title="Refresh workspace status from disk"
-      hx-get="/partials/workspace-status"
-      hx-target="#workspace-status"
-      hx-swap="outerHTML">Refresh</button>
+    <button type="button" class="btn-refresh" id="workspace-refresh-btn" title="Refresh workspace status from disk" aria-label="Refresh workspace status from disk">Refresh</button>
   </div>
   {% if current_workspace %}
   <div class="workspace-strip-main">
@@ -15,9 +12,13 @@
   </div>
   <div class="badges">
     <span class="badge">browse: ready</span>
+    <span class="badge {% if current_workspace.supports_lql %}ok{% endif %}">lql: {% if current_workspace.supports_lql %}ready{% else %}off{% endif %}</span>
     <span class="badge {% if current_workspace.supports_infer %}ok{% endif %}">infer: {% if current_workspace.supports_infer %}ready{% else %}off{% endif %}</span>
     <span class="badge {% if current_workspace.supports_trace %}ok{% endif %}">trace: {% if current_workspace.supports_trace %}ready{% else %}off{% endif %}</span>
+    <span class="badge {% if current_workspace.supports_walk_model %}ok{% endif %}">walk_model: {% if current_workspace.supports_walk_model %}ready{% else %}off{% endif %}</span>
     <span class="badge {% if current_workspace.supports_mlx %}ok{% endif %}">mlx: {% if current_workspace.supports_mlx %}ready{% else %}off{% endif %}</span>
+    <span class="badge {% if current_workspace.supports_walk_ffn %}ok{% endif %}">walk_ffn: {% if current_workspace.supports_walk_ffn %}ready{% else %}off{% endif %}</span>
+    <span class="badge {% if current_workspace.supports_streaming %}ok{% endif %}">streaming: {% if current_workspace.supports_streaming %}ready{% else %}off{% endif %}</span>
     <span class="badge {% if current_workspace.relation_count or current_workspace.num_probe_labels %}ok{% endif %}">labels: {% if current_workspace.relation_count %}{{ current_workspace.relation_count }} clusters{% endif %}{% if current_workspace.relation_count and current_workspace.num_probe_labels %} · {% endif %}{% if current_workspace.num_probe_labels %}{{ current_workspace.num_probe_labels }} probes{% endif %}{% if not current_workspace.relation_count and not current_workspace.num_probe_labels %}sparse{% endif %}</span>
   </div>
   {% if current_workspace.relation_count or current_workspace.probe_relation_labels %}

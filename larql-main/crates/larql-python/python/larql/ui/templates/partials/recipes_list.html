@@ -1,0 +1,20 @@
+{# Fragment: saved recipes for fetch swaps — matches plan /partials/recipes-list #}
+{% if recipes %}
+<div class="result-list partial-recipes-list" id="partial-recipes-list">
+  {% for recipe in recipes %}
+  <article class="result-card">
+    <div class="panel-header">
+      <strong><a href="/recipes/{{ recipe.id }}">{{ recipe.name }}</a></strong>
+      <span>{{ recipe.kind }}</span>
+    </div>
+    {% if recipe.tags %}
+    <div class="muted tag-row">{% for t in recipe.tags %}<span class="tag">{{ t }}</span>{% endfor %}</div>
+    {% endif %}
+    <div class="muted">{{ recipe.description or "No description." }}</div>
+    <div><code>{{ recipe.lql_template or recipe.template }}</code></div>
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+<p class="partial-recipes-list muted" id="partial-recipes-list">No recipes saved yet.</p>
+{% endif %}

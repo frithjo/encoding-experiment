@@ -6,6 +6,10 @@ from string import Formatter
 from typing import Any
 import re
 
+KNOWN_RECIPE_KINDS: frozenset[str] = frozenset(
+    ("describe", "lql", "infer", "walk_model", "probe", "generation")
+)
+
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -37,6 +41,48 @@ def render_template(template: str, variables: dict[str, str]) -> str:
         raise ValueError(f"Missing template variable: {exc.args[0]}") from exc
 
 
+def execution_engine_for_recipe(recipe: "RecipeRecord") -> str:
+    """Map stored recipe kind to a concrete engine name for `UiExecutor.run_studio` / `run_recipe`."""
+    k = recipe.kind.strip()
+    if k in ("describe", "lql", "infer", "walk_model"):
+        return recipe.effective_engine("")
+    if k == "probe":
+        base = (recipe.default_engine or "describe").strip()
+        if base in ("describe", "lql", "infer", "walk_model"):
+            return base
+        return "describe"
+    if k == "generation":
+        base = (recipe.default_engine or "infer").strip()
+        if base in ("infer", "walk_model"):
+            return base
+        return "infer"
+    raise ValueError(f"Unsupported recipe kind: {recipe.kind}")
+
+
+def validate_recipe(recipe: "RecipeRecord", *, rendered_length_warn: int = 8000) -> list[str]:
+    """Raise ValueError on hard failures; return soft warnings (e.g. long prompt)."""
+    if recipe.kind not in KNOWN_RECIPE_KINDS:
+        raise ValueError(f"Unknown recipe kind: {recipe.kind!r}")
+    src = recipe.lql_template if recipe.kind == "lql" and recipe.lql_template else recipe.template
+    if not (src or "").strip():
+        raise ValueError("Template (or lql_template for LQL) must be non-empty.")
+    if recipe.kind == "lql":
+        q = (recipe.lql_template or recipe.template or "").strip()
+        if q and not q.rstrip().endswith(";"):
+            pass  # LQL executor adds semicolon; optional strict mode could warn
+    warnings: list[str] = []
+    try:
+        sample_vars = {n: "x" for n in recipe.variables}
+        rendered = recipe.rendered(sample_vars)
+        if len(rendered) > rendered_length_warn:
+            warnings.append(
+                f"Rendered sample length {len(rendered)} exceeds warn threshold {rendered_length_warn}."
+            )
+    except ValueError:
+        pass
+    return warnings
+
+
 @dataclass(slots=True)
 class WorkspaceSummary:
     id: str
@@ -56,6 +102,8 @@ class WorkspaceSummary:
     supports_mlx: bool
     supports_streaming: bool
     supports_walk_ffn: bool
+    supports_lql: bool
+    supports_walk_model: bool
     warnings: list[str] = field(default_factory=list)
     # From vindex.relations() — cluster catalogue only (sorted by count desc); capped for UI.
     relation_count: int = 0
@@ -86,9 +134,21 @@ class RecipeRecord:
     walk_top_k: int = 8192
     describe_band: str = "knowledge"
     describe_verbose: bool = False
+    tags: list[str] = field(default_factory=list)
+    notes: str = ""
+    options: dict[str, Any] = field(default_factory=dict)
+    variable_defs: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def variables(self) -> list[str]:
+        if self.variable_defs:
+            names: list[str] = []
+            for item in self.variable_defs:
+                n = item.get("name")
+                if isinstance(n, str) and n and n not in names:
+                    names.append(n)
+            if names:
+                return names
         if self.kind == "lql" and self.lql_template:
             source = self.lql_template
         else:
@@ -110,6 +170,10 @@ class RecipeRecord:
             return "infer"
         if self.kind == "walk_model":
             return "walk_model"
+        if self.kind == "probe":
+            return "describe"
+        if self.kind == "generation":
+            return "infer"
         return "describe"
 
     def to_dict(self) -> dict[str, Any]:
@@ -129,6 +193,10 @@ class RecipeRecord:
         walk_top_k: int = 8192,
         describe_band: str = "knowledge",
         describe_verbose: bool = False,
+        tags: list[str] | None = None,
+        notes: str = "",
+        options: dict[str, Any] | None = None,
+        variable_defs: list[dict[str, Any]] | None = None,
     ) -> "RecipeRecord":
         now = utc_now_iso()
         return cls(
@@ -145,6 +213,10 @@ class RecipeRecord:
             walk_top_k=walk_top_k,
             describe_band=describe_band,
             describe_verbose=describe_verbose,
+            tags=list(tags) if tags else [],
+            notes=notes.strip(),
+            options=dict(options) if options else {},
+            variable_defs=list(variable_defs) if variable_defs else [],
         )
 
     @classmethod
@@ -195,16 +267,19 @@ class RunRecord:
         duration_ms: int,
         recipe_id: str | None = None,
         status: str = "completed",
+        run_id: str | None = None,
+        created_at: str | None = None,
     ) -> "RunRecord":
+        rid = run_id or f"run-{int(datetime.now(timezone.utc).timestamp() * 1000)}"
         return cls(
-            id=f"run-{int(datetime.now(timezone.utc).timestamp() * 1000)}",
+            id=rid,
             kind=kind,
             title=title,
             workspace_path=workspace_path,
             recipe_id=recipe_id,
             engine=engine,
             status=status,
-            created_at=utc_now_iso(),
+            created_at=created_at or utc_now_iso(),
             duration_ms=duration_ms,
             summary=summary,
             input_text=input_text,

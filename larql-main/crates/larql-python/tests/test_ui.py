@@ -5,15 +5,19 @@ import os
 import shutil
 import struct
 import tempfile
+import time
 from pathlib import Path
 
 import numpy as np
 import pytest
-from fastapi.testclient import TestClient
+from starlette.testclient import TestClient
 
 from larql.ui.app import create_app
+from larql.ui.models import RecipeRecord, execution_engine_for_recipe, validate_recipe
 from larql.ui.store import UiStore
 
+
+FIXTURE_UI_WALK_TRACE_VINDEX = Path(__file__).resolve().parent / "fixtures" / "ui_walk_trace_vindex"
 
 NUM_LAYERS = 4
 HIDDEN_SIZE = 32
@@ -128,6 +132,14 @@ def client(tmp_path: Path) -> TestClient:
     return TestClient(app)
 
 
+@pytest.fixture()
+def vindex_path_walk_trace() -> str:
+    """Vindex with mmap model weights — `WalkModel` / `/trace` works (see `fixtures/README.md`)."""
+    if not FIXTURE_UI_WALK_TRACE_VINDEX.is_dir():
+        pytest.skip("Missing ui_walk_trace_vindex fixture; see tests/fixtures/README.md")
+    return str(FIXTURE_UI_WALK_TRACE_VINDEX)
+
+
 def test_partial_workspace_status_no_workspace(client: TestClient) -> None:
     response = client.get("/partials/workspace-status")
     assert response.status_code == 200
@@ -141,6 +153,16 @@ def test_partial_workspace_status_loaded(client: TestClient, vindex_path: str) -
     assert response.status_code == 200
     assert "workspace-strip" in response.text
     assert "test/synthetic-ui" in response.text
+
+
+def test_workspace_inspection_badges(client: TestClient, vindex_path: str) -> None:
+    """Synthetic vindex: LQL session + STATS probe; no model weights → no WalkModel."""
+    client.post("/workspace", data={"path": vindex_path}, follow_redirects=True)
+    r = client.get("/partials/workspace-status")
+    assert r.status_code == 200
+    assert "lql: ready" in r.text
+    assert "walk_model: off" in r.text
+    assert "infer: off" in r.text
 
 
 def test_workspace_open_and_explorer_run(client: TestClient, vindex_path: str) -> None:
@@ -270,3 +292,173 @@ def test_studio_run_resolves_engine_from_recipe_when_engine_omitted(
     assert run.status_code == 200
     assert "lql" in run.text.lower()
     assert "lines returned" in run.text or "STATS" in run.text
+
+
+def test_trace_redirect_without_workspace(client: TestClient) -> None:
+    response = client.get("/trace", follow_redirects=False)
+    assert response.status_code == 303
+    assert "/workspace" in (response.headers.get("location") or "")
+
+
+def test_trace_page_lists_in_nav_and_gates_without_weights(
+    client: TestClient, vindex_path: str
+) -> None:
+    """Synthetic vindex has no model weights — trace form is disabled with explanation."""
+    client.post("/workspace", data={"path": vindex_path}, follow_redirects=True)
+    page = client.get("/trace")
+    assert page.status_code == 200
+    assert "Residual trace" in page.text
+    assert "Trace is unavailable" in page.text or "requires model weights" in page.text.lower()
+    assert 'href="/trace"' in page.text
+    assert "disabled" in page.text.lower()
+
+
+def test_trace_rejects_empty_prompt(client: TestClient, vindex_path: str) -> None:
+    client.post("/workspace", data={"path": vindex_path}, follow_redirects=True)
+    r = client.post("/trace", data={"prompt": "", "positions": "last", "walk_top_k": "8192"})
+    assert r.status_code == 200
+    assert "Prompt required" in r.text
+
+
+def test_workspace_status_shows_trace_ready_with_weights_fixture(
+    client: TestClient, vindex_path_walk_trace: str
+) -> None:
+    client.post("/workspace", data={"path": vindex_path_walk_trace}, follow_redirects=True)
+    r = client.get("/partials/workspace-status")
+    assert r.status_code == 200
+    assert "trace: ready" in r.text
+    assert "infer: ready" in r.text
+    assert "walk_model: ready" in r.text
+
+
+def test_shell_template_nav_semantics_and_fetch_alert_region(
+    client: TestClient, vindex_path: str
+) -> None:
+    """Primary nav exposes aria-current; workspace refresh failures can surface in-page."""
+    client.post("/workspace", data={"path": vindex_path}, follow_redirects=True)
+    page = client.get("/explorer")
+    assert page.status_code == 200
+    assert 'id="workspace-fetch-alert"' in page.text
+    assert 'aria-current="page"' in page.text
+    assert 'href="/explorer"' in page.text
+
+
+def test_trace_full_run(client: TestClient, vindex_path_walk_trace: str) -> None:
+    """End-to-end residual trace via UI (`WalkModel.trace` + `RunRecord` kind trace)."""
+    client.post("/workspace", data={"path": vindex_path_walk_trace}, follow_redirects=True)
+    page = client.get("/trace")
+    assert page.status_code == 200
+    assert "Run trace" in page.text
+    assert "Trace is unavailable" not in page.text
+
+    r = client.post(
+        "/trace",
+        data={"prompt": "a b", "positions": "last", "walk_top_k": "8"},
+        follow_redirects=True,
+    )
+    assert r.status_code == 200
+    assert "Residual trace:" in r.text
+    assert "data-table" in r.text
+    assert "Raw JSON" in r.text
+
+    runs = client.get("/runs")
+    assert runs.status_code == 200
+    assert "Trace" in runs.text
+
+
+def test_plan_partial_routes_exist(client: TestClient) -> None:
+    for path in (
+        "/partials/recipes-list",
+        "/partials/runs-table",
+        "/partials/run-controls",
+        "/partials/recipe-editor",
+        "/partials/result-panel",
+        "/partials/trace-summary",
+    ):
+        r = client.get(path)
+        assert r.status_code == 200, path
+
+
+def test_api_workspace_current_404(client: TestClient) -> None:
+    r = client.get("/api/workspace/current")
+    assert r.status_code == 404
+
+
+def test_api_workspace_open_and_describe(client: TestClient, vindex_path: str) -> None:
+    r = client.post("/api/workspace/open", json={"path": vindex_path})
+    assert r.status_code == 200
+    body = r.json()
+    assert body.get("ok") is True
+    assert "workspace" in body
+    cur = client.get("/api/workspace/current")
+    assert cur.status_code == 200
+
+    d = client.post("/api/explorer/describe", json={"entity": "hello", "band": "knowledge", "async": False})
+    assert d.status_code == 200
+    run = d.json()["run"]
+    assert run["kind"] == "describe"
+    assert run["status"] == "completed"
+
+
+def test_api_explorer_relations(client: TestClient, vindex_path: str) -> None:
+    client.post("/api/workspace/open", json={"path": vindex_path})
+    r = client.post("/api/explorer/relations", json={})
+    assert r.status_code == 200
+    assert "relations" in r.json()
+
+
+def test_api_lql_query(client: TestClient, vindex_path: str) -> None:
+    client.post("/api/workspace/open", json={"path": vindex_path})
+    r = client.post("/api/lql/query", json={"query": "STATS", "async": False})
+    assert r.status_code == 200
+    assert r.json()["run"]["engine"] == "lql"
+
+
+def test_api_recipes_post_minimal(client: TestClient, tmp_path: Path) -> None:
+    app = create_app(UiStore(tmp_path / "ui"))
+    c = TestClient(app)
+    r = c.post(
+        "/api/recipes",
+        json={
+            "name": "API probe",
+            "kind": "probe",
+            "template": "About {subject}",
+            "default_engine": "describe",
+            "tags": ["t1"],
+            "notes": "n",
+        },
+    )
+    assert r.status_code == 201
+    rec = r.json()["recipe"]
+    assert rec["kind"] == "probe"
+    assert rec["tags"] == ["t1"]
+
+
+def test_api_trace_async_completes(client: TestClient, vindex_path_walk_trace: str) -> None:
+    client.post("/api/workspace/open", json={"path": vindex_path_walk_trace})
+    r = client.post(
+        "/api/trace/run",
+        json={"prompt": "a b", "positions": "last", "walk_top_k": 8, "async": True},
+    )
+    assert r.status_code == 202
+    rid = r.json()["run_id"]
+    run: dict | None = None
+    for _ in range(100):
+        g = client.get(f"/api/runs/{rid}")
+        assert g.status_code == 200
+        run = g.json()["run"]
+        if run["status"] in ("completed", "error"):
+            break
+        time.sleep(0.05)
+    assert run is not None
+    assert run["status"] == "completed"
+    assert run["kind"] == "trace"
+
+
+def test_probe_generation_engine_resolution() -> None:
+    probe = RecipeRecord.create(name="p", kind="probe", template="{x}", default_engine="infer")
+    assert execution_engine_for_recipe(probe) == "infer"
+    gen = RecipeRecord.create(name="g", kind="generation", template="{x}", default_engine="walk_model")
+    assert execution_engine_for_recipe(gen) == "walk_model"
+    validate_recipe(probe)
+    validate_recipe(gen)

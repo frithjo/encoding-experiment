@@ -22,7 +22,7 @@
 
 <section class="panel">
   <h2>Explorer</h2>
-  <p>Describe entity using current vindex. Good for quick knowledge browse.</p>
+  <p class="panel-lead">Describe entity using current vindex. Good for quick knowledge browse.</p>
   <form method="post" class="stack-form">
     <label for="entity">Entity</label>
     <input id="entity" name="entity" type="text" value="{{ form_data.entity }}" placeholder="France">
@@ -34,12 +34,12 @@
       {% endfor %}
     </select>
 
-    <label class="checkbox-row">
-      <input type="checkbox" name="verbose" {% if form_data.verbose %}checked{% endif %}>
-      <span>Verbose labels</span>
-    </label>
+    <div class="checkbox-row">
+      <input type="checkbox" id="explorer_verbose" name="verbose" {% if form_data.verbose %}checked{% endif %}>
+      <label for="explorer_verbose">Verbose labels</label>
+    </div>
 
-    <button type="submit">Describe</button>
+    <button type="submit" aria-label="Run describe on entity">Describe</button>
   </form>
 </section>
 
@@ -58,7 +58,7 @@
         <span class="arrow">-&gt;</span>
         <span>{{ edge.target }}</span>
       </div>
-      <div class="muted">score {{ "%.1f"|format(edge.gate_score) }} | layer {{ edge.layer }} | feature {{ edge.feature }} | {{ edge.source }}</div>
+      <div class="muted">score {{ edge.gate_score | round(1) }} | layer {{ edge.layer }} | feature {{ edge.feature }} | {{ edge.source }}</div>
       {% if edge.also %}
       <div class="muted">also: {{ edge.also|join(", ") }}</div>
       {% endif %}
@@ -68,7 +68,7 @@
   {% else %}
   <p>No edges returned.</p>
   {% endif %}
-  <details>
+  <details class="tty-details">
     <summary>Raw JSON</summary>
     <pre>{{ run.raw|to_pretty_json }}</pre>
   </details>

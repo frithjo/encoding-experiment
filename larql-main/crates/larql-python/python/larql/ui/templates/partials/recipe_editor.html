@@ -1,0 +1,21 @@
+{# plan /partials/recipe-editor — optional recipe_id loads existing snapshot for tooling #}
+<div class="partial-recipe-editor stack-form" id="partial-recipe-editor">
+  {% if recipe %}
+  <p class="muted">Editing snapshot: <strong>{{ recipe.name }}</strong> (<code>{{ recipe.id }}</code>)</p>
+  <label>Kind</label>
+  <input type="text" value="{{ recipe.kind }}" readonly>
+  <label>Template</label>
+  <textarea rows="3" readonly>{{ recipe.template }}</textarea>
+  {% if recipe.lql_template %}
+  <label>LQL template</label>
+  <textarea rows="3" readonly>{{ recipe.lql_template }}</textarea>
+  {% endif %}
+  {% if recipe.tags %}
+  <label>Tags</label>
+  <input type="text" value="{{ recipe.tags | join(', ') }}" readonly>
+  {% endif %}
+  <p class="muted">Use <a href="/recipes/{{ recipe.id }}">full recipe page</a> to run or change.</p>
+  {% else %}
+  <p class="muted">Pass <code>?recipe_id=</code> for a read-only snapshot, or use <a href="/recipes">Recipes</a> to create.</p>
+  {% endif %}
+</div>

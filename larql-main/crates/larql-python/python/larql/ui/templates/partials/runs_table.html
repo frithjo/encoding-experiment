@@ -1,0 +1,40 @@
+{# Fragment: run history table / cards — plan /partials/runs-table #}
+<div class="runs-table-wrap partial-runs-table" id="partial-runs-table">
+  {% if runs %}
+  <table class="data-table runs-table">
+    <thead>
+      <tr>
+        <th>Title</th>
+        <th>Engine</th>
+        <th>Status</th>
+        <th>Duration</th>
+        <th>When</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in runs[:50] %}
+      <tr>
+        <td><a href="/runs/{{ r.id }}">{{ r.title }}</a></td>
+        <td><code>{{ r.engine }}</code></td>
+        <td>{{ r.status }}</td>
+        <td>{{ r.duration_ms }} ms</td>
+        <td class="muted">{{ r.created_at }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <ul class="runs-cards" aria-label="Runs (narrow layout)">
+    {% for r in runs[:50] %}
+    <li class="result-card">
+      <div class="panel-header">
+        <a href="/runs/{{ r.id }}">{{ r.title }}</a>
+        <span><code>{{ r.engine }}</code> · {{ r.status }}</span>
+      </div>
+      <div class="muted">{{ r.duration_ms }} ms · {{ r.created_at }}</div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">No runs yet.</p>
+  {% endif %}
+</div>

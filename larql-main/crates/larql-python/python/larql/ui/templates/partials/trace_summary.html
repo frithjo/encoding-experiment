@@ -1,0 +1,39 @@
+{# plan /partials/trace-summary — expects run (trace) or None #}
+{% if run and run.kind == "trace" %}
+<section class="panel partial-trace-summary" id="partial-trace-summary">
+  <div class="panel-header">
+    <h2>{{ run.summary }}</h2>
+    <span>{{ run.duration_ms }} ms · {{ run.status }}</span>
+  </div>
+  {% if run.status == "pending" or run.status == "running" %}
+  <p class="muted" role="status">Job in progress… poll <code>/api/runs/{{ run.id }}</code> or refresh.</p>
+  {% elif run.status == "error" %}
+  <p class="banner error" role="alert">{{ run.summary }}</p>
+  {% else %}
+  <p><strong>Tokens:</strong> {{ (run.raw.tokens or [])|length }} · <strong>Nodes:</strong> {{ run.raw.n_nodes }} · <strong>Layers:</strong> {{ run.raw.n_layers }}</p>
+  {% if run.raw.layer_summaries %}
+  <div class="table-scroll">
+    <table class="data-table">
+      <thead>
+        <tr><th>Layer</th><th>|res|</th><th>|Δattn|</th><th>|Δffn|</th><th>top1</th><th>p</th></tr>
+      </thead>
+      <tbody>
+        {% for row in run.raw.layer_summaries %}
+        <tr>
+          <td>{% if row.layer < 0 %}emb{% else %}L{{ row.layer }}{% endif %}</td>
+          <td>{{ row.residual_norm | round(2) }}</td>
+          <td>{{ row.attn_delta_norm | round(2) }}</td>
+          <td>{{ row.ffn_delta_norm | round(2) }}</td>
+          <td><code>{{ row.top1_token }}</code></td>
+          <td>{{ row.top1_prob | round(3) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  {% endif %}
+</section>
+{% else %}
+<p class="muted partial-trace-summary" id="partial-trace-summary">No trace result.</p>
+{% endif %}
