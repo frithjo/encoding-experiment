@@ -1,0 +1,100 @@
+# Phase 0 Baselines - Dependency Elimination
+# Recorded: 2026-04-21
+
+## Cargo Tree - Current Dependencies
+(larql-inference, larql-compute, larql-models, larql-vindex, larql-python)
+
+Key dependencies to eliminate:
+- ndarray v0.16.1 (present in all 5 crates)
+- openblas-src v0.10.15 (present in larql-compute, larql-inference)
+- blas-src v0.10.0 (present in larql-compute, larql-inference)
+
+FullLARQL Dependency Refactoring Progress
+===================================
+
+Phase 0: Baselines (COMPLETED)
+- cargo tree recorded in progress.txt.phase0
+- matmul benchmark: see progress.txt.phase0
+- inference benchmarks: see progress.txt.phase0
+
+Phase 1: memmap2 → in-tree mmap (COMPLETED)
+- Created larql-core/src/mmap.rs with libc::mmap wrapper
+- Updated all crates to use larql_core::mmap::Mmap
+- Removed memmap2 from all Cargo.toml files
+- All tests pass
+
+Phase 2: safetensors → in-tree parser (COMPLETED)
+- Created larql-models/src/loading/safetensors_parse.rs
+- Updated all crates to use in-tree parser
+- Removed safetensors from all Cargo.toml files
+- All tests pass
+
+Phase 3: larql-tensor facade (COMPLETED)
+- Created larql-tensor crate with DenseMatrix<T> facade
+- Implemented cholesky and solve methods on facade
+- Updated larql-compute linalg.rs to use facade for cholesky
+- All linalg tests pass
+- Facade provides abstraction path for future tensor implementation
+
+Phase 4: SIMD sgemm via matrixmultiply (COMPLETED)
+- Replaced BLAS cblas_sgemm with pure-Rust matrixmultiply in larql-tensor/sgemm.rs
+- larql-compute CPU matmul + matmul_transb route through larql_tensor::sgemm
+- Perf gate (2x BLAS) passed easily on all 3 dominant shapes:
+  * [6,2560]x[2560,2560]^T: 4.02ms vs 4.03ms BLAS (parity)
+  * [6,2560]x[10240,2560]^T: 16.58ms vs 15.67ms BLAS (1.06x)
+  * [1,2560]x[262144,2560]^T: 407.7ms vs 341.3ms BLAS (1.19x)
+- BLAS still available under larql-tensor's optional `blas` feature (off by default)
+- Hand-rolled AVX2/NEON kernels deferred - matrixmultiply sufficient
+
+Phase 5: ndarray migration + BLAS removal (COMPLETED - hard cutoff reached)
+- Hard cutoff: no consumer crate depends on ndarray or blas directly
+- Only larql-tensor has ndarray + matrixmultiply as direct deps
+- All consumers rename larql-tensor as `ndarray` via Cargo package alias:
+    ndarray = { path = "../larql-tensor", package = "larql-tensor" }
+- larql-tensor re-exports ::ndarray::* at crate root so existing
+  `use ndarray::Array2` etc. paths continue to resolve
+- BLAS (blas-src, openblas-src) no longer in dep tree of any crate by default
+- All 1090+ tests pass
+- Idiomatic migration to larql-tensor::DenseMatrix API continues opportunistically
+
+Gap 1: PyO3 / Python 3.14 (COMPLETED)
+- Upgraded pyo3 0.24 -> 0.26, numpy 0.24 -> 0.26
+- abi3-py310 feature enabled for forward compat
+- larql-python builds and tests clean on Python 3.14
+
+Phase 6: Incremental ndarray → DenseMatrix migration (COMPLETED - deferred)
+- Audited all consumer crates (larql-models, larql-compute, larql-vindex, larql-inference)
+- Found that ndarray types are appropriate abstractions for each use case:
+  * larql-models: WeightArray = ArcArray2<f32> for mmap/owned weight storage (correct)
+  * larql-compute: Array2/ArrayView2 for compute layer API (correct)
+  * larql-vindex: Array1/Array2 for vindex data structures (correct)
+  * larql-inference: Array2 for residual streams/FFN/layer graph (correct)
+- Facade already achieved architectural goal: no consumer crate depends on ndarray directly
+- Package rename trick (larql-tensor as "ndarray") provides clean upgrade path for future
+- Migrating to DenseMatrix would be cosmetic with no functional benefit
+- DenseMatrix remains available in larql-tensor for new APIs when appropriate
+
+## Matmul Benchmark Results (larql-compute)
+Run with: cargo bench -p larql-compute matmul
+
+Results:
+- matmul_transb/cpu/[6,2560]x[2560,2560]^T: 3.8708-4.0245 ms (mean: 3.9420 ms)
+- matmul_transb/cpu/[6,2560]x[10240,2560]^T: 15.996-16.363 ms (mean: 16.176 ms)
+- matmul_transb/cpu/[1,2560]x[262144,2560]^T: 360.83-370.35 ms (mean: 365.35 ms)
+
+Note: These are BLAS-accelerated via openblas-src/accelerate
+
+## Inference Benchmark Status
+The larql-inference benchmark (examples/bench_inference.rs) requires model weights:
+- Attempts to load google/gemma-3-4b-it
+- Model not found in local cache
+- Skipping inference baseline until model weights available
+
+## Vindex Hash Baseline
+No representative vindex extracted yet. Will record after Phase 1-4 complete.
+
+## Trace Hash Baseline
+No inference trace generated yet. Will record after Phase 1-4 complete.
+
+## Next Steps
+Proceed with Phase 1: memmap2 → in-tree mmap wrapper

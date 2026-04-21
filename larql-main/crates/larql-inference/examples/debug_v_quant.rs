@@ -1,16 +1,18 @@
 //! Debug: quantize actual V weights and check roundtrip
 
+use larql_core::mmap::Mmap;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let vd = std::path::PathBuf::from("output/gemma3-4b-v2.vindex");
 
     // Read raw V weights from attn_weights.bin
     let file = std::fs::File::open(vd.join("attn_weights.bin"))?;
-    let mmap = unsafe { memmap2::Mmap::map(&file)? };
+    let mmap = unsafe { Mmap::map(&file)? };
 
     // V proj L0: offset=31457280, length=10485760, shape=[1024, 2560]
     let offset = 31457280;
     let n_floats = 1024 * 2560;
-    let f32_data = unsafe {
+    let f32_data: &[f32] = unsafe {
         std::slice::from_raw_parts(
             mmap[offset..offset + n_floats * 4].as_ptr() as *const f32,
             n_floats,
@@ -50,7 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // NOW compare with what's in the q4k file
     let q4k_file = std::fs::File::open(vd.join("attn_weights_q4k.bin"))?;
-    let q4k_mmap = unsafe { memmap2::Mmap::map(&q4k_file)? };
+    let q4k_mmap = unsafe { Mmap::map(&q4k_file)? };
     // V proj in q4k file: offset=4546560, length=2150400
     let q4k_v = &q4k_mmap[4546560..4546560 + 2150400];
     let q4k_d_bytes = &q4k_v[208..210];
