@@ -13,9 +13,12 @@ import numpy as np
 import pytest
 from starlette.testclient import TestClient
 
-from larql.ui.app import create_app
-from larql.ui.models import RecipeRecord, RunRecord, execution_engine_for_recipe, validate_recipe
-from larql.ui.store import DEFAULT_RUN_HISTORY_LIMIT, UiStore
+import warnings
+
+# Use new namespace for UI imports
+from larql_ui.ui.app import create_app
+from larql_ui.ui.models import RecipeRecord, RunRecord, execution_engine_for_recipe, validate_recipe
+from larql_ui.ui.store import DEFAULT_RUN_HISTORY_LIMIT, UiStore
 
 
 FIXTURE_UI_WALK_TRACE_VINDEX = Path(__file__).resolve().parent / "fixtures" / "ui_walk_trace_vindex"
@@ -552,6 +555,27 @@ def test_api_trace_async_completes(client: TestClient, vindex_path_walk_trace: s
     assert run is not None
     assert run["status"] == "completed"
     assert run["kind"] == "trace"
+
+
+def test_api_context_map_run(client: TestClient, vindex_path_walk_trace: str) -> None:
+    client.post("/api/workspace/open", json={"path": vindex_path_walk_trace})
+    r = client.post(
+        "/api/context-map/run",
+        json={"prompt": "a b", "layer": 0, "top_k_predictions": 5, "walk_top_k": 8, "async": False},
+    )
+    assert r.status_code == 200
+    run = r.json()["run"]
+    assert run["kind"] == "context_map"
+    assert run["engine"] == "context_map"
+    assert "positions" in run["raw"]
+    assert isinstance(run["raw"]["positions"], list)
+
+
+def test_api_boundary_store_info_requires_store(client: TestClient, vindex_path: str) -> None:
+    client.post("/api/workspace/open", json={"path": vindex_path})
+    r = client.post("/api/boundary-store/info", json={})
+    assert r.status_code == 500
+    assert "error" in r.json()
 
 
 def test_probe_generation_engine_resolution() -> None:

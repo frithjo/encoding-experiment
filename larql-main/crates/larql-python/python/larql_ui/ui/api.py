@@ -18,7 +18,7 @@ from .runtime_cache import LarqlRuntimeCache, normalize_workspace_path, workspac
 from .store import UiStore
 from .workspace import WorkspaceError, WorkspaceManager
 
-logger = logging.getLogger("larql.ui")
+logger = logging.getLogger("larql_ui.ui")
 
 
 def _content_type_is_json(content_type: str) -> bool:
@@ -755,6 +755,108 @@ def build_api_routes(
         _schedule_async(app_holder, _bg)
         return JSONResponse({"run_id": rid, "status": "pending"}, status_code=202)
 
+    async def api_context_map_run(request: Request) -> Response:
+        data, err = await parse_json_body(request)
+        if err is not None:
+            return err
+        assert data is not None
+        try:
+            ws = workspace_manager.get_current()
+        except WorkspaceError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        if ws is None:
+            return JSONResponse({"error": "no workspace open"}, status_code=400)
+        prompt = str(data.get("prompt", "")).strip()
+        if not prompt:
+            return JSONResponse({"error": "prompt required"}, status_code=400)
+        layer = int(data.get("layer", 0) or 0)
+        top_k_predictions = int(data.get("top_k_predictions", 5) or 5)
+        walk_top_k = int(data.get("walk_top_k", 8192) or 8192)
+        async_flag = bool(data.get("async"))
+
+        if not async_flag:
+
+            def _go() -> RunRecord:
+                return executor.run_context_map(
+                    workspace_path=ws.path,
+                    prompt=prompt,
+                    layer=layer,
+                    top_k_predictions=max(1, top_k_predictions),
+                    walk_top_k=max(1, walk_top_k),
+                )
+
+            try:
+                run = await asyncio.to_thread(_go)
+            except Exception as exc:
+                return JSONResponse({"error": str(exc)}, status_code=500)
+            return JSONResponse({"run": run.to_dict()})
+
+        pending = RunRecord.create(
+            kind="context_map",
+            title="Context Map",
+            workspace_path=ws.path,
+            recipe_id=None,
+            engine="context_map",
+            status="pending",
+            summary="Queued",
+            input_text=prompt,
+            raw={
+                "async_job": True,
+                "layer": layer,
+                "top_k_predictions": max(1, top_k_predictions),
+                "walk_top_k": max(1, walk_top_k),
+            },
+            duration_ms=0,
+        )
+        ui_store.save_run(pending)
+        rid = pending.id
+
+        async def _bg() -> None:
+            try:
+
+                def _w() -> RunRecord:
+                    return executor.run_context_map(
+                        workspace_path=ws.path,
+                        prompt=prompt,
+                        layer=layer,
+                        top_k_predictions=max(1, top_k_predictions),
+                        walk_top_k=max(1, walk_top_k),
+                        run_id=rid,
+                    )
+
+                await asyncio.to_thread(_w)
+            except Exception as exc:
+                old = ui_store.get_run(rid)
+                if old:
+                    ui_store.save_run(
+                        replace(old, status="error", summary=str(exc), raw={**old.raw, "error": str(exc)})
+                    )
+
+        _schedule_async(app_holder, _bg)
+        return JSONResponse({"run_id": rid, "status": "pending"}, status_code=202)
+
+    async def api_boundary_store_info(request: Request) -> Response:
+        data, err = await parse_json_body(request)
+        if err is not None:
+            return err
+        assert data is not None
+        try:
+            ws = workspace_manager.get_current()
+        except WorkspaceError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        if ws is None:
+            return JSONResponse({"error": "no workspace open"}, status_code=400)
+        boundary_path = str(data.get("boundary_path", "")).strip() or None
+        try:
+            run = await asyncio.to_thread(
+                executor.run_boundary_store_info,
+                workspace_path=ws.path,
+                boundary_path=boundary_path,
+            )
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=500)
+        return JSONResponse({"run": run.to_dict()})
+
     return [
         Route("/api/workspace/open", api_workspace_open, methods=["POST"]),
         Route("/api/workspace/current", api_workspace_current, methods=["GET"]),
@@ -768,4 +870,6 @@ def build_api_routes(
         Route("/api/explorer/relations", api_explorer_relations, methods=["POST"]),
         Route("/api/lql/query", api_lql_query, methods=["POST"]),
         Route("/api/trace/run", api_trace_run, methods=["POST"]),
+        Route("/api/context-map/run", api_context_map_run, methods=["POST"]),
+        Route("/api/boundary-store/info", api_boundary_store_info, methods=["POST"]),
     ]

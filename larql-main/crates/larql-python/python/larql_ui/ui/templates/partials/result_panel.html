@@ -17,13 +17,17 @@
   </ul>
   {% elif run.raw.edges %}
   <div class="result-list">
-    {% for edge in run.raw.edges[:12] %}
+    {% for edge in run.raw.edges[:15] %}
     <article class="result-card">
       <div class="result-main">
         <strong>{{ edge.relation or "?" }}</strong>
         <span class="arrow">→</span>
         <span>{{ edge.target }}</span>
       </div>
+      <div class="muted">score {{ edge.gate_score | round(1) }} | layer {{ edge.layer }} | feature {{ edge.feature }}{% if edge.source %} | {{ edge.source }}{% endif %}</div>
+      {% if edge.also %}
+      <div class="muted">also: {{ edge.also|join(", ") }}</div>
+      {% endif %}
     </article>
     {% endfor %}
   </div>
@@ -31,6 +35,10 @@
   <pre class="tty-pre">{% for line in run.raw.lines %}{{ line }}
 {% endfor %}</pre>
   {% endif %}
+  <details class="tty-details">
+    <summary>Raw JSON</summary>
+    <pre>{{ run.raw|to_pretty_json }}</pre>
+  </details>
   <p class="muted"><a href="/runs/{{ run.id }}">Open run detail</a></p>
 </section>
 {% else %}

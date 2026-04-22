@@ -63,12 +63,12 @@
     <textarea id="compare_subjects" name="compare_subjects" rows="4" placeholder="France&#10;Germany">{{ form_data.compare_subjects }}</textarea>
 
     <div class="button-row">
-      <button type="submit" formaction="/studio/run" formmethod="post" aria-label="Run studio template or ad-hoc query">Run</button>
-      <button type="submit" formaction="/studio/compare" formmethod="post" class="secondary" aria-label="Compare batch across subjects">Compare batch</button>
+      <button type="submit" id="studio-run-button" formaction="/studio/run" formmethod="post" aria-label="Run studio template or ad-hoc query">Run</button>
+      <button type="submit" id="studio-compare-button" formaction="/studio/compare" formmethod="post" class="secondary" aria-label="Compare batch across subjects">Compare batch</button>
     </div>
     <div class="checkbox-row">
       <input type="checkbox" id="studio_async_background" name="async_background">
-      <label for="studio_async_background">Background run (queues job; avoids blocking this tab on slow engines)</label>
+      <label for="studio_async_background">Background run (Run only; compare always executes in-page)</label>
     </div>
   </form>
 </section>
@@ -141,6 +141,10 @@
 (function () {
   var recipeSel = document.getElementById("recipe_id");
   var engineSel = document.getElementById("engine");
+  var form = document.getElementById("studio-form");
+  var asyncCb = document.getElementById("studio_async_background");
+  var runBtn = document.getElementById("studio-run-button");
+  var compareBtn = document.getElementById("studio-compare-button");
   if (!recipeSel || !engineSel) return;
 
   function applyRecipeDefaultEngine() {
@@ -156,6 +160,21 @@
   }
 
   recipeSel.addEventListener("change", applyRecipeDefaultEngine);
+
+  if (form && asyncCb && compareBtn) {
+    form.addEventListener("submit", function (event) {
+      var submitter = event.submitter;
+      var compareAction = submitter && submitter.getAttribute("formaction") === "/studio/compare";
+      asyncCb.disabled = !!compareAction;
+      if (compareAction) asyncCb.checked = false;
+    });
+  }
+
+  if (runBtn && asyncCb) {
+    runBtn.addEventListener("click", function () {
+      asyncCb.disabled = false;
+    });
+  }
 })();
 
 (function () {
@@ -164,35 +183,21 @@
   var statusEl = document.getElementById("studio-async-status");
   var resultEl = document.getElementById("studio-async-result");
   if (!pollId || !panel || !statusEl || !resultEl) return;
-  panel.hidden = false;
-  statusEl.textContent = "Queued — polling run " + pollId + "…";
-  var tries = 0;
-  var t = setInterval(function () {
-    tries += 1;
-    if (tries > 600) {
-      clearInterval(t);
-      statusEl.textContent = "Timed out waiting for result.";
-      return;
-    }
-    fetch("/api/runs/" + encodeURIComponent(pollId), { credentials: "same-origin" })
-      .then(function (r) { return r.json(); })
-      .then(function (j) {
-        var run = j.run;
-        if (!run) return;
-        if (run.status === "pending" || run.status === "running") return;
-        clearInterval(t);
-        if (run.status === "error") {
-          statusEl.textContent = "Error.";
-          resultEl.textContent = run.summary || "Unknown error";
-          return;
-        }
-        statusEl.textContent = "Done.";
-        return fetch("/partials/result-panel?run_id=" + encodeURIComponent(pollId), { credentials: "same-origin" })
-          .then(function (r) { return r.text(); })
-          .then(function (html) { resultEl.innerHTML = html; });
-      })
-      .catch(function () {});
-  }, 500);
+  function startPolling() {
+    if (!window.LarqlAsyncRuns) return;
+    window.LarqlAsyncRuns.pollRun({
+      scope: "studio",
+      runId: pollId,
+      panel: panel,
+      statusEl: statusEl,
+      resultEl: resultEl
+    });
+  }
+  if (window.LarqlAsyncRuns) {
+    startPolling();
+    return;
+  }
+  document.addEventListener("DOMContentLoaded", startPolling, { once: true });
 })();
 </script>
 {% endblock %}

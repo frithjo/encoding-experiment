@@ -8,10 +8,10 @@
 
 Prefer **Rust** (`crates/larql-python`, PyO3 `larql._native`) for anything that touches the engine, vindex, LQL, or mmap weights:
 
-- Workspace inspection for the UI is `inspect_workspace_for_ui` in Rust (returns a dict consumed by `larql.ui.models.WorkspaceSummary`). Keep Python to HTTP, templates, JSON store, and glue.
+- Workspace inspection for the UI is `inspect_workspace_for_ui` in Rust (returns a dict consumed by `larql_ui.ui.models.WorkspaceSummary`). Keep Python to HTTP, templates, JSON store, and glue.
 - MLX availability flags still require Python (`importlib.util.find_spec` for `mlx` / `mlx_lm`) because MLX is a Python stack; pass that boolean into native inspection.
 
-The web workbench under `python/larql/ui/` is specified in:
+The web workbench under `python/larql_ui/ui/` is specified in:
 
 **`larql-main/plan.md`** (repo-relative: `../../plan.md` from this crate, or `larql-main/plan.md` from the monorepo root).
 

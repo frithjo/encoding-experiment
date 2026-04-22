@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from larql.ui.store import UiStore
+from larql_ui.ui.store import UiStore
 
 
 def _minimal_recipe() -> list[dict[str, Any]]:
@@ -105,7 +105,7 @@ def test_list_recipes_invalidates_cache_after_save(tmp_path: Path) -> None:
     store.list_recipes()
     assert calls == 1
 
-    from larql.ui.models import RecipeRecord
+    from larql_ui.ui.models import RecipeRecord
 
     r = RecipeRecord(
         id="r2",

@@ -1,23 +1,66 @@
 # larql — Python Bindings
 
+## Crate Role
+
+- Role: User-facing Python SDK/bindings and workbench UI integration
+- Zone: interface
+- Release impact: critical
+- Stability target: managed
+
+## Public Contract
+
+- Python SDK APIs and workbench behavior are release-facing interfaces.
+- Breaking API/UI behavior changes require migration notes and release callouts.
+- Rust-backed engine logic should remain in `larql._native` where practical;
+  Python-side code should stay thin and integration-focused.
+
 Python interface to the LARQL knowledge graph engine and vindex model format. Rust-powered via PyO3, with numpy array interop and MLX integration.
 
 ## Install
 
-Managed via [uv](https://docs.astral.sh/uv/):
+### Installation Patterns
 
+The `larql` package provides two installation modes:
+
+**SDK only (data scientists, integrators):**
+```bash
+pip install larql
+```
+Installs only the core Python bindings (numpy dependency). Minimal footprint for programmatic access.
+
+**SDK + UI (interactive users):**
+```bash
+pip install "larql[ui]"
+```
+Installs SDK plus the workbench UI (starlette, jinja2, uvicorn, python-multipart). Required for `larql-workbench` CLI.
+
+**Development (both + dev tools):**
 ```bash
 cd crates/larql-python
-uv sync --no-install-project --group dev --extra ui   # dev tools + UI stack (see pyproject)
-uv run --no-sync maturin develop --release           # builds PyO3 extension into .venv
-uv run --no-sync pytest tests/                       # binding + UI tests
+uv sync --group dev --extra ui   # dev tools + UI stack
+uv run --no-sync maturin develop --release
+uv run --no-sync pytest tests/
 ```
 
 Apple Silicon (MLX): add `--extra mlx` to the `uv sync` line. The `mlx` extra pulls `mlx-lm` and its Hugging Face / `transformers` stack — separate from the Rust tokenizer used inside `larql._native`, but required for `larql.mlx` and MLX generation.
 
+### Installation
+
+**SDK only (data scientists, integrators):**
+```bash
+pip install larql
+```
+Installs only the core Python bindings (numpy dependency). Minimal footprint for programmatic access.
+
+**SDK + UI (interactive users):**
+```bash
+pip install "larql[ui]"
+```
+Installs SDK plus the workbench UI (starlette, jinja2, uvicorn, python-multipart). Required for `larql-workbench` CLI.
+
 ## Workbench UI
 
-The workbench under `larql.ui` is **only** specified for a **browser running in the terminal** via the first-party client **`larql-terminal-browser`** (`crates/larql-terminal-browser`)—**resizable** display port (compact to generous), high-resolution rendering (**GPU acceleration** when available; **CPU fallback** otherwise), monospace-friendly typography, keyboard-first. Images, video, and streaming are supported at the client (see `plan.md`). It is **not** a desktop dashboard with a narrow mode; the terminal-embedded viewport is the sole normative target. Third-party terminal browsers are optional for development only.
+The workbench under `larql_ui.ui` is **only** specified for a **browser running in the terminal** via the first-party client **`larql-terminal-browser`** (`crates/larql-terminal-browser`)—**resizable** display port (compact to generous), high-resolution rendering (**GPU acceleration** when available; **CPU fallback** otherwise), monospace-friendly typography, keyboard-first. Images, video, and streaming are supported at the client (see `plan.md`). It is **not** a desktop dashboard with a narrow mode; the terminal-embedded viewport is the sole normative target. Third-party terminal browsers are optional for development only.
 
 Engine-adjacent workbench logic (workspace inspection, execution) should live in **Rust** via PyO3 (`larql._native`); the Python package keeps HTTP, persistence, and templates thin. See `AGENTS.md` (Rust-first workbench logic).
 
@@ -26,6 +69,38 @@ cd crates/larql-python
 uv sync --group dev --extra ui
 uv run --no-sync maturin develop --release
 uv run --no-sync larql-ui --host 127.0.0.1 --port 8000
+```
+
+Or use the launcher script with graceful termination and port cleanup:
+
+```bash
+cd crates/larql-python
+./scripts/start-ui.sh
+# Optional overrides:
+# HOST=0.0.0.0 PORT=8010 ./scripts/start-ui.sh
+```
+
+Terminal runtime integration (repo component):
+
+```bash
+cd larql-main
+./apps/terminal-runtime/scripts/install-carbonyl-runtime.sh
+cd crates/larql-python
+./scripts/start-ui.sh
+```
+
+When present, `apps/terminal-runtime/bin/carbonyl` is used automatically for terminal rendering.
+The launcher always uses the terminal runtime, and supports display options:
+
+```bash
+# disable fullscreen
+TERMINAL_FULLSCREEN=0 ./scripts/start-ui.sh
+
+# show browser chrome
+TERMINAL_HIDE_UI=0 ./scripts/start-ui.sh
+
+# pass extra runtime flags (example)
+TERMINAL_CARBONYL_ARGS="--zoom 1.2" ./scripts/start-ui.sh
 ```
 
 Open `http://127.0.0.1:8000` in your terminal browser, then:
@@ -43,14 +118,14 @@ Open `http://127.0.0.1:8000` in your terminal browser, then:
 **Deployment / scaling**
 
 - Run the ASGI app with **one worker process** if you rely on **background async runs** (`async: true` on `/api/*`, or HTML “Background run” on Studio / Explorer / LQL / Trace). Tasks are scheduled with `asyncio.create_task` in that process only; extra Uvicorn/Gunicorn workers will not share those jobs, so polling from another worker can look “stuck.”
-- The workbench keeps only the **latest N runs** on disk (`DEFAULT_RUN_HISTORY_LIMIT` in `larql/ui/store.py`, default **250**). The Runs page states this so rotations are not mistaken for data loss.
+- The workbench keeps only the **latest N runs** on disk (`DEFAULT_RUN_HISTORY_LIMIT` in `larql_ui/ui/store.py`, default **250**). The Runs page states this so rotations are not mistaken for data loss.
 - **Workspace summaries** are cached in-process per resolved path (`WorkspaceManager`); switching workspaces or refreshing invalidates as needed. This is separate from the vindex/session TTL above.
 
 **Errors — HTML vs JSON**
 
 - Page flows use redirects and query parameters such as `?error=…` and `?notice=…` (and inline `page_error` in templates). JSON `/api/*` routes return a JSON object with an `error` string and an HTTP status (400, 404, 415, etc.). Clients should not expect identical shapes between the two.
 
-Configure Python’s `logging` to capture the `larql.ui` logger if you need **structured visibility** into background task failures (replacing ad-hoc stderr prints).
+Configure Python’s `logging` to capture the `larql_ui.ui` logger if you need **structured visibility** into background task failures (replacing ad-hoc stderr prints).
 
 ## Quickstart
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+from pathlib import Path
 from time import perf_counter
 from typing import Any
 
@@ -266,6 +268,143 @@ class UiExecutor:
             summary=summary_text,
             input_text=prompt,
             raw=raw,
+            duration_ms=duration_ms,
+            run_id=run_id,
+        )
+        self.store.save_run(run)
+        return run
+
+    def run_context_map(
+        self,
+        *,
+        workspace_path: str,
+        prompt: str,
+        layer: int,
+        top_k_predictions: int = 5,
+        walk_top_k: int = 8192,
+        recipe_id: str | None = None,
+        title: str | None = None,
+        run_id: str | None = None,
+    ) -> RunRecord:
+        summary = self.workspace_manager.open(workspace_path)
+        if not summary.supports_walk_model:
+            raise RuntimeError(
+                "Context map requires WalkModel (mmap weights). Extract vindex with model weights."
+            )
+        if top_k_predictions < 1:
+            raise ValueError("top_k_predictions must be >= 1")
+        if walk_top_k < 1:
+            raise ValueError("walk_top_k must be >= 1")
+        if layer < 0:
+            raise ValueError("layer must be >= 0")
+
+        started = perf_counter()
+        wm = larql.WalkModel(workspace_path, top_k=walk_top_k)
+        trace = wm.trace(prompt, "all")
+        if layer > trace.n_layers:
+            raise ValueError(f"layer must be <= {trace.n_layers}")
+
+        vindex = self._runtime_cache.vindex(workspace_path)
+        tokens = list(trace.tokens)
+        positions: list[dict[str, Any]] = []
+
+        for position, tok in enumerate(tokens):
+            preds = trace.top_k(layer, position=position, k=top_k_predictions)
+            probs = [float(prob) for _, prob in preds]
+            entropy = -sum(p * math.log(max(p, 1e-12)) for p in probs) if probs else 0.0
+            max_entropy = math.log(max(len(probs), 1)) if probs else 0.0
+            specificity = 1.0 - (entropy / max_entropy) if max_entropy > 0 else 0.0
+            residual = trace.residual(layer, position=position) or []
+            residual_norm = math.sqrt(sum(float(x) * float(x) for x in residual))
+            token_ids = vindex.tokenize(tok)
+            token_id = int(token_ids[0]) if token_ids else -1
+            token_residual_angle = 0.0
+            if token_id >= 0 and residual:
+                embed = vindex.embedding(token_id)
+                emb_vals = [float(x) for x in embed.tolist()]
+                dot = sum(float(a) * float(b) for a, b in zip(residual, emb_vals))
+                emb_norm = math.sqrt(sum(float(x) * float(x) for x in emb_vals))
+                denom = max(residual_norm * emb_norm, 1e-12)
+                cos = max(-1.0, min(1.0, dot / denom))
+                token_residual_angle = math.degrees(math.acos(cos))
+
+            positions.append(
+                {
+                    "position": position,
+                    "token": tok,
+                    "token_id": token_id,
+                    "predictions": predictions_to_raw(preds),
+                    "entropy": entropy,
+                    "specificity": specificity,
+                    "residual_norm": residual_norm,
+                    "token_residual_angle": token_residual_angle,
+                }
+            )
+
+        duration_ms = int((perf_counter() - started) * 1000)
+        run = RunRecord.create(
+            kind="context_map",
+            title=title or "Context Map",
+            workspace_path=workspace_path,
+            recipe_id=recipe_id,
+            engine="context_map",
+            summary=f"{len(positions)} positions at layer {layer}",
+            input_text=prompt,
+            raw={
+                "prompt": prompt,
+                "layer": layer,
+                "top_k_predictions": top_k_predictions,
+                "walk_top_k": walk_top_k,
+                "positions": positions,
+            },
+            duration_ms=duration_ms,
+            run_id=run_id,
+        )
+        self.store.save_run(run)
+        return run
+
+    def run_boundary_store_info(
+        self,
+        *,
+        workspace_path: str,
+        boundary_path: str | None = None,
+        recipe_id: str | None = None,
+        title: str | None = None,
+        run_id: str | None = None,
+    ) -> RunRecord:
+        self.workspace_manager.open(workspace_path)
+        started = perf_counter()
+        if boundary_path:
+            path = Path(boundary_path).expanduser().resolve()
+        else:
+            root = Path(workspace_path).expanduser().resolve()
+            candidates = [root / "context.bndx", root / "ctx.bndx", root / "boundary.bndx"]
+            path = next((p for p in candidates if p.exists()), candidates[0])
+        store = larql.BoundaryStore(str(path))
+        windows: list[dict[str, Any]] = []
+        for i in range(int(store.n_boundaries)):
+            rng = store.token_range(i)
+            if rng is None:
+                continue
+            windows.append({"window_id": i, "start_token": int(rng[0]), "end_token": int(rng[1])})
+
+        duration_ms = int((perf_counter() - started) * 1000)
+        run = RunRecord.create(
+            kind="boundary_store",
+            title=title or "Boundary Store",
+            workspace_path=workspace_path,
+            recipe_id=recipe_id,
+            engine="boundary_store",
+            summary=f"{store.n_boundaries} boundaries, window={store.window_size}",
+            input_text=str(path),
+            raw={
+                "store_path": str(path),
+                "n_boundaries": int(store.n_boundaries),
+                "window_size": int(store.window_size),
+                "hidden_size": int(store.hidden_size),
+                "total_tokens": int(store.total_tokens),
+                "windows": windows,
+            },
             duration_ms=duration_ms,
             run_id=run_id,
         )
