@@ -33,3 +33,9 @@ msgpack = ["dep:rmp-serde"]
 [dev-dependencies]
 assert_approx_eq = "1"
 tempfile = "3"
+
+[package.metadata.product]
+zone = "core"
+role = "shared-graph-and-io-primitives"
+release_impact = "high"
+stability_target = "stable"

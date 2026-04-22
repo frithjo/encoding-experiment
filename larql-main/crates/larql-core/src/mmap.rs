@@ -48,26 +48,22 @@ impl Mmap {
             use libc::{MAP_PRIVATE, PROT_READ};
             let fd = file.as_raw_fd();
 
-            let ptr = libc::mmap(
-                ptr::null_mut(),
-                len,
-                PROT_READ,
-                MAP_PRIVATE,
-                fd,
-                0,
-            );
+            let ptr = libc::mmap(ptr::null_mut(), len, PROT_READ, MAP_PRIVATE, fd, 0);
 
             if ptr == libc::MAP_FAILED {
                 return Err(io::Error::last_os_error());
             }
 
-            Ok(Mmap { ptr: ptr as *const u8, len })
+            Ok(Mmap {
+                ptr: ptr as *const u8,
+                len,
+            })
         }
 
         #[cfg(not(unix))]
         {
-        // Windows support not implemented; keep memmap2 for Windows builds
-        compile_error!("Windows support requires CreateFileMappingW/MapViewOfFile");
+            // Windows support not implemented; keep memmap2 for Windows builds
+            compile_error!("Windows support requires CreateFileMappingW/MapViewOfFile");
         }
     }
 
@@ -82,16 +78,8 @@ impl Mmap {
         #[cfg(unix)]
         {
             unsafe {
-                libc::madvise(
-                    self.ptr as *mut c_void,
-                    self.len,
-                    libc::MADV_SEQUENTIAL,
-                );
-                libc::madvise(
-                    self.ptr as *mut c_void,
-                    self.len,
-                    libc::MADV_WILLNEED,
-                );
+                libc::madvise(self.ptr as *mut c_void, self.len, libc::MADV_SEQUENTIAL);
+                libc::madvise(self.ptr as *mut c_void, self.len, libc::MADV_WILLNEED);
             }
         }
     }
