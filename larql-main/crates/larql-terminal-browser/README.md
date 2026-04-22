@@ -1,5 +1,12 @@
 # `larql-terminal-browser`
 
+## Crate Role
+
+- Role: User-facing terminal UX interface for the workbench
+- Zone: interface
+- Release impact: medium
+- Stability target: iterative
+
 **First-party terminal browser** for the LARQL workbench: a Rust-first binary that will render the workbench UI (`larql-ui`, server-rendered HTML) **inside the terminal**.
 
 ## Display port and rendering goals
@@ -18,21 +25,52 @@ The client must support **images**, **video**, and **streaming** playback in the
 
 The workbench is a normal local web app. The **normative** way to use it is **not** a full-size desktop window, but a **browser running in the TTY** (or equivalent embedding). That client should live **in this repo** and be **mostly Rust** (process glue, TTY I/O, keyboard routing, and embedding or driving a real engine for HTML/CSS/JS).
 
-**You do not need to install Carbonyl** (or any other third-party terminal browser) as a dependency of LARQL. External projects may be used only as **optional references** while this binary is built out.
+The current implementation uses Carbonyl as the terminal Chromium runtime and launches it from this Rust binary.
 
-## Implementation direction (honest scope)
+## Implementation status
 
-- **Full** HTML/CSS/JS and **media** in the terminal implies a **real browser engine** (typically Chromium-class) with output adapted to the TTY—similar in *shape* to projects like Carbonyl, but **owned and shipped here**.
-- A from-scratch HTML engine in Rust is **not** the default plan; embedding or driving an engine via Rust **is** consistent with “mostly Rust where we can.”
-- Until that lands, `larql-terminal-browser` is a **stub** that documents the contract and fails fast; the workbench remains testable with `larql-ui` + any browser during development.
+- `larql-terminal-browser` is now a Rust launcher that delegates to Carbonyl for rendering.
+- URL invocation is: `carbonyl [display flags] <url>`.
+- Defaults:
+  - fullscreen enabled
+  - navigation UI hidden
+  - `CARBONYL_ENV_FULLSCREEN=1` exported when fullscreen is enabled
+- User display options:
+  - `--no-fullscreen`
+  - `--show-ui`
+  - repeated `--carbonyl-arg ...` passthrough for runtime-specific flags (e.g. zoom)
+- Binary resolution order:
+  1. `--carbonyl-bin /path/to/carbonyl`
+  2. `CARBONYL_BIN=/path/to/carbonyl`
+  3. `apps/terminal-runtime/bin/carbonyl` (repo component runtime)
+  4. `carbonyl` on `PATH`
 
-## Usage (when implemented)
+## Usage
 
 ```bash
 cargo run -p larql-terminal-browser -- http://127.0.0.1:8000
+```
+
+Explicit binary path:
+
+```bash
+cargo run -p larql-terminal-browser -- --carbonyl-bin /home/arty/.opencode/bin/carbonyl http://127.0.0.1:8000
+```
+
+Install repo component runtime:
+
+```bash
+./apps/terminal-runtime/scripts/install-carbonyl-runtime.sh
 ```
 
 ## Related
 
 - Workbench server: `crates/larql-python` (`larql-ui` entrypoint).
 - Spec: `plan.md` (terminal viewport UX, media, routing, minimal JS).
+
+## Public vs Internal Surface
+
+- Public: terminal-browser user experience contract (rendering, input, media,
+  and viewport behavior) for release-facing workbench usage.
+- Internal: embedding strategy and engine integration details may evolve while
+  preserving that contract.

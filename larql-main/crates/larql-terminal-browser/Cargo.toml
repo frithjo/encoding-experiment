@@ -12,3 +12,9 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
+
+[package.metadata.product]
+zone = "interface"
+role = "terminal-workbench-ux-surface"
+release_impact = "medium"
+stability_target = "iterative"
