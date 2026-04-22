@@ -61,15 +61,73 @@ fn BatchDlaScan() -> impl IntoView {
         set_loading.set(true);
         set_error.set(None);
 
-        // TODO: Call larql-server /tools/call endpoint
-        // For now, just simulate loading
-        set_timeout(
-            move || {
-                set_loading.set(false);
-                set_error.set(Some("Server call not yet implemented".to_string()));
-            },
-            std::time::Duration::from_millis(1000),
-        );
+        let prompt_clone = prompt_val.clone();
+        
+        // Call larql-server /tools/call endpoint
+        wasm_bindgen_futures::spawn_local(async move {
+            let request = ToolCallRequest {
+                name: "batch_dla_scan".to_string(),
+                arguments: serde_json::json!({
+                    "prompt": prompt_clone
+                }),
+            };
+
+            match gloo_net::http::Request::post("http://localhost:8080/tools/call")
+                .json(&request)
+            {
+                Ok(req) => {
+                    match req.send().await {
+                        Ok(response) => {
+                            if response.ok() {
+                                match response.json::<ToolCallResponse>().await {
+                                    Ok(tool_response) => {
+                                        // Parse the attention data from the response
+                                        if let Ok(result) = serde_json::from_value::<serde_json::Value>(tool_response.result) {
+                                            if let Some(attention) = result.get("attention").and_then(|v| v.as_array()) {
+                                                let parsed_attention: Vec<AttentionData> = attention
+                                                    .iter()
+                                                    .filter_map(|v| serde_json::from_value(v.clone()).ok())
+                                                    .collect();
+                                                
+                                                set_attention_data.set(Some(parsed_attention));
+                                                
+                                                if let Some(layers) = result.get("num_layers").and_then(|v| v.as_u64()) {
+                                                    set_num_layers.set(layers as usize);
+                                                }
+                                                
+                                                if let Some(tokens_array) = result.get("tokens").and_then(|v| v.as_array()) {
+                                                    let parsed_tokens: Vec<usize> = tokens_array
+                                                        .iter()
+                                                        .filter_map(|v| v.as_u64().map(|u| u as usize))
+                                                        .collect();
+                                                    set_tokens.set(parsed_tokens);
+                                                }
+                                            }
+                                        }
+                                        set_loading.set(false);
+                                    }
+                                    Err(e) => {
+                                        set_loading.set(false);
+                                        set_error.set(Some(format!("Failed to parse response: {}", e)));
+                                    }
+                                }
+                            } else {
+                                set_loading.set(false);
+                                set_error.set(Some(format!("Server error: {}", response.status_text())));
+                            }
+                        }
+                        Err(e) => {
+                            set_loading.set(false);
+                            set_error.set(Some(format!("Request failed: {}", e)));
+                        }
+                    }
+                }
+                Err(e) => {
+                    set_loading.set(false);
+                    set_error.set(Some(format!("Failed to create request: {}", e)));
+                }
+            }
+        });
     };
 
     view! {
