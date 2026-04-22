@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+@theme {
+  --color-zinc-850: #1c1c22;
+  --color-zinc-925: #131318;
+}
+
+body {
+  margin: 0;
+  font-family: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.heatmap-cell:hover {
+  stroke: white;
+  stroke-width: 2;
+  cursor: pointer;
+}
