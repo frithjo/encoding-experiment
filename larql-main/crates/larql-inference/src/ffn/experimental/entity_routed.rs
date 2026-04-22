@@ -2,8 +2,8 @@
 use ndarray::Array2;
 
 use crate::ffn::FfnBackend;
-use crate::model::ModelWeights;
 use crate::graph_ffn::GateIndex;
+use crate::model::ModelWeights;
 
 // ── Entity-routed FFN: preselect features once, reuse across all layers ──
 

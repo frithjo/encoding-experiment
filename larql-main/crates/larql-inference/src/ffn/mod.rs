@@ -11,12 +11,12 @@
 //! ## Experimental backends
 //! See `experimental/` for research backends developed during FFN optimization.
 
-pub mod weight;
+pub mod experimental;
 pub mod sparse;
 pub mod sparse_compute;
-pub mod experimental;
 #[cfg(test)]
 mod tests;
+pub mod weight;
 
 use ndarray::Array2;
 
@@ -36,12 +36,12 @@ pub trait FfnBackend {
 
 // ── Re-exports ──
 
-pub use weight::WeightFfn;
 pub use sparse::SparseFfn;
 pub use sparse_compute::{
-    sparse_ffn_forward, sparse_ffn_forward_with_overrides,
-    sparse_ffn_forward_with_full_overrides, FeatureSlotOverride,
+    sparse_ffn_forward, sparse_ffn_forward_with_full_overrides, sparse_ffn_forward_with_overrides,
+    FeatureSlotOverride,
 };
+pub use weight::WeightFfn;
 
 // ── Per-layer backend selection ──
 
@@ -53,17 +53,26 @@ pub struct LayerFfnRouter<'a> {
 
 impl<'a> LayerFfnRouter<'a> {
     pub fn uniform(backend: &'a dyn FfnBackend, num_layers: usize) -> Self {
-        Self { backends: vec![backend; num_layers], num_layers }
+        Self {
+            backends: vec![backend; num_layers],
+            num_layers,
+        }
     }
 
     pub fn per_layer(backends: Vec<&'a dyn FfnBackend>) -> Self {
         let num_layers = backends.len();
-        Self { backends, num_layers }
+        Self {
+            backends,
+            num_layers,
+        }
     }
 
     pub fn get(&self, layer: usize) -> &dyn FfnBackend {
-        if layer < self.num_layers { self.backends[layer] }
-        else { self.backends[self.num_layers - 1] }
+        if layer < self.num_layers {
+            self.backends[layer]
+        } else {
+            self.backends[self.num_layers - 1]
+        }
     }
 }
 
@@ -76,10 +85,19 @@ impl FfnBackend for HighwayFfn {
     fn forward(&self, _layer: usize, x: &Array2<f32>) -> Array2<f32> {
         Array2::<f32>::zeros((x.shape()[0], x.shape()[1]))
     }
-    fn forward_with_activation(&self, _layer: usize, x: &Array2<f32>) -> (Array2<f32>, Array2<f32>) {
-        (Array2::<f32>::zeros((x.shape()[0], x.shape()[1])), Array2::<f32>::zeros((x.shape()[0], 1)))
+    fn forward_with_activation(
+        &self,
+        _layer: usize,
+        x: &Array2<f32>,
+    ) -> (Array2<f32>, Array2<f32>) {
+        (
+            Array2::<f32>::zeros((x.shape()[0], x.shape()[1])),
+            Array2::<f32>::zeros((x.shape()[0], 1)),
+        )
     }
-    fn name(&self) -> &str { "highway" }
+    fn name(&self) -> &str {
+        "highway"
+    }
 }
 
 // ── Activation functions ──

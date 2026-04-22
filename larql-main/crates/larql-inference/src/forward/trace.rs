@@ -1,12 +1,12 @@
 //! Tracing and calibration — capture residuals, activations, and attention weights.
 
-use ndarray::Array2;
+use super::embed::embed_tokens;
+use super::layer::{run_layer_with_capture, run_layer_with_ffn};
+use super::ple::precompute_per_layer_inputs;
+use super::{LayerAttentionCapture, TraceResult};
 use crate::ffn::{FfnBackend, WeightFfn};
 use crate::model::ModelWeights;
-use super::{TraceResult, LayerAttentionCapture};
-use super::embed::embed_tokens;
-use super::ple::precompute_per_layer_inputs;
-use super::layer::{run_layer_with_ffn, run_layer_with_capture};
+use ndarray::Array2;
 
 /// Run a forward pass through layers 0..=stop_layer and return the full
 /// hidden state matrix (seq_len, hidden_size) at that layer.
@@ -57,9 +57,10 @@ pub fn capture_decoy_residuals(
             let captured = capture_residuals(weights, tokens, &[layer]);
             // capture_residuals returns one (layer, vec) entry per
             // requested layer; we asked for exactly one.
-            let (_, vec) = captured.into_iter().next().expect(
-                "capture_residuals must return one entry per requested layer",
-            );
+            let (_, vec) = captured
+                .into_iter()
+                .next()
+                .expect("capture_residuals must return one entry per requested layer");
             ndarray::Array1::from_vec(vec)
         })
         .collect()
@@ -97,7 +98,14 @@ pub fn capture_ffn_activation_matrix(
         // truncation that happens there.
         let need_activation = l == layer;
         let (h_new, activation, _, _) = match crate::forward::layer::run_layer_with_capture(
-            weights, &h, l, &ffn, need_activation, false, ple_inputs.get(l), None,
+            weights,
+            &h,
+            l,
+            &ffn,
+            need_activation,
+            false,
+            ple_inputs.get(l),
+            None,
         ) {
             Some(r) => r,
             None => return None,
@@ -167,7 +175,9 @@ pub fn estimate_ffn_covariance(
             seen_first = true;
             continue;
         }
-        let Some(k) = capture_ffn_activation_matrix(weights, tokens, layer) else { continue };
+        let Some(k) = capture_ffn_activation_matrix(weights, tokens, layer) else {
+            continue;
+        };
         for row in k.rows() {
             for i in 0..ffn_dim {
                 let vi = row[i];
@@ -202,8 +212,12 @@ pub fn trace_forward(
 ) -> TraceResult {
     let ffn = WeightFfn { weights };
     trace_forward_with_ffn(
-        weights, token_ids, capture_layers,
-        capture_activations, activation_top_k, &ffn,
+        weights,
+        token_ids,
+        capture_layers,
+        capture_activations,
+        activation_top_k,
+        &ffn,
     )
 }
 
@@ -217,8 +231,13 @@ pub fn trace_forward_with_ffn(
     ffn: &dyn FfnBackend,
 ) -> TraceResult {
     trace_forward_full(
-        weights, token_ids, capture_layers, capture_activations,
-        activation_top_k, false, ffn,
+        weights,
+        token_ids,
+        capture_layers,
+        capture_activations,
+        activation_top_k,
+        false,
+        ffn,
     )
 }
 
@@ -246,11 +265,19 @@ pub fn trace_forward_full(
         let need_activation = capture_activations && is_capture_layer;
         let need_attention = capture_attention && is_capture_layer;
 
-        let (h_new, activation, attn_weights, _) =
-            match run_layer_with_capture(weights, &h, layer, ffn, need_activation, need_attention, ple_inputs.get(layer), None) {
-                Some(result) => result,
-                None => continue,
-            };
+        let (h_new, activation, attn_weights, _) = match run_layer_with_capture(
+            weights,
+            &h,
+            layer,
+            ffn,
+            need_activation,
+            need_attention,
+            ple_inputs.get(layer),
+            None,
+        ) {
+            Some(result) => result,
+            None => continue,
+        };
         h = h_new;
 
         if is_capture_layer {
@@ -266,10 +293,7 @@ pub fn trace_forward_full(
             }
 
             if let Some(weights) = attn_weights {
-                attention_captures.push(LayerAttentionCapture {
-                    layer,
-                    weights,
-                });
+                attention_captures.push(LayerAttentionCapture { layer, weights });
             }
         }
     }
@@ -282,19 +306,30 @@ pub fn trace_forward_full(
 }
 
 /// Calibrate scalar gains from a forward pass: norm[L+1] / norm[L] at each layer.
-pub fn calibrate_scalar_gains(
-    weights: &ModelWeights,
-    token_ids: &[u32],
-) -> Vec<f32> {
+pub fn calibrate_scalar_gains(weights: &ModelWeights, token_ids: &[u32]) -> Vec<f32> {
     let all_layers: Vec<usize> = (0..weights.num_layers).collect();
     let trace = trace_forward(weights, token_ids, &all_layers, false, 0);
 
     let mut gains = Vec::with_capacity(weights.num_layers);
     for i in 0..trace.residuals.len() {
-        let norm_curr: f32 = trace.residuals[i].1.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let norm_curr: f32 = trace.residuals[i]
+            .1
+            .iter()
+            .map(|x| x * x)
+            .sum::<f32>()
+            .sqrt();
         if i + 1 < trace.residuals.len() {
-            let norm_next: f32 = trace.residuals[i + 1].1.iter().map(|x| x * x).sum::<f32>().sqrt();
-            gains.push(if norm_curr > 1e-12 { norm_next / norm_curr } else { 1.0 });
+            let norm_next: f32 = trace.residuals[i + 1]
+                .1
+                .iter()
+                .map(|x| x * x)
+                .sum::<f32>()
+                .sqrt();
+            gains.push(if norm_curr > 1e-12 {
+                norm_next / norm_curr
+            } else {
+                1.0
+            });
         } else {
             gains.push(1.0);
         }
