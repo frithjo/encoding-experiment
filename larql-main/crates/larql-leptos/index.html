@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>LARQL Leptos - Batch DLA Scan</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .batch-dla-scan {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            margin-bottom: 20px;
+            color: #4ade80;
+        }
+        
+        h2 {
+            margin-top: 30px;
+            margin-bottom: 15px;
+            color: #4ade80;
+        }
+        
+        .input-section {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #333;
+            border-radius: 4px;
+            background: #16213e;
+            color: #eee;
+            font-family: monospace;
+            resize: vertical;
+        }
+        
+        button {
+            margin-top: 10px;
+            padding: 10px 20px;
+            background: #4ade80;
+            color: #1a1a2e;
+            border: none;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .error {
+            padding: 10px;
+            background: #ef4444;
+            color: white;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        
+        .stats {
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #16213e;
+            border-radius: 4px;
+        }
+        
+        .attention-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        
+        .layer-card {
+            background: #16213e;
+            padding: 15px;
+            border-radius: 4px;
+            border: 1px solid #333;
+        }
+        
+        .layer-card h3 {
+            color: #4ade80;
+            margin-bottom: 10px;
+        }
+        
+        .attention-preview p {
+            margin: 5px 0;
+            color: #aaa;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="module">
+        import init from "/pkg/larql_leptos.js";
+        init().then(() => {
+            console.log("LARQL Leptos initialized");
+        });
+    </script>
+</body>
+</html>

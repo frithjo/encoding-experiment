@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::state::AppState;
+use larql_inference::forward::{predict_with_ffn_attention, PredictResultWithAttention};
+use larql_inference::ffn::WeightFfn;
 
 /// Tool call request body (MCP/Native compatible)
 #[derive(Debug, Deserialize)]
@@ -58,6 +60,7 @@ pub async fn handle_tools_call(
         "context_map" => handle_context_map(&state, req.arguments).await?,
         "context_map_with_query" => handle_context_map_with_query(&state, req.arguments).await?,
         "load_model" => handle_load_model(&state, req.arguments).await?,
+        "batch_dla_scan" => handle_batch_dla_scan(&state, req.arguments).await?,
         _ => return Err((StatusCode::BAD_REQUEST, format!("Unknown tool: {}", req.name))),
     };
 
@@ -171,4 +174,67 @@ async fn handle_load_model(
     }
 
     Err((StatusCode::NOT_FOUND, format!("Model not loaded: {}", model_id)))
+}
+
+/// Handle batch_dla_scan tool
+async fn handle_batch_dla_scan(
+    state: &AppState,
+    args: serde_json::Value,
+) -> Result<serde_json::Value, (StatusCode, String)> {
+    let model = state.models.first()
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "No model loaded".to_string()))?;
+
+    let args_map: std::collections::HashMap<String, serde_json::Value> = serde_json::from_value(args)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid arguments: {}", e)))?;
+
+    let prompt = args_map.get("prompt")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "Missing prompt argument".to_string()))?;
+
+    // Tokenize the prompt
+    let tokens = model.tokenizer.encode(prompt, false)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Tokenization error: {}", e)))?;
+
+    if tokens.ids.is_empty() {
+        return Ok(serde_json::json!({
+            "attention": [],
+            "num_layers": model.config.num_layers,
+            "seq_len": 0
+        }));
+    }
+
+    // Get model weights for inference
+    let weights = model.get_or_load_weights()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to load model weights: {}", e)))?;
+
+    // Create WeightFfn backend for dense FFN computation
+    let ffn = WeightFfn { weights };
+
+    // Run inference with attention capture
+    let result: PredictResultWithAttention = predict_with_ffn_attention(
+        weights,
+        &*model.tokenizer,
+        &tokens.ids,
+        5, // top_k predictions
+        &ffn,
+    );
+
+    // Convert attention data to JSON format
+    let attention_data: Vec<serde_json::Value> = result.attention
+        .into_iter()
+        .map(|layer_capture| {
+            serde_json::json!({
+                "layer": layer_capture.layer,
+                "heads": layer_capture.weights.heads
+            })
+        })
+        .collect();
+
+    Ok(serde_json::json!({
+        "attention": attention_data,
+        "num_layers": model.config.num_layers,
+        "seq_len": tokens.ids.len(),
+        "tokens": tokens.ids.iter().map(|&id| id as usize).collect::<Vec<_>>(),
+        "predictions": result.predictions
+    }))
 }
