@@ -5,5 +5,5 @@ pub mod knn_store;
 pub mod refine;
 
 pub use core::*;
-pub use knn_store::{KnnStore, KnnEntry};
+pub use knn_store::{KnnEntry, KnnStore};
 pub use refine::{refine_gates, RefineInput, RefineResult, RefinedGate};

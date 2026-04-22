@@ -62,7 +62,10 @@ pub fn classify_token_shape(tok: &str) -> TokenShape {
     if chars.iter().any(|c| c.is_alphabetic()) {
         return TokenShape::MixedWord;
     }
-    if chars.iter().all(|c| !c.is_alphanumeric() && !c.is_whitespace()) {
+    if chars
+        .iter()
+        .all(|c| !c.is_alphanumeric() && !c.is_whitespace())
+    {
         return TokenShape::Symbolic;
     }
     TokenShape::Other
@@ -93,18 +96,88 @@ pub fn entity_token_kind(tok: &str) -> Option<&'static str> {
     let lower = tok.to_lowercase();
     if matches!(
         lower.as_str(),
-        "the" | "and" | "for" | "but" | "not" | "you" | "all" | "can"
-        | "her" | "was" | "one" | "our" | "out" | "are" | "has" | "his"
-        | "how" | "its" | "may" | "new" | "now" | "old" | "see" | "way"
-        | "who" | "did" | "get" | "let" | "say" | "she" | "too" | "use"
-        | "from" | "have" | "been" | "will" | "with" | "this" | "that"
-        | "they" | "were" | "some" | "them" | "than" | "when"
-        | "what" | "your" | "each" | "make" | "like" | "just" | "over"
-        | "such" | "take" | "also" | "into" | "only" | "very" | "more"
-        | "does" | "most" | "about" | "which" | "their" | "would" | "there"
-        | "could" | "other" | "after" | "being" | "where" | "these" | "those"
-        | "first" | "should" | "because" | "through" | "before"
-        | "par" | "aux" | "che" | "del"
+        "the"
+            | "and"
+            | "for"
+            | "but"
+            | "not"
+            | "you"
+            | "all"
+            | "can"
+            | "her"
+            | "was"
+            | "one"
+            | "our"
+            | "out"
+            | "are"
+            | "has"
+            | "his"
+            | "how"
+            | "its"
+            | "may"
+            | "new"
+            | "now"
+            | "old"
+            | "see"
+            | "way"
+            | "who"
+            | "did"
+            | "get"
+            | "let"
+            | "say"
+            | "she"
+            | "too"
+            | "use"
+            | "from"
+            | "have"
+            | "been"
+            | "will"
+            | "with"
+            | "this"
+            | "that"
+            | "they"
+            | "were"
+            | "some"
+            | "them"
+            | "than"
+            | "when"
+            | "what"
+            | "your"
+            | "each"
+            | "make"
+            | "like"
+            | "just"
+            | "over"
+            | "such"
+            | "take"
+            | "also"
+            | "into"
+            | "only"
+            | "very"
+            | "more"
+            | "does"
+            | "most"
+            | "about"
+            | "which"
+            | "their"
+            | "would"
+            | "there"
+            | "could"
+            | "other"
+            | "after"
+            | "being"
+            | "where"
+            | "these"
+            | "those"
+            | "first"
+            | "should"
+            | "because"
+            | "through"
+            | "before"
+            | "par"
+            | "aux"
+            | "che"
+            | "del"
     ) {
         return None;
     }
@@ -275,7 +348,11 @@ mod tests {
 
     #[test]
     fn band_name_layers_correctly() {
-        let bands = LayerBands { syntax: (0, 13), knowledge: (14, 21), output: (22, 27) };
+        let bands = LayerBands {
+            syntax: (0, 13),
+            knowledge: (14, 21),
+            output: (22, 27),
+        };
         assert_eq!(band_name_for_layer(5, &bands), "syntax");
         assert_eq!(band_name_for_layer(15, &bands), "knowledge");
         assert_eq!(band_name_for_layer(25, &bands), "output");

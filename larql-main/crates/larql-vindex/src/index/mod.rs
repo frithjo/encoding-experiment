@@ -9,15 +9,15 @@
 //! - `mutate` — Gate vector mutation (INSERT/DELETE)
 //! - `router` — MoE expert routing
 
-pub mod types;
 pub mod core;
 mod gate;
-mod walk;
 pub mod hnsw;
 pub mod mutate;
-pub mod router;
 pub mod residency;
+pub mod router;
+pub mod types;
+mod walk;
 
 pub use core::*;
+pub use residency::{LayerState, ResidencyManager};
 pub use router::RouterIndex;
-pub use residency::{ResidencyManager, LayerState};

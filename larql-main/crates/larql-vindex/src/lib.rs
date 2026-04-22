@@ -15,16 +15,16 @@ pub mod error;
 pub mod extract;
 pub mod format;
 pub mod index;
-pub mod patch;
 pub mod mmap_util;
+pub mod patch;
 pub mod text;
 pub mod token_summary;
 pub mod vindexfile;
 
 // ── Re-export dependencies ──
-pub use ndarray;
 pub use larql_tokenizer;
 pub use larql_tokenizer::Tokenizer as TokenizerTrait;
+pub use ndarray;
 
 /// Convenience alias for a shared, trait-object tokenizer handle.
 ///
@@ -37,8 +37,8 @@ pub type TokenizerArc = std::sync::Arc<dyn larql_tokenizer::Tokenizer>;
 // Config
 pub use config::dtype::StorageDtype;
 pub use config::types::{
-    DownMetaRecord, DownMetaTopK, ExtractLevel, LayerBands, MoeConfig,
-    VindexConfig, VindexLayerInfo, VindexModelConfig, VindexSource,
+    DownMetaRecord, DownMetaTopK, ExtractLevel, LayerBands, MoeConfig, VindexConfig,
+    VindexLayerInfo, VindexModelConfig, VindexSource,
 };
 
 // Error
@@ -46,10 +46,11 @@ pub use error::VindexError;
 
 // Index
 pub use index::core::{
-    FeatureMeta, GateIndex, IndexLoadCallbacks, SilentLoadCallbacks, VectorIndex, WalkHit, WalkTrace,
+    FeatureMeta, GateIndex, IndexLoadCallbacks, SilentLoadCallbacks, VectorIndex, WalkHit,
+    WalkTrace,
 };
-pub use index::router::{RouterIndex, RouteResult};
-pub use index::residency::{ResidencyManager, LayerState};
+pub use index::residency::{LayerState, ResidencyManager};
+pub use index::router::{RouteResult, RouterIndex};
 
 // Describe
 pub use describe::{DescribeEdge, LabelSource};
@@ -65,8 +66,7 @@ pub use token_summary::{
 
 // Extract
 pub use extract::{
-    build_vindex, build_vindex_resume, build_vindex_from_vectors,
-    build_vindex_streaming,
+    build_vindex, build_vindex_from_vectors, build_vindex_resume, build_vindex_streaming,
     IndexBuildCallbacks, SilentBuildCallbacks,
 };
 
@@ -78,15 +78,19 @@ pub use format::load::{
 };
 // Model loading: use larql_models::{load_model_dir, resolve_model_path, load_gguf} directly
 pub use format::huggingface::{
-    resolve_hf_vindex, download_hf_weights, publish_vindex,
-    is_hf_path, PublishCallbacks, SilentPublishCallbacks,
+    download_hf_weights, is_hf_path, publish_vindex, resolve_hf_vindex, PublishCallbacks,
+    SilentPublishCallbacks,
 };
-pub use format::weights::{write_model_weights, load_model_weights, WeightSource, StreamingWeights};
+pub use format::weights::{
+    load_model_weights, write_model_weights, StreamingWeights, WeightSource,
+};
 
 // Patch
 pub use patch::core::{PatchOp, PatchedVindex, VindexPatch};
-pub use patch::knn_store::{KnnStore, KnnEntry};
+pub use patch::knn_store::{KnnEntry, KnnStore};
 pub use patch::refine::{refine_gates, RefineInput, RefineResult, RefinedGate};
 
 // Vindexfile
-pub use vindexfile::{Vindexfile, VindexfileDirective, VindexfileStage, parse_vindexfile, build_from_vindexfile};
+pub use vindexfile::{
+    build_from_vindexfile, parse_vindexfile, Vindexfile, VindexfileDirective, VindexfileStage,
+};

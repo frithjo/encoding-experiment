@@ -4,11 +4,11 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
-use ndarray::Array2;
 use larql_core::mmap::Mmap;
+use ndarray::Array2;
 
-use crate::error::VindexError;
 use crate::config::VindexConfig;
+use crate::error::VindexError;
 use crate::index::{IndexLoadCallbacks, VectorIndex};
 
 impl VectorIndex {
@@ -23,14 +23,17 @@ impl VectorIndex {
         // Read config
         let config_path = dir.join("index.json");
         let config_text = std::fs::read_to_string(&config_path)?;
-        let config: VindexConfig = serde_json::from_str(&config_text)
-            .map_err(|e| VindexError::Parse(e.to_string()))?;
+        let config: VindexConfig =
+            serde_json::from_str(&config_text).map_err(|e| VindexError::Parse(e.to_string()))?;
 
         let num_layers = config.num_layers;
         let hidden_size = config.hidden_size;
 
         // Load gate vectors from binary
-        callbacks.on_file_start("gate_vectors", &dir.join("gate_vectors.bin").display().to_string());
+        callbacks.on_file_start(
+            "gate_vectors",
+            &dir.join("gate_vectors.bin").display().to_string(),
+        );
         let start = std::time::Instant::now();
 
         let gate_path = dir.join("gate_vectors.bin");
@@ -65,12 +68,19 @@ impl VectorIndex {
         let down_meta_mmap = if crate::format::down_meta::has_binary(dir) {
             match load_vindex_tokenizer(dir) {
                 Ok(tokenizer) => {
-                    callbacks.on_file_start("down_meta", &dir.join("down_meta.bin").display().to_string());
+                    callbacks.on_file_start(
+                        "down_meta",
+                        &dir.join("down_meta.bin").display().to_string(),
+                    );
                     // `load_vindex_tokenizer` already returns `Arc<dyn Tokenizer>`.
                     match crate::format::down_meta::mmap_binary(dir, tokenizer) {
                         Ok(dm) => {
                             let count = dm.total_features();
-                            callbacks.on_file_done("down_meta", count, start.elapsed().as_secs_f64() * 1000.0);
+                            callbacks.on_file_done(
+                                "down_meta",
+                                count,
+                                start.elapsed().as_secs_f64() * 1000.0,
+                            );
                             Some(dm)
                         }
                         Err(_) => None,
@@ -82,15 +92,22 @@ impl VectorIndex {
             None
         };
 
-        Ok(VectorIndex::new_mmap(gate_mmap, gate_slices, config.dtype, down_meta_mmap, num_layers, hidden_size))
+        Ok(VectorIndex::new_mmap(
+            gate_mmap,
+            gate_slices,
+            config.dtype,
+            down_meta_mmap,
+            num_layers,
+            hidden_size,
+        ))
     }
 }
 
 /// Load embeddings from a .vindex directory.
 pub fn load_vindex_embeddings(dir: &Path) -> Result<(Array2<f32>, f32), VindexError> {
     let config_text = std::fs::read_to_string(dir.join("index.json"))?;
-    let config: VindexConfig = serde_json::from_str(&config_text)
-        .map_err(|e| VindexError::Parse(e.to_string()))?;
+    let config: VindexConfig =
+        serde_json::from_str(&config_text).map_err(|e| VindexError::Parse(e.to_string()))?;
 
     let embed_file = std::fs::File::open(dir.join("embeddings.bin"))?;
     let embed_mmap = unsafe { Mmap::map(&embed_file)? };

@@ -340,7 +340,7 @@ pub fn build_vindex_streaming(
                     down_matrices.iter().map(|m| m.shape()[1]).sum());
 
                 let w_chunk = w_down.slice(ndarray::s![.., batch_start..batch_end]).to_owned();
-                let cpu = larql_compute::CpuBackend;
+                let cpu = larql_compute::cpu_backend();
                 use larql_compute::ComputeBackend;
                 let chunk_logits = cpu.matmul(embed.view(), w_chunk.view());
 
