@@ -199,7 +199,7 @@ GET /v1/walk?prompt=Einstein&top=5&layers=24-33
 | Param | Type | Description | Default |
 |-------|------|-------------|---------|
 | `prompt` | string | Prompt text (required) | — |
-| `top` | int | Top-K features per layer | 5 |
+| `top` | int | Top-K features per layer (maximum `1000`; oversized requests return `400`) | 5 |
 | `layers` | string | Layer range (e.g. `24-33` or `14,26,27`) | all |
 
 **Response:**

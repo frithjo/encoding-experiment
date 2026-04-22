@@ -18,8 +18,19 @@ The primary workflow: extract a vindex, launch the REPL, or build from a Vindexf
 | `repl` | Launch the LQL interactive REPL |
 | `lql` | Execute a single LQL statement |
 | `walk` | Walk the model as a local vector index (gate KNN + down lookup) |
-| `vindex-bench` | Benchmark vindex walk: accuracy vs dense, throughput |
 | `serve` | Serve a vindex over HTTP (knowledge queries, patches, multi-model) |
+
+## Experimental command surface
+
+These commands are valuable for benchmarking and research workflows, but are not
+part of the core product workflow contract.
+
+| Command | Description |
+|---|---|
+| `vindex-bench` | Benchmark vindex walk: accuracy vs dense, throughput |
+
+For broader experimental benchmarking, see `experiments/kv-cache-benchmark/README.md`
+and `docs/perf/README.md`.
 
 ### `larql serve`
 
