@@ -2,14 +2,13 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use clap::Args;
-use larql_vindex::{
-    load_vindex_embeddings, load_vindex_tokenizer,
-    IndexLoadCallbacks, SilentLoadCallbacks, VectorIndex, ndarray,
-};
 use larql_inference::{
-    predict_with_ffn, predict_with_router, InferenceModel, LayerFfnRouter, ModelWeights,
-    SparseFfn, WeightFfn,
-    vindex::WalkFfn,
+    predict_with_ffn, predict_with_router, vindex::WalkFfn, InferenceModel, LayerFfnRouter,
+    ModelWeights, SparseFfn, WeightFfn,
+};
+use larql_vindex::{
+    load_vindex_embeddings, load_vindex_tokenizer, ndarray, IndexLoadCallbacks,
+    SilentLoadCallbacks, VectorIndex,
 };
 
 #[derive(Args)]
@@ -149,14 +148,17 @@ pub fn run(args: WalkArgs) -> Result<(), Box<dyn std::error::Error>> {
             // Try loading weights from vindex
             run_with_vindex_weights(vindex_path, &args, &index, &layers, verbose)?;
         } else {
-            return Err("--model or --index (with --include-weights) required for --predict".into());
+            return Err(
+                "--model or --index (with --include-weights) required for --predict".into(),
+            );
         }
     } else if let Some(ref vindex_path) = args.index {
         run_vindex_walk(vindex_path, &args, &index, &layers)?;
     } else {
-        let model_name = args.model.as_deref().ok_or(
-            "--model required for embedding walk (or use --index for standalone)",
-        )?;
+        let model_name = args
+            .model
+            .as_deref()
+            .ok_or("--model required for embedding walk (or use --index for standalone)")?;
         run_model_embedding_walk(model_name, &args, &index, &layers)?;
     }
 
@@ -195,7 +197,11 @@ fn run_vindex_walk(
     let token_str = tokenizer
         .decode(&[last_tok], true)
         .unwrap_or_else(|_| format!("T{last_tok}"));
-    vlog!(verbose, "Query: embedding for {:?} (T{last_tok})", token_str.trim());
+    vlog!(
+        verbose,
+        "Query: embedding for {:?} (T{last_tok})",
+        token_str.trim()
+    );
 
     let walk_start = Instant::now();
     let trace = index.walk(&query, layers, args.top_k);
@@ -249,7 +255,11 @@ fn run_model_embedding_walk(
         .tokenizer()
         .decode(&[last_tok], true)
         .unwrap_or_else(|_| format!("T{last_tok}"));
-    vlog!(verbose, "Query: embedding for {:?} (T{last_tok})", token_str.trim());
+    vlog!(
+        verbose,
+        "Query: embedding for {:?} (T{last_tok})",
+        token_str.trim()
+    );
 
     let walk_start = Instant::now();
     let trace = index.walk(&query, layers, args.top_k);
@@ -333,7 +343,12 @@ fn run_predict_inner(
         .encode(args.prompt.as_str(), true)
         .map_err(|e| format!("tokenize error: {e}"))?;
     let token_ids: Vec<u32> = encoding.ids.clone();
-    vlog!(verbose, "Prompt: {:?} ({} tokens)", args.prompt, token_ids.len());
+    vlog!(
+        verbose,
+        "Prompt: {:?} ({} tokens)",
+        args.prompt,
+        token_ids.len()
+    );
 
     // Walk FFN forward pass (with trace for analysis output)
     let walk_ffn = WalkFfn::new_with_trace(weights, index, args.top_k);
@@ -356,7 +371,11 @@ fn run_predict_inner(
     }
 
     print_predictions("walk", &result.predictions);
-    vlog!(verbose, "  Walk forward: {:.1}s", walk_elapsed.as_secs_f64());
+    vlog!(
+        verbose,
+        "  Walk forward: {:.1}s",
+        walk_elapsed.as_secs_f64()
+    );
 
     if args.compare {
         let start = Instant::now();
@@ -365,7 +384,11 @@ fn run_predict_inner(
         let dense_elapsed = start.elapsed();
 
         print_predictions("dense", &dense_result.predictions);
-        vlog!(verbose, "  Dense forward: {:.1}s", dense_elapsed.as_secs_f64());
+        vlog!(
+            verbose,
+            "  Dense forward: {:.1}s",
+            dense_elapsed.as_secs_f64()
+        );
 
         let sparse_ffn = SparseFfn {
             weights,
@@ -381,8 +404,15 @@ fn run_predict_inner(
         );
         let sparse_elapsed = start.elapsed();
 
-        print_predictions(&format!("sparse:{}", args.top_k), &sparse_result.predictions);
-        vlog!(verbose, "  Sparse forward: {:.1}s", sparse_elapsed.as_secs_f64());
+        print_predictions(
+            &format!("sparse:{}", args.top_k),
+            &sparse_result.predictions,
+        );
+        vlog!(
+            verbose,
+            "  Sparse forward: {:.1}s",
+            sparse_elapsed.as_secs_f64()
+        );
 
         let weight_ffn = WeightFfn { weights };
         let walk_ffn2 = WalkFfn::new(weights, index, args.top_k);
@@ -394,20 +424,24 @@ fn run_predict_inner(
         });
         let router = LayerFfnRouter::per_layer(backends);
         let start = Instant::now();
-        let hybrid_result = predict_with_router(
-            weights,
-            tokenizer,
-            &token_ids,
-            args.predict_top_k,
-            &router,
-        );
+        let hybrid_result =
+            predict_with_router(weights, tokenizer, &token_ids, args.predict_top_k, &router);
         let hybrid_elapsed = start.elapsed();
 
         print_predictions(
-            &format!("hybrid (dense:0-{}, walk:{}-{})", switch - 1, switch, num_layers - 1),
+            &format!(
+                "hybrid (dense:0-{}, walk:{}-{})",
+                switch - 1,
+                switch,
+                num_layers - 1
+            ),
             &hybrid_result.predictions,
         );
-        vlog!(verbose, "  Hybrid forward: {:.1}s", hybrid_elapsed.as_secs_f64());
+        vlog!(
+            verbose,
+            "  Hybrid forward: {:.1}s",
+            hybrid_elapsed.as_secs_f64()
+        );
 
         println!();
         println!(
@@ -417,7 +451,11 @@ fn run_predict_inner(
         println!("{}", "-".repeat(75));
         print_summary_row("walk", &result.predictions, walk_elapsed);
         print_summary_row("dense", &dense_result.predictions, dense_elapsed);
-        print_summary_row(&format!("sparse:{}", args.top_k), &sparse_result.predictions, sparse_elapsed);
+        print_summary_row(
+            &format!("sparse:{}", args.top_k),
+            &sparse_result.predictions,
+            sparse_elapsed,
+        );
         print_summary_row(
             &format!("dense:0-{},walk:{}-{}", switch - 1, switch, num_layers - 1),
             &hybrid_result.predictions,
@@ -431,12 +469,7 @@ fn run_predict_inner(
 fn print_predictions(label: &str, predictions: &[(String, f64)]) {
     println!("\nTop predictions ({label}):");
     for (i, (token, prob)) in predictions.iter().enumerate() {
-        println!(
-            "  {:2}. {:20} ({:.2}%)",
-            i + 1,
-            token,
-            prob * 100.0
-        );
+        println!("  {:2}. {:20} ({:.2}%)", i + 1, token, prob * 100.0);
     }
 }
 

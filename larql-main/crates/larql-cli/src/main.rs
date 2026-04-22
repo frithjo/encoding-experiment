@@ -97,12 +97,10 @@ enum Commands {
     Verify(verify_cmd::VerifyArgs),
 
     // GraphWalk removed — used deprecated FeatureListFfn
-
     /// Trace residual stream trajectories on the sphere across layers.
     TrajectoryTrace(trajectory_trace_cmd::TrajectoryTraceArgs),
 
     // VindexBench removed — used deprecated DownClusteredFfn
-
     /// Test rank-k projection: replace L0→L_inject with a linear map, run the rest dense.
     ProjectionTest(projection_test_cmd::ProjectionTestArgs),
 
@@ -264,17 +262,15 @@ fn main() {
             larql_lql::run_repl();
             Ok(())
         }
-        Commands::Lql(args) => {
-            match larql_lql::run_batch(&args.statement) {
-                Ok(lines) => {
-                    for line in &lines {
-                        println!("{line}");
-                    }
-                    Ok(())
+        Commands::Lql(args) => match larql_lql::run_batch(&args.statement) {
+            Ok(lines) => {
+                for line in &lines {
+                    println!("{line}");
                 }
-                Err(e) => Err(e),
+                Ok(())
             }
-        }
+            Err(e) => Err(e),
+        },
         Commands::Serve(args) => {
             // Build the argument list and exec larql-server.
             let mut cmd_args = Vec::new();
@@ -336,9 +332,7 @@ fn main() {
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_else(|| "larql-server".into());
 
-            let status = std::process::Command::new(&bin)
-                .args(&cmd_args)
-                .status();
+            let status = std::process::Command::new(&bin).args(&cmd_args).status();
 
             match status {
                 Ok(s) if s.success() => Ok(()),
