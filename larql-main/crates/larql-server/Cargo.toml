@@ -35,3 +35,9 @@ thiserror = { workspace = true }
 default = ["http-async", "huggingface"]
 http-async = ["dep:larql-core", "larql-core/http-async", "dep:larql-vindex"]
 huggingface = ["dep:larql-core", "larql-core/huggingface", "dep:larql-vindex", "larql-vindex/huggingface"]
+
+[package.metadata.product]
+zone = "interface"
+role = "network-api-service-surface"
+release_impact = "critical"
+stability_target = "stable"
