@@ -1,8 +1,8 @@
 //! Model weight tensors — the loaded representation of a model's parameters.
 
-use std::collections::HashMap;
-use ndarray::ArcArray2;
 use crate::ModelArchitecture;
+use ndarray::ArcArray2;
+use std::collections::HashMap;
 
 /// Type alias for weight tensors — ArcArray2 supports both owned and shared storage.
 /// Owned: from safetensors loading (heap). Shared: from mmap (zero-copy).
@@ -37,11 +37,21 @@ impl ModelWeights {
     /// Typical savings: ~13GB for a 4B model.
     pub fn drop_ffn_weights(&mut self) -> usize {
         let mut freed = 0usize;
-        let ffn_patterns = ["gate_proj", "up_proj", "down_proj",
-                           "ffn_gate", "ffn_up", "ffn_down",
-                           "mlp.experts", "block_sparse_moe.experts",
-                           "packed_gate_up_blocks", "packed_down_blocks"];
-        let keys_to_remove: Vec<String> = self.tensors.keys()
+        let ffn_patterns = [
+            "gate_proj",
+            "up_proj",
+            "down_proj",
+            "ffn_gate",
+            "ffn_up",
+            "ffn_down",
+            "mlp.experts",
+            "block_sparse_moe.experts",
+            "packed_gate_up_blocks",
+            "packed_down_blocks",
+        ];
+        let keys_to_remove: Vec<String> = self
+            .tensors
+            .keys()
             .filter(|k| ffn_patterns.iter().any(|p| k.contains(p)))
             .cloned()
             .collect();
@@ -51,7 +61,9 @@ impl ModelWeights {
             }
         }
         // Also drop FFN bias vectors
-        let vec_keys: Vec<String> = self.vectors.keys()
+        let vec_keys: Vec<String> = self
+            .vectors
+            .keys()
             .filter(|k| ffn_patterns.iter().any(|p| k.contains(p)))
             .cloned()
             .collect();

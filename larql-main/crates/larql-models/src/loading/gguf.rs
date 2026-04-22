@@ -8,11 +8,11 @@ use std::collections::HashMap;
 use std::io::{BufReader, Read, Seek};
 use std::path::Path;
 
-use ndarray::{Array2, ShapeBuilder};
 use larql_core::mmap::Mmap;
+use ndarray::{Array2, ShapeBuilder};
 
-use crate::weights::ModelWeights;
 use crate::detect::ModelError;
+use crate::weights::ModelWeights;
 
 // ═══════════════════════════════════════════════════════════════
 // GGUF constants
@@ -117,14 +117,17 @@ impl GgufFile {
         let magic = read_u32(&mut r)?;
         if magic != GGUF_MAGIC {
             return Err(ModelError::Parse(format!(
-                "not a GGUF file (magic: 0x{:08X}, expected 0x{:08X})", magic, GGUF_MAGIC
+                "not a GGUF file (magic: 0x{:08X}, expected 0x{:08X})",
+                magic, GGUF_MAGIC
             )));
         }
 
         // Version
         let version = read_u32(&mut r)?;
         if !(2..=3).contains(&version) {
-            return Err(ModelError::Parse(format!("unsupported GGUF version: {version}")));
+            return Err(ModelError::Parse(format!(
+                "unsupported GGUF version: {version}"
+            )));
         }
 
         let n_tensors = read_u64(&mut r)? as usize;
@@ -149,12 +152,17 @@ impl GgufFile {
             }
             let tensor_type = read_u32(&mut r)?;
             let offset = read_u64(&mut r)?;
-            tensor_infos.push(GgufTensorInfo { name, n_dims, dims, tensor_type, offset });
+            tensor_infos.push(GgufTensorInfo {
+                name,
+                n_dims,
+                dims,
+                tensor_type,
+                offset,
+            });
         }
 
         // Data starts at next alignment boundary (32 bytes)
-        let pos = r.stream_position()
-            .map_err(ModelError::Io)?;
+        let pos = r.stream_position().map_err(ModelError::Io)?;
         let alignment = 32u64;
         let data_offset = pos.div_ceil(alignment) * alignment;
 
@@ -168,7 +176,15 @@ impl GgufFile {
 
     /// Load all tensors, dequantizing to f32.
     #[allow(clippy::type_complexity)]
-    pub fn load_tensors(&self) -> Result<(HashMap<String, crate::WeightArray>, HashMap<String, Vec<f32>>), ModelError> {
+    pub fn load_tensors(
+        &self,
+    ) -> Result<
+        (
+            HashMap<String, crate::WeightArray>,
+            HashMap<String, Vec<f32>>,
+        ),
+        ModelError,
+    > {
         let file = std::fs::File::open(&self.path)?;
         let mmap = unsafe { Mmap::map(&file)? };
 
@@ -183,7 +199,10 @@ impl GgufFile {
             if abs_offset as usize + data_size > mmap.len() {
                 return Err(ModelError::Parse(format!(
                     "tensor {} data out of bounds (offset {} + size {} > file {})",
-                    info.name, abs_offset, data_size, mmap.len()
+                    info.name,
+                    abs_offset,
+                    data_size,
+                    mmap.len()
                 )));
             }
 
@@ -206,8 +225,8 @@ impl GgufFile {
                     // then convert to standard (C) layout via .as_standard_layout().
                     let ne0 = info.dims[0] as usize; // columns in GGML
                     let ne1 = info.dims[1] as usize; // rows in GGML
-                    // Shape is (rows, cols) = (ne1, ne0) in standard math convention.
-                    // Data is column-major, so we create with Fortran layout.
+                                                     // Shape is (rows, cols) = (ne1, ne0) in standard math convention.
+                                                     // Data is column-major, so we create with Fortran layout.
                     let arr = Array2::from_shape_vec((ne1, ne0).f(), floats)
                         .map_err(|e| ModelError::Parse(format!("tensor {}: {}", info.name, e)))?;
                     // Convert to standard (C/row-major) layout for compatibility
@@ -226,7 +245,13 @@ impl GgufFile {
 
     /// Build a config.json-equivalent from GGUF metadata for architecture detection.
     pub fn to_config_json(&self) -> serde_json::Value {
-        let get_str = |k: &str| self.metadata.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let get_str = |k: &str| {
+            self.metadata
+                .get(k)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string()
+        };
         let _get_u32 = |k: &str| self.metadata.get(k).and_then(|v| v.as_u32()).unwrap_or(0);
 
         // GGUF uses "general.architecture" and "{arch}.*" keys
@@ -247,7 +272,8 @@ impl GgufFile {
             0
         };
         let get_arch_f64 = |suffix: &str| {
-            self.metadata.get(&format!("{prefix}{suffix}"))
+            self.metadata
+                .get(&format!("{prefix}{suffix}"))
                 .and_then(|v| v.as_f64())
                 .unwrap_or(0.0)
         };
@@ -334,22 +360,20 @@ pub fn load_gguf(path: &Path) -> Result<ModelWeights, ModelError> {
     let cfg = arch.config();
     // Gemma3 GGUF does not store vocab_size in arch metadata.
     // Read it from tokenizer.json sitting next to the GGUF file.
-    let vocab_size = cfg.vocab_size
-        .filter(|&v| v > 2560)
-        .unwrap_or_else(|| {
-            // Try to read vocab size from tokenizer.json
-            if let Some(parent) = std::path::Path::new(&path).parent() {
-                let tok_path = parent.join("tokenizer.json");
-                if let Ok(data) = std::fs::read_to_string(&tok_path) {
-                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&data) {
-                        if let Some(v) = json["model"]["vocab"].as_object() {
-                            return v.len();
-                        }
+    let vocab_size = cfg.vocab_size.filter(|&v| v > 2560).unwrap_or_else(|| {
+        // Try to read vocab size from tokenizer.json
+        if let Some(parent) = std::path::Path::new(&path).parent() {
+            let tok_path = parent.join("tokenizer.json");
+            if let Ok(data) = std::fs::read_to_string(&tok_path) {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&data) {
+                    if let Some(v) = json["model"]["vocab"].as_object() {
+                        return v.len();
                     }
                 }
             }
-            262144 // Gemma3 default
-        });
+        }
+        262144 // Gemma3 default
+    });
 
     Ok(ModelWeights {
         tensors: normalized_tensors,
@@ -455,7 +479,9 @@ fn read_value(r: &mut impl Read) -> Result<GgufValue, ModelError> {
             }
             Ok(GgufValue::Array(arr))
         }
-        _ => Err(ModelError::Parse(format!("unknown GGUF metadata type: {vtype}"))),
+        _ => Err(ModelError::Parse(format!(
+            "unknown GGUF metadata type: {vtype}"
+        ))),
     }
 }
 
@@ -473,7 +499,9 @@ fn read_array_element(r: &mut impl Read, elem_type: u32) -> Result<GgufValue, Mo
         GGUF_TYPE_UINT64 => Ok(GgufValue::U64(read_u64(r)?)),
         GGUF_TYPE_INT64 => Ok(GgufValue::I64(read_i64(r)?)),
         GGUF_TYPE_FLOAT64 => Ok(GgufValue::F64(read_f64(r)?)),
-        _ => Err(ModelError::Parse(format!("unknown GGUF array element type: {elem_type}"))),
+        _ => Err(ModelError::Parse(format!(
+            "unknown GGUF array element type: {elem_type}"
+        ))),
     }
 }
 
@@ -495,10 +523,7 @@ pub fn normalize_gguf_key(name: &str) -> String {
     // HF uses "model.layers.N.self_attn.q_proj.weight" format
     // We normalize to the HF style since that's what ModelArchitecture expects
 
-    
-
-    name
-        .replace("blk.", "layers.")
+    name.replace("blk.", "layers.")
         .replace("attn_q.", "self_attn.q_proj.")
         .replace("attn_k.", "self_attn.k_proj.")
         .replace("attn_v.", "self_attn.v_proj.")
@@ -531,10 +556,7 @@ mod tests {
             normalize_gguf_key("token_embd.weight"),
             "embed_tokens.weight"
         );
-        assert_eq!(
-            normalize_gguf_key("output.weight"),
-            "lm_head.weight"
-        );
+        assert_eq!(normalize_gguf_key("output.weight"), "lm_head.weight");
     }
 
     #[test]
@@ -558,13 +580,15 @@ mod tests {
         file.write_all(&2u32.to_le_bytes()).unwrap(); // n_dims
         file.write_all(&4u64.to_le_bytes()).unwrap(); // cols
         file.write_all(&2u64.to_le_bytes()).unwrap(); // rows
-        file.write_all(&crate::quant::ggml::TYPE_F32.to_le_bytes()).unwrap();
+        file.write_all(&crate::quant::ggml::TYPE_F32.to_le_bytes())
+            .unwrap();
         file.write_all(&0u64.to_le_bytes()).unwrap(); // tensor data offset
 
         // Pad tensor data start to 32-byte boundary.
         let pos = file.stream_position().unwrap();
         let aligned = pos.div_ceil(32) * 32;
-        file.write_all(&vec![0u8; (aligned - pos) as usize]).unwrap();
+        file.write_all(&vec![0u8; (aligned - pos) as usize])
+            .unwrap();
 
         // Raw row-major data for a logical [2, 4] matrix.
         for v in 1u32..=8 {

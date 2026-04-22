@@ -18,3 +18,9 @@ larql-core = { path = "../larql-core" }
 
 [dev-dependencies]
 tempfile = "3"
+
+[package.metadata.product]
+zone = "core"
+role = "model-architecture-and-loading"
+release_impact = "high"
+stability_target = "stable"
