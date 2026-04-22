@@ -1,5 +1,12 @@
 # larql-compute
 
+## Crate Role
+
+- Role: Hardware compute backend layer (CPU/Metal) for runtime execution
+- Zone: core
+- Release impact: high
+- Stability target: managed
+
 Hardware-accelerated compute backends for LARQL. CPU (BLAS + NEON Q4), Metal GPU, and future CUDA.
 
 ## What it does
@@ -188,6 +195,13 @@ cargo run --release --features metal -p larql-compute --example best_multi_layer
 6. **Auto-calibration** — benchmarks CPU vs GPU at startup for routing threshold
 7. **Dual-path decode** — auto-detects Q4_K vs Q8 weights, uses optimal pipeline
 8. **GGUF-compatible** — Q4_K/Q6_K formats match Ollama's quantization
+
+## Public vs Internal Surface
+
+- Public: backend traits and compute entrypoints used by inference/runtime
+  crates.
+- Internal: kernel selection, calibration thresholds, and low-level execution
+  strategy may change while preserving external compute contracts.
 
 ## License
 

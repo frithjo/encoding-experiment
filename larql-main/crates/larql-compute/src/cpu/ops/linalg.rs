@@ -1,10 +1,53 @@
-//! Linear algebra primitives for MEMIT — Cholesky decomposition and solve.
+//! Linear algebra primitives for CPU — Norms, RoPE, and Cholesky.
 //!
-//! All operations use f64 for numerical stability (the MEMIT covariance
-//! inverse is ill-conditioned at f32 for ffn_dim > 2048).
+//! Basic operations (rms_norm, rope_at_pos) for forward pass.
+//! Cholesky operations for MEMIT (experimental).
 
-use ndarray::DenseMatrix;
-use ndarray::Array2;
+use ndarray::{ArrayView2, Array1, Array2, DenseMatrix};
+
+/// Apply RMS Norm to a vector.
+pub fn rms_norm(x: &[f32], weight: &[f32], eps: f32, offset: f32) -> Vec<f32> {
+    let n = x.len();
+    let mut ms = 0.0f32;
+    for &v in x {
+        ms += v * v;
+    }
+    ms /= n as f32;
+    let inv_rms = 1.0 / (ms + eps).sqrt();
+
+    let mut out = vec![0.0; n];
+    for i in 0..n {
+        out[i] = x[i] * inv_rms * (weight[i] + offset);
+    }
+    out
+}
+
+/// Apply RMS Norm to each row of a 2D array.
+pub fn rms_norm_2d(x: ArrayView2<f32>, weight: &[f32], eps: f32, offset: f32) -> Array2<f32> {
+    let (rows, cols) = x.dim();
+    let mut out = Array2::zeros((rows, cols));
+    for r in 0..rows {
+        let row = x.row(r);
+        let normed = rms_norm(row.as_slice().unwrap(), weight, eps, offset);
+        out.row_mut(r).assign(&Array1::from(normed).view());
+    }
+    out
+}
+
+/// Apply Rotary Positional Embedding to a head vector at a specific position.
+pub fn rope_at_pos(x: &mut [f32], head_dim: usize, base: f32, pos: usize) {
+    let half_dim = head_dim / 2;
+    for i in 0..half_dim {
+        let theta = (pos as f32) / base.powf((2 * i) as f32 / head_dim as f32);
+        let cos = theta.cos();
+        let sin = theta.sin();
+
+        let v0 = x[i];
+        let v1 = x[i + half_dim];
+        x[i] = v0 * cos - v1 * sin;
+        x[i + half_dim] = v0 * sin + v1 * cos;
+    }
+}
 
 /// Cholesky decomposition of a symmetric positive-definite matrix.
 /// Returns the lower-triangular factor L such that A = L L^T.

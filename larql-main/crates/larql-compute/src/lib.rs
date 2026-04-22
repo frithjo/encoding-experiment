@@ -29,7 +29,6 @@
 //!   multi-layer pipeline, zero-copy mmap buffers.
 //! - `cuda`: (planned) CUDA GPU backend.
 
-
 pub mod backend;
 pub mod cpu;
 pub mod pipeline;
@@ -39,17 +38,13 @@ pub mod metal;
 
 // ── Re-exports: pipeline types ──
 
-pub use pipeline::{
-    QuantFormat, QuantWeight,
-    NormType, FfnType, Activation,
-    FullPipelineLayer,
-};
+pub use pipeline::{Activation, FfnType, FullPipelineLayer, NormType, QuantFormat, QuantWeight};
 
 // ── Re-exports: backend ──
 
-pub use backend::{ComputeBackend, MatMulOp, dot_proj_gpu, matmul_gpu};
+pub use backend::{dot_proj_gpu, matmul_gpu, ComputeBackend, MatMulOp};
+pub use cpu::ops::vector::{cosine, dot, norm};
 pub use cpu::CpuBackend;
-pub use cpu::ops::vector::{dot, norm, cosine};
 
 #[cfg(feature = "metal")]
 pub use metal::MetalBackend;
@@ -68,13 +63,13 @@ pub use metal::MetalBackend;
 pub fn default_backend() -> Box<dyn ComputeBackend> {
     #[cfg(feature = "metal")]
     {
-        if let Some(m) = metal::MetalBackend::new() {
+        if let Some(m) = metal::MetalBackend::new_default() {
             m.calibrate();
             return Box::new(m);
         }
         eprintln!("[compute] Metal not available, falling back to CPU");
     }
-    Box::new(cpu::CpuBackend)
+    Box::new(cpu::CpuBackend::default())
 }
 
 /// Force CPU-only backend. No GPU, no calibration overhead.
@@ -82,5 +77,5 @@ pub fn default_backend() -> Box<dyn ComputeBackend> {
 /// Use when you want deterministic CPU execution or to benchmark
 /// CPU vs GPU paths.
 pub fn cpu_backend() -> Box<dyn ComputeBackend> {
-    Box::new(cpu::CpuBackend)
+    Box::new(cpu::CpuBackend::default())
 }
