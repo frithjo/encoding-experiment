@@ -5,9 +5,9 @@
 
 use std::path::PathBuf;
 
+use super::{Backend, Session};
 use crate::ast::*;
 use crate::error::LqlError;
-use super::{Backend, Session};
 
 impl Session {
     // ── INSERT ──
@@ -43,7 +43,9 @@ impl Session {
         {
             let (_path, config, _patched) = self.require_vindex()?;
 
-            let bands = config.layer_bands.clone()
+            let bands = config
+                .layer_bands
+                .clone()
                 .or_else(|| larql_vindex::LayerBands::for_family(&config.family, config.num_layers))
                 .unwrap_or(larql_vindex::LayerBands {
                     syntax: (0, config.num_layers.saturating_sub(1)),
@@ -54,7 +56,10 @@ impl Session {
             install_layer = if let Some(l) = layer_hint {
                 (l as usize).min(config.num_layers.saturating_sub(1))
             } else {
-                bands.knowledge.1.saturating_sub(1)
+                bands
+                    .knowledge
+                    .1
+                    .saturating_sub(1)
                     .min(config.num_layers.saturating_sub(1))
             };
 
@@ -75,33 +80,41 @@ impl Session {
 
             // Encode target token (same " "+target first-token logic as before)
             let spaced_target = format!(" {target}");
-            let target_encoding = tokenizer.encode(spaced_target.as_str(), false)
+            let target_encoding = tokenizer
+                .encode(spaced_target.as_str(), false)
                 .map_err(|e| LqlError::exec("tokenize error", e))?;
             target_id = target_encoding.ids.first().copied().unwrap_or(0);
 
             // Build canonical prompt and forward pass to capture residual
             let rel_words = relation.replace(['-', '_'], " ");
             let prompt = format!("The {rel_words} of {entity} is");
-            let encoding = tokenizer.encode(prompt.as_str(), true)
+            let encoding = tokenizer
+                .encode(prompt.as_str(), true)
                 .map_err(|e| LqlError::exec("tokenize error", e))?;
             let token_ids: Vec<u32> = encoding.ids.clone();
 
             // Capture through BASE index with unlimited top_k (matches INFER)
             let walk_ffn = larql_inference::vindex::WalkFfn::new_unlimited_with_trace(
-                &weights, patched.base(),
+                &weights,
+                patched.base(),
             );
             let _result = larql_inference::predict_with_ffn(
-                &weights, tokenizer.as_ref(), &token_ids, 1, &walk_ffn,
+                &weights,
+                tokenizer.as_ref(),
+                &token_ids,
+                1,
+                &walk_ffn,
             );
 
             // Extract residual at install layer
             let residuals = walk_ffn.take_residuals();
-            let captured = residuals.into_iter()
+            let captured = residuals
+                .into_iter()
                 .find(|(l, _)| *l == install_layer)
                 .map(|(_, r)| r)
-                .ok_or_else(|| LqlError::Execution(format!(
-                    "no residual captured at layer {install_layer}"
-                )))?;
+                .ok_or_else(|| {
+                    LqlError::Execution(format!("no residual captured at layer {install_layer}"))
+                })?;
 
             residual_key = captured;
         } else {
@@ -117,21 +130,27 @@ impl Session {
 
             // Target token
             let spaced_target = format!(" {target}");
-            let target_encoding = tokenizer.encode(spaced_target.as_str(), false)
+            let target_encoding = tokenizer
+                .encode(spaced_target.as_str(), false)
                 .map_err(|e| LqlError::exec("tokenize error", e))?;
             target_id = target_encoding.ids.first().copied().unwrap_or(0);
 
             // Entity embedding as key
-            let entity_encoding = tokenizer.encode(entity, false)
+            let entity_encoding = tokenizer
+                .encode(entity, false)
                 .map_err(|e| LqlError::exec("tokenize error", e))?;
             let entity_ids: Vec<u32> = entity_encoding.ids.clone();
             let mut ev = vec![0.0f32; hidden];
             for &tok in &entity_ids {
                 let row = embed.row(tok as usize);
-                for j in 0..hidden { ev[j] += row[j] * embed_scale; }
+                for j in 0..hidden {
+                    ev[j] += row[j] * embed_scale;
+                }
             }
             let n = entity_ids.len().max(1) as f32;
-            for v in &mut ev { *v /= n; }
+            for v in &mut ev {
+                *v /= n;
+            }
             residual_key = ev;
         }
 
@@ -186,16 +205,40 @@ impl Session {
 
     // ── DELETE ──
 
-    pub(crate) fn exec_delete(&mut self, conditions: &[Condition]) -> Result<Vec<String>, LqlError> {
-        let layer_filter = conditions.iter().find(|c| c.field == "layer").and_then(|c| {
-            if let Value::Integer(n) = c.value { Some(n as usize) } else { None }
-        });
-        let feature_filter = conditions.iter().find(|c| c.field == "feature").and_then(|c| {
-            if let Value::Integer(n) = c.value { Some(n as usize) } else { None }
-        });
-        let entity_filter = conditions.iter().find(|c| c.field == "entity").and_then(|c| {
-            if let Value::String(ref s) = c.value { Some(s.as_str()) } else { None }
-        });
+    pub(crate) fn exec_delete(
+        &mut self,
+        conditions: &[Condition],
+    ) -> Result<Vec<String>, LqlError> {
+        let layer_filter = conditions
+            .iter()
+            .find(|c| c.field == "layer")
+            .and_then(|c| {
+                if let Value::Integer(n) = c.value {
+                    Some(n as usize)
+                } else {
+                    None
+                }
+            });
+        let feature_filter = conditions
+            .iter()
+            .find(|c| c.field == "feature")
+            .and_then(|c| {
+                if let Value::Integer(n) = c.value {
+                    Some(n as usize)
+                } else {
+                    None
+                }
+            });
+        let entity_filter = conditions
+            .iter()
+            .find(|c| c.field == "entity")
+            .and_then(|c| {
+                if let Value::String(ref s) = c.value {
+                    Some(s.as_str())
+                } else {
+                    None
+                }
+            });
 
         // Collect deletions, then apply
         let deletes: Vec<(usize, usize)>;
@@ -206,7 +249,9 @@ impl Session {
                 patched.delete_feature(layer, feature);
                 deletes = vec![(layer, feature)];
             } else {
-                let matches = patched.base().find_features(entity_filter, None, layer_filter);
+                let matches = patched
+                    .base()
+                    .find_features(entity_filter, None, layer_filter);
                 if matches.is_empty() {
                     return Ok(vec!["  (no matching features found)".into()]);
                 }
@@ -251,7 +296,11 @@ impl Session {
         } else {
             String::new()
         };
-        Ok(vec![format!("Deleted {} features{} (patch overlay)", deletes.len(), knn_note)])
+        Ok(vec![format!(
+            "Deleted {} features{} (patch overlay)",
+            deletes.len(),
+            knn_note
+        )])
     }
 
     // ── UPDATE ──
@@ -261,15 +310,36 @@ impl Session {
         set: &[Assignment],
         conditions: &[Condition],
     ) -> Result<Vec<String>, LqlError> {
-        let entity_filter = conditions.iter().find(|c| c.field == "entity").and_then(|c| {
-            if let Value::String(ref s) = c.value { Some(s.as_str()) } else { None }
-        });
-        let layer_filter = conditions.iter().find(|c| c.field == "layer").and_then(|c| {
-            if let Value::Integer(n) = c.value { Some(n as usize) } else { None }
-        });
-        let feature_filter = conditions.iter().find(|c| c.field == "feature").and_then(|c| {
-            if let Value::Integer(n) = c.value { Some(n as usize) } else { None }
-        });
+        let entity_filter = conditions
+            .iter()
+            .find(|c| c.field == "entity")
+            .and_then(|c| {
+                if let Value::String(ref s) = c.value {
+                    Some(s.as_str())
+                } else {
+                    None
+                }
+            });
+        let layer_filter = conditions
+            .iter()
+            .find(|c| c.field == "layer")
+            .and_then(|c| {
+                if let Value::Integer(n) = c.value {
+                    Some(n as usize)
+                } else {
+                    None
+                }
+            });
+        let feature_filter = conditions
+            .iter()
+            .find(|c| c.field == "feature")
+            .and_then(|c| {
+                if let Value::Integer(n) = c.value {
+                    Some(n as usize)
+                } else {
+                    None
+                }
+            });
 
         // Collect updates, then record
         let mut update_ops: Vec<(usize, usize, larql_vindex::FeatureMeta)> = Vec::new();
@@ -279,11 +349,14 @@ impl Session {
             // Fast path: explicit (layer, feature) — same shape as DELETE.
             // Bypasses `find_features` so the caller can target a single
             // slot directly without needing to match by entity/relation.
-            let matches: Vec<(usize, usize)> = if let (Some(layer), Some(feature)) = (layer_filter, feature_filter) {
-                vec![(layer, feature)]
-            } else {
-                patched.base().find_features(entity_filter, None, layer_filter)
-            };
+            let matches: Vec<(usize, usize)> =
+                if let (Some(layer), Some(feature)) = (layer_filter, feature_filter) {
+                    vec![(layer, feature)]
+                } else {
+                    patched
+                        .base()
+                        .find_features(entity_filter, None, layer_filter)
+                };
 
             if matches.is_empty() {
                 return Ok(vec!["  (no matching features found)".into()]);
@@ -331,7 +404,10 @@ impl Session {
             }
         }
 
-        Ok(vec![format!("Updated {} features (patch overlay)", update_ops.len())])
+        Ok(vec![format!(
+            "Updated {} features (patch overlay)",
+            update_ops.len()
+        )])
     }
 
     // ── MERGE ──
@@ -601,19 +677,28 @@ mod install_helpers_tests {
         // Without GATE_SCALE the gate's norm would just be g_ref * 1 = 2.
         // With GATE_SCALE it should be 30× that = 60. The 30× is what
         // makes silu(gate · x) compete with trained slots at the layer.
-        assert!((gate_norm - 60.0).abs() < 1e-3,
-                "gate norm should be g_ref * 30 = 60, got {gate_norm}");
-        assert!((up_norm - 1.5).abs() < 1e-3,
-                "up norm should be u_ref = 1.5, got {up_norm}");
+        assert!(
+            (gate_norm - 60.0).abs() < 1e-3,
+            "gate norm should be g_ref * 30 = 60, got {gate_norm}"
+        );
+        assert!(
+            (up_norm - 1.5).abs() < 1e-3,
+            "up norm should be u_ref = 1.5, got {up_norm}"
+        );
 
         // Down vector: target_embed_unit * d_ref * alpha_mul
         let target_embed = vec![0.0_f32, 0.5, 0.0, 0.866]; // norm ~1
         let target_norm: f32 = target_embed.iter().map(|v| v * v).sum::<f32>().sqrt();
         let payload = d_ref * ALPHA_MUL;
-        let down_vec: Vec<f32> = target_embed.iter().map(|v| (v / target_norm) * payload).collect();
+        let down_vec: Vec<f32> = target_embed
+            .iter()
+            .map(|v| (v / target_norm) * payload)
+            .collect();
         let down_norm: f32 = down_vec.iter().map(|v| v * v).sum::<f32>().sqrt();
-        assert!((down_norm - payload).abs() < 1e-3,
-                "down norm should be d_ref * alpha_mul = 0.3, got {down_norm}");
+        assert!(
+            (down_norm - payload).abs() < 1e-3,
+            "down norm should be d_ref * alpha_mul = 0.3, got {down_norm}"
+        );
 
         // Sanity: the activation through this slot for an input
         // exactly aligned with the residual direction is huge — that's
@@ -626,8 +711,10 @@ mod install_helpers_tests {
         // silu(60) ≈ 60
         // activation ≈ 60 * 1.5 = 90
         let activation = silu(gate_x) * up_x;
-        assert!(activation > 50.0,
-                "activation along the install direction should be large; got {activation}");
+        assert!(
+            activation > 50.0,
+            "activation along the install direction should be large; got {activation}"
+        );
     }
 
     fn silu(x: f32) -> f32 {

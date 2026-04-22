@@ -1,8 +1,8 @@
 //! Lifecycle statement parsers: EXTRACT, COMPILE, DIFF, USE
 
+use super::{ParseError, Parser};
 use crate::ast::*;
 use crate::lexer::Keyword;
-use super::{Parser, ParseError};
 
 impl Parser {
     pub(crate) fn parse_extract(&mut self) -> Result<Statement, ParseError> {
@@ -46,7 +46,13 @@ impl Parser {
         }
 
         self.eat_semicolon();
-        Ok(Statement::Extract { model, output, components, layers, extract_level })
+        Ok(Statement::Extract {
+            model,
+            output,
+            components,
+            layers,
+            extract_level,
+        })
     }
 
     pub(crate) fn parse_compile(&mut self) -> Result<Statement, ParseError> {
@@ -123,7 +129,11 @@ impl Parser {
 
         self.eat_semicolon();
         Ok(Statement::Compile {
-            vindex, output, format, target, on_conflict,
+            vindex,
+            output,
+            format,
+            target,
+            on_conflict,
         })
     }
 
@@ -156,14 +166,28 @@ impl Parser {
                     self.expect_keyword(Keyword::Patch)?;
                     let path = self.expect_string()?;
                     self.eat_semicolon();
-                    return Ok(Statement::Diff { a, b, layer, relation, limit, into_patch: Some(path) });
+                    return Ok(Statement::Diff {
+                        a,
+                        b,
+                        layer,
+                        relation,
+                        limit,
+                        into_patch: Some(path),
+                    });
                 }
                 _ => break,
             }
         }
 
         self.eat_semicolon();
-        Ok(Statement::Diff { a, b, layer, relation, limit, into_patch: None })
+        Ok(Statement::Diff {
+            a,
+            b,
+            layer,
+            relation,
+            limit,
+            into_patch: None,
+        })
     }
 
     pub(crate) fn parse_use(&mut self) -> Result<Statement, ParseError> {

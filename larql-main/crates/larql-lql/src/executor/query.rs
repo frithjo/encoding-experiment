@@ -2,10 +2,12 @@
 
 use std::collections::HashMap;
 
+use super::helpers::{
+    classify_token_shape, entity_token_kind, is_content_token, token_shape_name, TokenShape,
+};
+use super::Session;
 use crate::ast::*;
 use crate::error::LqlError;
-use super::Session;
-use super::helpers::{classify_token_shape, entity_token_kind, is_content_token, token_shape_name, TokenShape};
 
 impl Session {
     // ── WALK ──
@@ -44,8 +46,7 @@ impl Session {
             .unwrap_or_else(|_| format!("T{last_tok}"));
 
         let embed_row = embed.row(last_tok as usize);
-        let query: larql_vindex::ndarray::Array1<f32> =
-            embed_row.mapv(|v| v * embed_scale);
+        let query: larql_vindex::ndarray::Array1<f32> = embed_row.mapv(|v| v * embed_scale);
 
         let all_layers = patched.loaded_layers();
         let walk_layers: Vec<usize> = if let Some(range) = layers {
@@ -92,8 +93,11 @@ impl Session {
                     .join(", ");
                 out.push(format!(
                     "  L{:2}: F{:<5} gate={:+.1}  top={:15}  down=[{}]",
-                    layer, hit.feature, hit.gate_score,
-                    format!("{:?}", hit.meta.top_token), down_top,
+                    layer,
+                    hit.feature,
+                    hit.gate_score,
+                    format!("{:?}", hit.meta.top_token),
+                    down_top,
                 ));
             }
         }
@@ -101,7 +105,9 @@ impl Session {
         out.push(format!("\n{:.1}ms", elapsed_ms));
         if compare {
             out.push(String::new());
-            out.push("Note: COMPARE shows more features per layer. For inference use INFER.".into());
+            out.push(
+                "Note: COMPARE shows more features per layer. For inference use INFER.".into(),
+            );
         } else {
             out.push(String::new());
             out.push("Note: pure vindex scan (no attention). For inference use INFER.".into());
@@ -123,7 +129,10 @@ impl Session {
         let top_k = top.unwrap_or(5) as usize;
 
         // Weight backend: dense inference (no vindex needed)
-        if let super::Backend::Weight { weights, tokenizer, .. } = &self.backend {
+        if let super::Backend::Weight {
+            weights, tokenizer, ..
+        } = &self.backend
+        {
             let encoding = tokenizer
                 .encode(prompt, true)
                 .map_err(|e| LqlError::exec("tokenize error", e))?;
@@ -136,15 +145,14 @@ impl Session {
             let mut out = Vec::new();
             out.push("Predictions (dense — no vindex):".into());
             for (i, (tok, prob)) in result.predictions.iter().enumerate() {
-                out.push(format!(
-                    "  {:2}. {:20} ({:.2}%)",
-                    i + 1, tok, prob * 100.0
-                ));
+                out.push(format!("  {:2}. {:20} ({:.2}%)", i + 1, tok, prob * 100.0));
             }
             out.push(format!("  {:.0}ms", elapsed_ms));
             if !compare {
                 out.push(String::new());
-                out.push("Tip: EXTRACT into a vindex for walk FFN (sparse, faster, editable).".into());
+                out.push(
+                    "Tip: EXTRACT into a vindex for walk FFN (sparse, faster, editable).".into(),
+                );
             }
             return Ok(out);
         }
@@ -183,7 +191,8 @@ impl Session {
         // on every prompt. Matching Python's dense forward pass by
         // using every feature preserves the baseline and keeps the
         // installed slot proportional.
-        let walk_ffn = larql_inference::vindex::WalkFfn::new_unlimited_with_trace(&weights, patched);
+        let walk_ffn =
+            larql_inference::vindex::WalkFfn::new_unlimited_with_trace(&weights, patched);
         let start = std::time::Instant::now();
         let result = larql_inference::predict_with_ffn(
             &weights,
@@ -205,7 +214,9 @@ impl Session {
 
         if !knn_layers.is_empty() {
             for &(ref layer, ref residual) in &residuals {
-                if !knn_layers.contains(layer) { continue; }
+                if !knn_layers.contains(layer) {
+                    continue;
+                }
                 if let Some((entry, cosine)) = patched.knn_store.query_top1(*layer, residual) {
                     if cosine > KNN_COSINE_THRESHOLD {
                         knn_override = Some((entry.target_token.clone(), cosine, *layer));
@@ -224,7 +235,12 @@ impl Session {
                 .into_iter()
                 .filter_map(|(feature, gate_score)| {
                     let meta = patched.feature_meta(*layer, feature)?;
-                    Some(larql_vindex::WalkHit { layer: *layer, feature, gate_score, meta })
+                    Some(larql_vindex::WalkHit {
+                        layer: *layer,
+                        feature,
+                        gate_score,
+                        meta,
+                    })
                 })
                 .collect();
             trace_layers.push((*layer, walk_hits));
@@ -240,21 +256,11 @@ impl Session {
                 token, cosine, knn_layer,
             ));
             for (i, (tok, prob)) in result.predictions.iter().enumerate() {
-                out.push(format!(
-                    "  {:2}. {:20} ({:.2}%)",
-                    i + 2,
-                    tok,
-                    prob * 100.0
-                ));
+                out.push(format!("  {:2}. {:20} ({:.2}%)", i + 2, tok, prob * 100.0));
             }
         } else {
             for (i, (tok, prob)) in result.predictions.iter().enumerate() {
-                out.push(format!(
-                    "  {:2}. {:20} ({:.2}%)",
-                    i + 1,
-                    tok,
-                    prob * 100.0
-                ));
+                out.push(format!("  {:2}. {:20} ({:.2}%)", i + 1, tok, prob * 100.0));
             }
         }
         out.push(format!("  {:.0}ms", walk_ms));
@@ -299,12 +305,7 @@ impl Session {
             out.push(String::new());
             out.push("Predictions (dense):".into());
             for (i, (tok, prob)) in dense.predictions.iter().enumerate() {
-                out.push(format!(
-                    "  {:2}. {:20} ({:.2}%)",
-                    i + 1,
-                    tok,
-                    prob * 100.0
-                ));
+                out.push(format!("  {:2}. {:20} ({:.2}%)", i + 1, tok, prob * 100.0));
             }
             out.push(format!("  {:.0}ms", dense_ms));
         }
@@ -408,38 +409,55 @@ impl Session {
         // for abstract/functional tokens vs clean entity-level knowledge.
         let max_gate = edges.iter().map(|e| e.gate).fold(0.0_f32, f32::max);
         let edge_count = edges.len();
-        let signal = if max_gate >= 20.0 { "clean" }
-            else if max_gate >= 10.0 { "moderate" }
-            else { "diffuse" };
+        let signal = if max_gate >= 20.0 {
+            "clean"
+        } else if max_gate >= 10.0 {
+            "moderate"
+        } else {
+            "diffuse"
+        };
         out.push(format!(
             "  signal: {} ({} edges, max gate {:.1})",
             signal, edge_count, max_gate,
         ));
 
-        let formatted = describe_format_and_split(
-            &edges,
-            self.relation_classifier(),
-            relations_only,
-            &bands,
-        );
+        let formatted =
+            describe_format_and_split(&edges, self.relation_classifier(), relations_only, &bands);
 
-        let max_edges = if mode == crate::ast::DescribeMode::Brief { 10 } else { 30 };
+        let max_edges = if mode == crate::ast::DescribeMode::Brief {
+            10
+        } else {
+            30
+        };
 
         if !formatted.syntax.is_empty() {
-            out.push(format!("  Syntax (L{}-{}):", bands.syntax.0, bands.syntax.1));
+            out.push(format!(
+                "  Syntax (L{}-{}):",
+                bands.syntax.0, bands.syntax.1
+            ));
             for edge in formatted.syntax.iter().take(max_edges) {
                 out.push(format_describe_edge(edge, mode));
             }
         }
         if !formatted.knowledge.is_empty() {
-            out.push(format!("  Edges (L{}-{}):", bands.knowledge.0, bands.knowledge.1));
+            out.push(format!(
+                "  Edges (L{}-{}):",
+                bands.knowledge.0, bands.knowledge.1
+            ));
             for edge in formatted.knowledge.iter().take(max_edges) {
                 out.push(format_describe_edge(edge, mode));
             }
         }
         if !formatted.output_band.is_empty() {
-            out.push(format!("  Output (L{}-{}):", bands.output.0, bands.output.1));
-            let cap = if mode == crate::ast::DescribeMode::Brief { 5 } else { max_edges };
+            out.push(format!(
+                "  Output (L{}-{}):",
+                bands.output.0, bands.output.1
+            ));
+            let cap = if mode == crate::ast::DescribeMode::Brief {
+                5
+            } else {
+                max_edges
+            };
             for edge in formatted.output_band.iter().take(cap) {
                 out.push(format_describe_edge(edge, mode));
             }
@@ -476,26 +494,57 @@ impl Session {
         };
         let limit = limit.unwrap_or(default_limit as u32) as usize;
 
-        let entity_filter = conditions.iter().find(|c| c.field == "entity").and_then(|c| {
-            if let Value::String(ref s) = c.value { Some(s.as_str()) } else { None }
-        });
-        let relation_filter = conditions.iter().find(|c| c.field == "relation").and_then(|c| {
-            if let Value::String(ref s) = c.value { Some(s.as_str()) } else { None }
-        });
-        let layer_filter = conditions.iter().find(|c| c.field == "layer").and_then(|c| {
-            if let Value::Integer(n) = c.value { Some(n as usize) } else { None }
-        });
-        let feature_filter = conditions.iter().find(|c| c.field == "feature").and_then(|c| {
-            if let Value::Integer(n) = c.value { Some(n as usize) } else { None }
-        });
-        let score_filter = conditions.iter().find(|c| c.field == "score" || c.field == "confidence").and_then(|c| {
-            let val = match &c.value {
-                Value::Number(n) => Some(*n as f32),
-                Value::Integer(n) => Some(*n as f32),
-                _ => None,
-            };
-            val.map(|v| (c.op.clone(), v))
-        });
+        let entity_filter = conditions
+            .iter()
+            .find(|c| c.field == "entity")
+            .and_then(|c| {
+                if let Value::String(ref s) = c.value {
+                    Some(s.as_str())
+                } else {
+                    None
+                }
+            });
+        let relation_filter = conditions
+            .iter()
+            .find(|c| c.field == "relation")
+            .and_then(|c| {
+                if let Value::String(ref s) = c.value {
+                    Some(s.as_str())
+                } else {
+                    None
+                }
+            });
+        let layer_filter = conditions
+            .iter()
+            .find(|c| c.field == "layer")
+            .and_then(|c| {
+                if let Value::Integer(n) = c.value {
+                    Some(n as usize)
+                } else {
+                    None
+                }
+            });
+        let feature_filter = conditions
+            .iter()
+            .find(|c| c.field == "feature")
+            .and_then(|c| {
+                if let Value::Integer(n) = c.value {
+                    Some(n as usize)
+                } else {
+                    None
+                }
+            });
+        let score_filter = conditions
+            .iter()
+            .find(|c| c.field == "score" || c.field == "confidence")
+            .and_then(|c| {
+                let val = match &c.value {
+                    Value::Number(n) => Some(*n as f32),
+                    Value::Integer(n) => Some(*n as f32),
+                    _ => None,
+                };
+                val.map(|v| (c.op.clone(), v))
+            });
 
         struct Row {
             layer: usize,
@@ -521,7 +570,6 @@ impl Session {
         // activate for France" rather than "capital features whose top token
         // contains France".
         if let (Some(entity), Some(rel)) = (entity_filter, relation_filter) {
-
             let (embed, embed_scale) = larql_vindex::load_vindex_embeddings(path)
                 .map_err(|e| LqlError::exec("failed to load embeddings", e))?;
             let tokenizer = larql_vindex::load_vindex_tokenizer(path)
@@ -571,7 +619,10 @@ impl Session {
                         if !label_norm.contains(&rel_norm) && !rel_norm.contains(&label_norm) {
                             continue;
                         }
-                        let also = hit.meta.top_k.iter()
+                        let also = hit
+                            .meta
+                            .top_k
+                            .iter()
                             .skip(1)
                             .take(3)
                             .map(|e| e.token.clone())
@@ -621,7 +672,9 @@ impl Session {
                                 continue;
                             }
                         }
-                        let also = meta.top_k.iter()
+                        let also = meta
+                            .top_k
+                            .iter()
                             .skip(1)
                             .take(3)
                             .map(|e| e.token.clone())
@@ -644,14 +697,25 @@ impl Session {
             match ord.field.as_str() {
                 "confidence" | "c_score" => {
                     rows.sort_by(|a, b| {
-                        let cmp = a.c_score.partial_cmp(&b.c_score).unwrap_or(std::cmp::Ordering::Equal);
-                        if ord.descending { cmp.reverse() } else { cmp }
+                        let cmp = a
+                            .c_score
+                            .partial_cmp(&b.c_score)
+                            .unwrap_or(std::cmp::Ordering::Equal);
+                        if ord.descending {
+                            cmp.reverse()
+                        } else {
+                            cmp
+                        }
                     });
                 }
                 "layer" => {
                     rows.sort_by(|a, b| {
                         let cmp = a.layer.cmp(&b.layer);
-                        if ord.descending { cmp.reverse() } else { cmp }
+                        if ord.descending {
+                            cmp.reverse()
+                        } else {
+                            cmp
+                        }
                     });
                 }
                 _ => {}
@@ -660,22 +724,20 @@ impl Session {
 
         // Apply score filter (WHERE score > N / score < N).
         if let Some((ref op, threshold)) = score_filter {
-            rows.retain(|r| {
-                match op {
-                    CompareOp::Gt => r.c_score > threshold,
-                    CompareOp::Lt => r.c_score < threshold,
-                    CompareOp::Gte => r.c_score >= threshold,
-                    CompareOp::Lte => r.c_score <= threshold,
-                    CompareOp::Eq => (r.c_score - threshold).abs() < 0.001,
-                    _ => true,
-                }
+            rows.retain(|r| match op {
+                CompareOp::Gt => r.c_score > threshold,
+                CompareOp::Lt => r.c_score < threshold,
+                CompareOp::Gte => r.c_score >= threshold,
+                CompareOp::Lte => r.c_score <= threshold,
+                CompareOp::Eq => (r.c_score - threshold).abs() < 0.001,
+                _ => true,
             });
         }
 
         rows.truncate(limit);
 
-        let show_relation = relation_filter.is_some()
-            || rows.iter().any(|r| !r.relation.is_empty());
+        let show_relation =
+            relation_filter.is_some() || rows.iter().any(|r| !r.relation.is_empty());
         let show_also = rows.iter().any(|r| !r.also.is_empty());
 
         let mut out = Vec::new();
@@ -717,7 +779,12 @@ impl Session {
                 if show_also {
                     out.push(format!(
                         "L{:<7} F{:<7} {:16} {:28} {:14} {:>8.4}",
-                        row.layer, row.feature, row.top_token, also_display, row.relation, row.c_score
+                        row.layer,
+                        row.feature,
+                        row.top_token,
+                        also_display,
+                        row.relation,
+                        row.c_score
                     ));
                 } else {
                     out.push(format!(
@@ -796,17 +863,25 @@ impl Session {
 
         for (feat, score) in &hits {
             let meta = index.feature_meta(nc.layer as usize, *feat);
-            let tok = meta.as_ref()
+            let tok = meta
+                .as_ref()
                 .map(|m| m.top_token.clone())
                 .unwrap_or_else(|| "-".into());
-            let also = meta.as_ref()
+            let also = meta
+                .as_ref()
                 .map(|m| {
-                    let items: Vec<_> = m.top_k.iter()
+                    let items: Vec<_> = m
+                        .top_k
+                        .iter()
                         .skip(1)
                         .take(3)
                         .map(|e| e.token.clone())
                         .collect();
-                    if items.is_empty() { String::new() } else { format!("[{}]", items.join(", ")) }
+                    if items.is_empty() {
+                        String::new()
+                    } else {
+                        format!("[{}]", items.join(", "))
+                    }
                 })
                 .unwrap_or_default();
             let rel = classifier
@@ -835,15 +910,36 @@ impl Session {
         let (_path, config, patched) = self.require_vindex()?;
         let classifier = self.relation_classifier();
 
-        let layer_filter = conditions.iter().find(|c| c.field == "layer").and_then(|c| {
-            if let Value::Integer(n) = c.value { Some(n as usize) } else { None }
-        });
-        let feature_filter = conditions.iter().find(|c| c.field == "feature").and_then(|c| {
-            if let Value::Integer(n) = c.value { Some(n as usize) } else { None }
-        });
-        let token_filter = conditions.iter().find(|c| c.field == "token" || c.field == "entity").and_then(|c| {
-            if let Value::String(ref s) = c.value { Some(s.as_str()) } else { None }
-        });
+        let layer_filter = conditions
+            .iter()
+            .find(|c| c.field == "layer")
+            .and_then(|c| {
+                if let Value::Integer(n) = c.value {
+                    Some(n as usize)
+                } else {
+                    None
+                }
+            });
+        let feature_filter = conditions
+            .iter()
+            .find(|c| c.field == "feature")
+            .and_then(|c| {
+                if let Value::Integer(n) = c.value {
+                    Some(n as usize)
+                } else {
+                    None
+                }
+            });
+        let token_filter = conditions
+            .iter()
+            .find(|c| c.field == "token" || c.field == "entity")
+            .and_then(|c| {
+                if let Value::String(ref s) = c.value {
+                    Some(s.as_str())
+                } else {
+                    None
+                }
+            });
 
         let default_limit = if feature_filter.is_some() {
             config.num_layers
@@ -871,9 +967,13 @@ impl Session {
         for layer in &scan_layers {
             let nf = patched.num_features(*layer);
             for feat in 0..nf {
-                if count >= limit { break; }
+                if count >= limit {
+                    break;
+                }
                 if let Some(ff) = feature_filter {
-                    if feat != ff { continue; }
+                    if feat != ff {
+                        continue;
+                    }
                 }
                 if let Some(meta) = patched.feature_meta(*layer, feat) {
                     if let Some(tf) = token_filter {
@@ -881,12 +981,19 @@ impl Session {
                             continue;
                         }
                     }
-                    let also: String = meta.top_k.iter()
-                        .skip(1).take(3)
+                    let also: String = meta
+                        .top_k
+                        .iter()
+                        .skip(1)
+                        .take(3)
                         .map(|e| e.token.clone())
                         .collect::<Vec<_>>()
                         .join(", ");
-                    let also_display = if also.is_empty() { String::new() } else { format!("[{}]", also) };
+                    let also_display = if also.is_empty() {
+                        String::new()
+                    } else {
+                        format!("[{}]", also)
+                    };
                     let rel = classifier
                         .and_then(|rc| rc.label_for_feature(*layer, feat))
                         .unwrap_or("");
@@ -897,7 +1004,9 @@ impl Session {
                     count += 1;
                 }
             }
-            if count >= limit { break; }
+            if count >= limit {
+                break;
+            }
         }
 
         if count == 0 {
@@ -916,23 +1025,52 @@ impl Session {
     ) -> Result<Vec<String>, LqlError> {
         let (_path, config, patched) = self.require_vindex()?;
 
-        let layer_filter = conditions.iter().find(|c| c.field == "layer").and_then(|c| {
-            if let Value::Integer(n) = c.value { Some(n as usize) } else { None }
-        });
+        let layer_filter = conditions
+            .iter()
+            .find(|c| c.field == "layer")
+            .and_then(|c| {
+                if let Value::Integer(n) = c.value {
+                    Some(n as usize)
+                } else {
+                    None
+                }
+            });
         let token_filter = conditions
             .iter()
             .find(|c| c.field == "token" || c.field == "entity")
             .and_then(|c| {
-                if let Value::String(ref s) = c.value { Some(s.as_str()) } else { None }
+                if let Value::String(ref s) = c.value {
+                    Some(s.as_str())
+                } else {
+                    None
+                }
             });
-        let shape_filter = conditions.iter().find(|c| c.field == "shape").and_then(|c| {
-            if let Value::String(ref s) = c.value { Some(s.to_lowercase()) } else { None }
-        });
-        let type_filter = conditions.iter().find(|c| c.field == "type" || c.field == "kind").and_then(|c| {
-            if let Value::String(ref s) = c.value { Some(s.to_lowercase()) } else { None }
-        });
+        let shape_filter = conditions
+            .iter()
+            .find(|c| c.field == "shape")
+            .and_then(|c| {
+                if let Value::String(ref s) = c.value {
+                    Some(s.to_lowercase())
+                } else {
+                    None
+                }
+            });
+        let type_filter = conditions
+            .iter()
+            .find(|c| c.field == "type" || c.field == "kind")
+            .and_then(|c| {
+                if let Value::String(ref s) = c.value {
+                    Some(s.to_lowercase())
+                } else {
+                    None
+                }
+            });
         let band_filter = conditions.iter().find(|c| c.field == "band").and_then(|c| {
-            if let Value::String(ref s) = c.value { Some(s.to_lowercase()) } else { None }
+            if let Value::String(ref s) = c.value {
+                Some(s.to_lowercase())
+            } else {
+                None
+            }
         });
         let limit = limit.unwrap_or(50) as usize;
 
@@ -1070,12 +1208,26 @@ impl Session {
     ) -> Result<Vec<String>, LqlError> {
         let (_path, config, patched) = self.require_vindex()?;
 
-        let layer_filter = conditions.iter().find(|c| c.field == "layer").and_then(|c| {
-            if let Value::Integer(n) = c.value { Some(n as usize) } else { None }
-        });
-        let entity_filter = conditions.iter().find(|c| c.field == "entity" || c.field == "token").and_then(|c| {
-            if let Value::String(ref s) = c.value { Some(s.as_str()) } else { None }
-        });
+        let layer_filter = conditions
+            .iter()
+            .find(|c| c.field == "layer")
+            .and_then(|c| {
+                if let Value::Integer(n) = c.value {
+                    Some(n as usize)
+                } else {
+                    None
+                }
+            });
+        let entity_filter = conditions
+            .iter()
+            .find(|c| c.field == "entity" || c.field == "token")
+            .and_then(|c| {
+                if let Value::String(ref s) = c.value {
+                    Some(s.as_str())
+                } else {
+                    None
+                }
+            });
         let limit = limit.unwrap_or(50) as usize;
 
         let scan_layers: Vec<usize> = if let Some(l) = layer_filter {
@@ -1088,18 +1240,15 @@ impl Session {
         // Common English stop words to filter out — these are capitalized
         // at sentence starts but aren't named entities.
         const STOP_WORDS: &[&str] = &[
-            "The", "For", "And", "But", "Not", "This", "That", "With",
-            "From", "Into", "Will", "Can", "One", "All", "Any", "Has",
-            "Had", "Was", "Are", "Were", "Been", "His", "Her", "Its",
-            "Our", "Who", "How", "Why", "When", "What", "Where", "Which",
-            "Each", "Both", "Some", "Most", "Many", "Much", "More", "Such",
-            "Than", "Then", "Also", "Just", "Now", "May", "Per", "Pre",
-            "Pro", "Con", "Dis", "Via", "Yet", "Nor", "Should", "Would",
-            "Could", "Did", "Does", "Too", "Very", "Instead", "Mon",
-            "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
-            "First", "Second", "Third", "Fourth", "Fifth", "Sixth",
-            "Forty", "Fifty", "Only", "Over", "Under", "After", "Before",
-            "About", "Above", "Below", "Between", "Through",
+            "The", "For", "And", "But", "Not", "This", "That", "With", "From", "Into", "Will",
+            "Can", "One", "All", "Any", "Has", "Had", "Was", "Are", "Were", "Been", "His", "Her",
+            "Its", "Our", "Who", "How", "Why", "When", "What", "Where", "Which", "Each", "Both",
+            "Some", "Most", "Many", "Much", "More", "Such", "Than", "Then", "Also", "Just", "Now",
+            "May", "Per", "Pre", "Pro", "Con", "Dis", "Via", "Yet", "Nor", "Should", "Would",
+            "Could", "Did", "Does", "Too", "Very", "Instead", "Mon", "Three", "Four", "Five",
+            "Six", "Seven", "Eight", "Nine", "Ten", "First", "Second", "Third", "Fourth", "Fifth",
+            "Sixth", "Forty", "Fifty", "Only", "Over", "Under", "After", "Before", "About",
+            "Above", "Below", "Between", "Through",
         ];
 
         struct EntityInfo {
@@ -1121,14 +1270,20 @@ impl Session {
             for feat in 0..nf {
                 if let Some(meta) = patched.feature_meta(*layer, feat) {
                     let tok = meta.top_token.trim().to_string();
-                    if STOP_WORDS.contains(&tok.as_str()) { continue; }
-                    let Some(kind) = entity_token_kind(&tok) else { continue; };
+                    if STOP_WORDS.contains(&tok.as_str()) {
+                        continue;
+                    }
+                    let Some(kind) = entity_token_kind(&tok) else {
+                        continue;
+                    };
                     if entity_filter.is_none() && kind == "acronym" {
                         continue;
                     }
                     // Entity name filter (WHERE entity = "X").
                     if let Some(ef) = entity_filter {
-                        if !tok.to_lowercase().contains(&ef.to_lowercase()) { continue; }
+                        if !tok.to_lowercase().contains(&ef.to_lowercase()) {
+                            continue;
+                        }
                     }
                     let (band_weight, syntax_hit, knowledge_hit, output_hit) =
                         if *layer >= bands.knowledge.0 && *layer <= bands.knowledge.1 {
@@ -1152,14 +1307,14 @@ impl Session {
                     entry.syntax_hits += syntax_hit;
                     entry.knowledge_hits += knowledge_hit;
                     entry.output_hits += output_hit;
-                    if meta.c_score > entry.max_score { entry.max_score = meta.c_score; }
+                    if meta.c_score > entry.max_score {
+                        entry.max_score = meta.c_score;
+                    }
                 }
             }
         }
 
-        let mut entities: Vec<(String, EntityInfo)> = entity_counts
-            .into_iter()
-            .collect();
+        let mut entities: Vec<(String, EntityInfo)> = entity_counts.into_iter().collect();
         entities.sort_by(|a, b| {
             b.1.weighted_score
                 .partial_cmp(&a.1.weighted_score)
@@ -1226,8 +1381,7 @@ impl Session {
 
         let last_tok = *token_ids.last().unwrap();
         let embed_row = embed.row(last_tok as usize);
-        let query: larql_vindex::ndarray::Array1<f32> =
-            embed_row.mapv(|v| v * embed_scale);
+        let query: larql_vindex::ndarray::Array1<f32> = embed_row.mapv(|v| v * embed_scale);
 
         let all_layers = patched.loaded_layers();
         let walk_layers: Vec<usize> = if let Some(range) = layers {
@@ -1243,7 +1397,11 @@ impl Session {
 
         let mut out = Vec::new();
         for (layer, hits) in &trace.layers {
-            let show_count = if verbose { hits.len() } else { hits.len().min(5) };
+            let show_count = if verbose {
+                hits.len()
+            } else {
+                hits.len().min(5)
+            };
             for hit in hits.iter().take(show_count) {
                 let down_count = if verbose { 5 } else { 3 };
                 let down_tokens: String = hit
@@ -1280,7 +1438,10 @@ impl Session {
 
         // Weight backend has no feature labels — short-circuit to a
         // dense-only summary.
-        if let super::Backend::Weight { weights, tokenizer, .. } = &self.backend {
+        if let super::Backend::Weight {
+            weights, tokenizer, ..
+        } = &self.backend
+        {
             return self.exec_infer_trace_dense(weights, tokenizer.as_ref(), prompt, top_k);
         }
 
@@ -1317,16 +1478,25 @@ impl Session {
         // then EXPLAIN INFER on the same prompt sees a half-power
         // baseline in the trace while production inference uses
         // full power — silent divergence.
-        let walk_ffn = larql_inference::vindex::WalkFfn::new_unlimited_with_trace(&weights, patched);
+        let walk_ffn =
+            larql_inference::vindex::WalkFfn::new_unlimited_with_trace(&weights, patched);
         let start = std::time::Instant::now();
         let (predictions, attention_captures, lens_residuals) = if with_attention {
             let r = larql_inference::predict_with_ffn_attention(
-                &weights, tokenizer.as_ref(), &token_ids, top_k, &walk_ffn,
+                &weights,
+                tokenizer.as_ref(),
+                &token_ids,
+                top_k,
+                &walk_ffn,
             );
             (r.predictions, r.attention, r.residuals)
         } else {
             let r = larql_inference::predict_with_ffn(
-                &weights, tokenizer.as_ref(), &token_ids, top_k, &walk_ffn,
+                &weights,
+                tokenizer.as_ref(),
+                &token_ids,
+                top_k,
+                &walk_ffn,
             );
             (r.predictions, Vec::new(), Vec::new())
         };
@@ -1334,7 +1504,12 @@ impl Session {
 
         // ── Phase 3: side-tables for the rendering loop ──
         let attention_map = build_attention_map(&attention_captures, &token_strs, with_attention);
-        let lens_map = build_lens_map(&lens_residuals, &weights, tokenizer.as_ref(), with_attention);
+        let lens_map = build_lens_map(
+            &lens_residuals,
+            &weights,
+            tokenizer.as_ref(),
+            with_attention,
+        );
 
         let trace = walk_ffn.take_trace();
         let classifier = self.relation_classifier();
@@ -1405,11 +1580,22 @@ impl Session {
         let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
 
         let mut out = Vec::new();
-        out.push(format!("Inference trace for {:?} (dense — no vindex):", prompt));
+        out.push(format!(
+            "Inference trace for {:?} (dense — no vindex):",
+            prompt
+        ));
         out.push(format!(
             "Prediction: {} ({:.2}%) in {:.0}ms",
-            result.predictions.first().map(|(t, _)| t.as_str()).unwrap_or("?"),
-            result.predictions.first().map(|(_, p)| p * 100.0).unwrap_or(0.0),
+            result
+                .predictions
+                .first()
+                .map(|(t, _)| t.as_str())
+                .unwrap_or("?"),
+            result
+                .predictions
+                .first()
+                .map(|(_, p)| p * 100.0)
+                .unwrap_or(0.0),
             elapsed_ms,
         ));
         out.push(String::new());
@@ -1430,8 +1616,17 @@ impl Session {
         verbose: bool,
     ) -> Result<Option<Vec<String>>, LqlError> {
         let router = match &self.backend {
-            super::Backend::Vindex { router: Some(r), config, .. } => {
-                if config.model_config.as_ref().and_then(|mc| mc.moe.as_ref()).is_none() {
+            super::Backend::Vindex {
+                router: Some(r),
+                config,
+                ..
+            } => {
+                if config
+                    .model_config
+                    .as_ref()
+                    .and_then(|mc| mc.moe.as_ref())
+                    .is_none()
+                {
                     return Ok(None);
                 }
                 r
@@ -1446,7 +1641,8 @@ impl Session {
         let tokenizer = larql_vindex::load_vindex_tokenizer(path)
             .map_err(|e| LqlError::exec("failed to load tokenizer", e))?;
 
-        let encoding = tokenizer.encode(entity, false)
+        let encoding = tokenizer
+            .encode(entity, false)
             .map_err(|e| LqlError::exec("tokenize error", e))?;
         let token_ids: Vec<u32> = encoding.ids.clone();
         if token_ids.is_empty() {
@@ -1466,10 +1662,14 @@ impl Session {
         };
 
         let last = config.num_layers.saturating_sub(1);
-        let bands = config.layer_bands.clone()
+        let bands = config
+            .layer_bands
+            .clone()
             .or_else(|| larql_vindex::LayerBands::for_family(&config.family, config.num_layers))
             .unwrap_or(larql_vindex::LayerBands {
-                syntax: (0, last), knowledge: (0, last), output: (0, last),
+                syntax: (0, last),
+                knowledge: (0, last),
+                output: (0, last),
             });
 
         let start = std::time::Instant::now();
@@ -1483,10 +1683,16 @@ impl Session {
 
         // Show per-layer routing in verbose mode
         if verbose {
-            out.push(format!("  Routing (L{}-{}):", bands.knowledge.0, bands.knowledge.1));
+            out.push(format!(
+                "  Routing (L{}-{}):",
+                bands.knowledge.0, bands.knowledge.1
+            ));
             for l in knowledge_range.clone() {
                 if let Some(result) = router.route(l, &query) {
-                    let experts_str: String = result.experts.iter().enumerate()
+                    let experts_str: String = result
+                        .experts
+                        .iter()
+                        .enumerate()
                         .map(|(i, e)| format!("E{} ({:.0}%)", e, result.probs[i] * 100.0))
                         .collect::<Vec<_>>()
                         .join(", ");
@@ -1498,20 +1704,23 @@ impl Session {
 
         // ── Expert summary ──
         let layers_total = bands.knowledge.1 - bands.knowledge.0 + 1;
-        out.push(format!("  Experts (L{}-{}):", bands.knowledge.0, bands.knowledge.1));
+        out.push(format!(
+            "  Experts (L{}-{}):",
+            bands.knowledge.0, bands.knowledge.1
+        ));
         let max_experts = if verbose { 15 } else { 6 };
         for (eid, count, avg_prob) in expert_summary.iter().take(max_experts) {
             out.push(format!(
                 "    E{:<4} {}/{} layers  ({:.0}% avg)",
-                eid, count, layers_total, avg_prob * 100.0,
+                eid,
+                count,
+                layers_total,
+                avg_prob * 100.0,
             ));
         }
 
         // ── Co-routed entities: what else routes to the same experts? ──
-        let top_experts: Vec<usize> = expert_summary.iter()
-            .take(3)
-            .map(|(e, _, _)| *e)
-            .collect();
+        let top_experts: Vec<usize> = expert_summary.iter().take(3).map(|(e, _, _)| *e).collect();
 
         if !top_experts.is_empty() {
             out.push(String::new());
@@ -1528,12 +1737,17 @@ impl Session {
                 if let Some(result) = router.route(mid_layer, &tok_emb) {
                     for (i, &eid) in result.experts.iter().enumerate() {
                         if top_experts.contains(&eid) {
-                            let tok_str = tokenizer.decode(&[tid as u32], true)
-                                .unwrap_or_default().trim().to_string();
-                            if is_content_token(&tok_str) && tok_str.len() > 1
+                            let tok_str = tokenizer
+                                .decode(&[tid as u32], true)
+                                .unwrap_or_default()
+                                .trim()
+                                .to_string();
+                            if is_content_token(&tok_str)
+                                && tok_str.len() > 1
                                 && tok_str.to_lowercase() != entity.to_lowercase()
                             {
-                                corouted_all.entry(eid)
+                                corouted_all
+                                    .entry(eid)
                                     .or_default()
                                     .push((tok_str, result.probs[i]));
                             }
@@ -1546,7 +1760,8 @@ impl Session {
                 if let Some(tokens) = corouted_all.get_mut(&eid) {
                     tokens.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
                     tokens.dedup_by(|a, b| a.0.to_lowercase() == b.0.to_lowercase());
-                    let display: String = tokens.iter()
+                    let display: String = tokens
+                        .iter()
                         .take(10)
                         .map(|(t, _)| t.as_str())
                         .collect::<Vec<_>>()
@@ -1609,7 +1824,9 @@ fn describe_build_query(
 
 /// Resolve the layer-band boundaries from the vindex config, with a
 /// family-based default and a final whole-range fallback.
-pub(crate) fn describe_resolve_bands(config: &larql_vindex::VindexConfig) -> larql_vindex::LayerBands {
+pub(crate) fn describe_resolve_bands(
+    config: &larql_vindex::VindexConfig,
+) -> larql_vindex::LayerBands {
     let last = config.num_layers.saturating_sub(1);
     config
         .layer_bands
@@ -1695,10 +1912,7 @@ struct DescribeBands {
 
 /// Walk the trace, deduplicate by lowercased target token, and apply
 /// content / coherence filters. The output is sorted descending by gate.
-fn describe_collect_edges(
-    trace: &larql_vindex::WalkTrace,
-    entity: &str,
-) -> Vec<DescribeEdge> {
+fn describe_collect_edges(trace: &larql_vindex::WalkTrace, entity: &str) -> Vec<DescribeEdge> {
     larql_vindex::collect_describe_edges_from_trace(
         trace,
         entity,

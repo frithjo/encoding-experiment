@@ -1,8 +1,8 @@
 //! Mutation statement parsers: INSERT, DELETE, UPDATE, MERGE
 
+use super::{ParseError, Parser};
 use crate::ast::*;
 use crate::lexer::{Keyword, Token};
-use super::{Parser, ParseError};
 
 impl Parser {
     pub(crate) fn parse_insert(&mut self) -> Result<Statement, ParseError> {
@@ -105,6 +105,10 @@ impl Parser {
         }
 
         self.eat_semicolon();
-        Ok(Statement::Merge { source, target, conflict })
+        Ok(Statement::Merge {
+            source,
+            target,
+            conflict,
+        })
     }
 }

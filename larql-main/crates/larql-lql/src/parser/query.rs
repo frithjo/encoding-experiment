@@ -1,8 +1,8 @@
 //! Query statement parsers: WALK, INFER, SELECT, DESCRIBE, EXPLAIN.
 
+use super::{ParseError, Parser};
 use crate::ast::*;
 use crate::lexer::{Keyword, Token};
-use super::{Parser, ParseError};
 
 impl Parser {
     pub(crate) fn parse_walk(&mut self) -> Result<Statement, ParseError> {
@@ -42,7 +42,13 @@ impl Parser {
         }
 
         self.eat_semicolon();
-        Ok(Statement::Walk { prompt, top, layers, mode, compare })
+        Ok(Statement::Walk {
+            prompt,
+            top,
+            layers,
+            mode,
+            compare,
+        })
     }
 
     pub(crate) fn parse_infer(&mut self) -> Result<Statement, ParseError> {
@@ -67,7 +73,11 @@ impl Parser {
         }
 
         self.eat_semicolon();
-        Ok(Statement::Infer { prompt, top, compare })
+        Ok(Statement::Infer {
+            prompt,
+            top,
+            compare,
+        })
     }
 
     pub(crate) fn parse_select(&mut self) -> Result<Statement, ParseError> {
@@ -77,10 +87,22 @@ impl Parser {
 
         self.expect_keyword(Keyword::From)?;
         let source = match self.peek() {
-            Token::Keyword(Keyword::Edges) => { self.advance(); SelectSource::Edges }
-            Token::Keyword(Keyword::Features) => { self.advance(); SelectSource::Features }
-            Token::Keyword(Keyword::Entities) => { self.advance(); SelectSource::Entities }
-            Token::Keyword(Keyword::Tokens) => { self.advance(); SelectSource::Tokens }
+            Token::Keyword(Keyword::Edges) => {
+                self.advance();
+                SelectSource::Edges
+            }
+            Token::Keyword(Keyword::Features) => {
+                self.advance();
+                SelectSource::Features
+            }
+            Token::Keyword(Keyword::Entities) => {
+                self.advance();
+                SelectSource::Entities
+            }
+            Token::Keyword(Keyword::Tokens) => {
+                self.advance();
+                SelectSource::Tokens
+            }
             _ => {
                 // Default to EDGES for backwards compatibility.
                 self.expect_keyword(Keyword::Edges)?;
@@ -122,7 +144,14 @@ impl Parser {
         };
 
         self.eat_semicolon();
-        Ok(Statement::Select { source, fields, conditions, nearest, order, limit })
+        Ok(Statement::Select {
+            source,
+            fields,
+            conditions,
+            nearest,
+            order,
+            limit,
+        })
     }
 
     pub(crate) fn parse_describe(&mut self) -> Result<Statement, ParseError> {
@@ -169,7 +198,13 @@ impl Parser {
         }
 
         self.eat_semicolon();
-        Ok(Statement::Describe { entity, band, layer, relations_only, mode })
+        Ok(Statement::Describe {
+            entity,
+            band,
+            layer,
+            relations_only,
+            mode,
+        })
     }
 
     pub(crate) fn parse_explain(&mut self) -> Result<Statement, ParseError> {
@@ -228,6 +263,15 @@ impl Parser {
         }
 
         self.eat_semicolon();
-        Ok(Statement::Explain { prompt, mode, layers, band, verbose, top, relations_only, with_attention })
+        Ok(Statement::Explain {
+            prompt,
+            mode,
+            layers,
+            band,
+            verbose,
+            top,
+            relations_only,
+            with_attention,
+        })
     }
 }
