@@ -14,6 +14,9 @@ members = [
     "crates/larql-terminal-browser",
     "experiments/kv-cache-benchmark",
     "crates/larql-tensor",
+    "crates/larql-leptos",
+    "crates/larql-terminal-batch-dla",
+    "crates/larql-terminal-renderer",
 ]
 default-members = [
     "crates/larql-models",
