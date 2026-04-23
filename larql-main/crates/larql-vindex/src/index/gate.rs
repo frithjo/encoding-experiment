@@ -3,7 +3,6 @@
 //! All gate KNN methods for VectorIndex: single-query, batched, expert-scoped,
 //! score computation, HNSW integration, and top-K selection.
 
-use larql_compute::ComputeBackend;
 use ndarray::{Array1, Array2, ArrayView2};
 
 use super::core::VectorIndex;

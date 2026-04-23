@@ -103,6 +103,7 @@ fn compute_gate_top_tokens(
         let gend = (gstart + gbatch).min(num_features);
         let chunk = w_gate.slice(ndarray::s![gstart..gend, ..]);
         let cpu = larql_compute::cpu_backend();
+        #[allow(unused_imports)]
         use larql_compute::ComputeBackend;
         let proj = cpu.matmul_transb(ww_embed.view(), chunk.view());
         for f in 0..(gend - gstart) {
@@ -493,6 +494,7 @@ pub use crate::extract::callbacks::IndexBuildCallbacks;
                 let w_chunk = w_down.slice(ndarray::s![.., batch_start..batch_end]).to_owned();
                 // BLAS: (vocab, hidden) @ (hidden, chunk) → (vocab, chunk)
                 let cpu = larql_compute::cpu_backend();
+                #[allow(unused_imports)]
                 use larql_compute::ComputeBackend;
                 let chunk_logits = cpu.matmul(weights.embed.view(), w_chunk.view());
 
