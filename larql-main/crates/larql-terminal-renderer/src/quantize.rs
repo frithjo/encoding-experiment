@@ -1,5 +1,6 @@
 use crate::image_buffer::{Image, Rgb};
 use crate::oklab::Oklab;
+use rayon::prelude::*;
 
 pub struct Palette {
     pub colors: Vec<Rgb>,
@@ -10,7 +11,7 @@ impl Palette {
     pub fn new(colors: Vec<Rgb>) -> Self {
         // Sort by Luminance to allow early rejection in find_closest_lab
         let mut oklab_with_rgb: Vec<(Rgb, Oklab)> =
-            colors.into_iter().map(|c| (c, c.to_oklab())).collect();
+            colors.into_par_iter().map(|c| (c, c.to_oklab())).collect();
         oklab_with_rgb.sort_by(|a, b| a.1.l.partial_cmp(&b.1.l).unwrap());
 
         let (colors, oklab_colors): (Vec<Rgb>, Vec<Oklab>) = oklab_with_rgb.into_iter().unzip();
@@ -60,8 +61,8 @@ pub fn quantize(image: &Image, max_colors: usize) -> Palette {
 
     let data: Vec<(Rgb, Oklab)> = image
         .pixels
-        .iter()
-        .zip(oklab_pixels.iter())
+        .par_iter()
+        .zip(oklab_pixels.par_iter())
         .map(|(rgb, lab)| (*rgb, *lab))
         .collect();
 
@@ -143,7 +144,7 @@ pub fn quantize(image: &Image, max_colors: usize) -> Palette {
     }
 
     let palette_colors = buckets
-        .into_iter()
+        .into_par_iter()
         .map(|bucket: Vec<(Rgb, Oklab)>| {
             let sum_r: u32 = bucket.iter().map(|(rgb, _)| rgb.r as u32).sum();
             let sum_g: u32 = bucket.iter().map(|(rgb, _)| rgb.g as u32).sum();

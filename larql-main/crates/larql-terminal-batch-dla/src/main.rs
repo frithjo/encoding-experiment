@@ -4,9 +4,10 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use larql_terminal_renderer::{GraphicsLayer, Image, ImageWidget, Renderer, Rgb};
+use larql_terminal_renderer::{
+    AtomicGraphicsBackend, GraphicsLayer, Image, ImageWidget, Renderer, Rgb, draw_frame,
+};
 use ratatui::{
-    backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     widgets::{Block, Borders, Paragraph},
     Frame, Terminal,
@@ -157,7 +158,7 @@ impl App {
     }
 }
 
-fn ui<'a>(frame: &mut Frame, app: &'a App, graphics_layer: &mut GraphicsLayer<'a>) {
+fn ui(frame: &mut Frame, app: &App, graphics_layer: &mut GraphicsLayer) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -241,20 +242,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
-    let backend = CrosstermBackend::new(stdout);
+    let backend = AtomicGraphicsBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
     let mut app = App::new();
     app.renderer.clear_all_graphics()?;
 
     loop {
-        // Create a new graphics layer for this frame
-        let mut graphics_layer = GraphicsLayer::new(&app.renderer);
-
-        terminal.draw(|f| ui(f, &app, &mut graphics_layer))?;
-
-        // IMPORTANT: Flush graphics after Ratatui has finished its cell-buffer draw/diff.
-        graphics_layer.flush()?;
+        draw_frame(&mut terminal, &app.renderer, |f, graphics_layer| {
+            ui(f, &app, graphics_layer);
+        })?;
 
         if event::poll(std::time::Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {

@@ -1,5 +1,6 @@
-use crate::image_buffer::Image;
+use crate::image_buffer::{content_key_for_pixels, Image, Rgb};
 use crate::oklab::Oklab;
+use rayon::prelude::*;
 
 pub fn resize_nearest(image: &Image, new_width: usize, new_height: usize) -> Image {
     let mut new_image = image.new_derivative(new_width, new_height);
@@ -11,19 +12,23 @@ pub fn resize_nearest(image: &Image, new_width: usize, new_height: usize) -> Ima
     let x_ratio = image.width as f32 / new_width as f32;
     let y_ratio = image.height as f32 / new_height as f32;
 
-    for y in 0..new_height {
-        for x in 0..new_width {
+    let pixels: Vec<Rgb> = (0..new_width * new_height)
+        .into_par_iter()
+        .map(|idx| {
+            let y = idx / new_width;
+            let x = idx % new_width;
             let px = (x as f32 * x_ratio).floor() as usize;
             let py = (y as f32 * y_ratio).floor() as usize;
 
             let px = px.min(image.width - 1);
             let py = py.min(image.height - 1);
 
-            if let Some(pixel) = image.get(px, py) {
-                new_image.set_internal(x, y, *pixel);
-            }
-        }
-    }
+            image.get(px, py).copied().unwrap_or(Rgb::new(0, 0, 0))
+        })
+        .collect();
+
+    new_image.content_key = content_key_for_pixels(&pixels);
+    new_image.pixels = pixels;
 
     new_image
 }
@@ -43,8 +48,11 @@ pub fn resize_bilinear(image: &Image, new_width: usize, new_height: usize) -> Im
     let x_ratio = (image.width - 1) as f32 / new_width as f32;
     let y_ratio = (image.height - 1) as f32 / new_height as f32;
 
-    for y in 0..new_height {
-        for x in 0..new_width {
+    let samples: Vec<(Rgb, Oklab)> = (0..new_width * new_height)
+        .into_par_iter()
+        .map(|idx| {
+            let y = idx / new_width;
+            let x = idx % new_width;
             let px = x_ratio * x as f32;
             let py = y_ratio * y as f32;
 
@@ -65,10 +73,14 @@ pub fn resize_bilinear(image: &Image, new_width: usize, new_height: usize) -> Im
             let lab_bottom = Oklab::lerp(&c, &d, x_weight);
             let lab_final = Oklab::lerp(&lab_top, &lab_bottom, y_weight);
 
-            // OPTIMIZATION: Store both values to avoid re-conversion later.
-            new_image.set_both(x, y, lab_final.to_rgb(), lab_final);
-        }
-    }
+            (lab_final.to_rgb(), lab_final)
+        })
+        .collect();
+
+    let (pixels, labs): (Vec<Rgb>, Vec<Oklab>) = samples.into_iter().unzip();
+    new_image.content_key = content_key_for_pixels(&pixels);
+    new_image.pixels = pixels;
+    *new_image.oklab_cache.get_mut().unwrap() = Some(labs);
 
     new_image
 }

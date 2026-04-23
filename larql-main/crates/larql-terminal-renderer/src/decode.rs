@@ -1,6 +1,8 @@
 use crate::image_buffer::Image;
 #[cfg(any(feature = "decode-png", feature = "decode-jpeg"))]
 use crate::image_buffer::{content_key_for_pixels, Rgb};
+#[cfg(feature = "decode-png")]
+use image::ImageFormat;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
@@ -28,6 +30,27 @@ impl Image {
             }
         }
 
+        #[cfg(feature = "decode-png")]
+        if p.extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("png"))
+            .unwrap_or(false)
+        {
+            let png_bytes = std::fs::read(p).map_err(|e| e.to_string())?;
+            let cursor = std::io::Cursor::new(&png_bytes);
+            let reader = image::ImageReader::with_format(cursor, ImageFormat::Png);
+            let img = reader.decode().map_err(|e| e.to_string())?;
+            let (width, height) = img.dimensions();
+            let rgb_img = img.to_rgb8();
+            let rgb_bytes = rgb_img.into_raw();
+            return Ok(Self::from_png_bytes(
+                width as usize,
+                height as usize,
+                rgb_bytes,
+                png_bytes,
+            ));
+        }
+
         let img = image::open(p).map_err(|e| e.to_string())?;
         let (width, height) = img.dimensions();
         let rgb_img = img.to_rgb8();
@@ -47,6 +70,7 @@ impl Image {
             pixels,
             content_key,
             oklab_cache: std::sync::Mutex::new(None),
+            source: crate::image_buffer::ImageSourceKind::Generated,
         })
     }
 

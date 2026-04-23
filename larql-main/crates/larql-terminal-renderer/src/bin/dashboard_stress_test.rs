@@ -3,15 +3,18 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use larql_terminal_renderer::{BackendType, GraphicsLayer, Image, ImageWidget, Renderer, Rgb};
+use larql_terminal_renderer::{
+    AtomicGraphicsBackend, BackendType, GraphicsLayer, Image, ImageWidget, Renderer, Rgb,
+    draw_frame,
+};
 use ratatui::{
-    backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
     Frame, Terminal,
 };
+use std::env;
 use std::io;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 struct App {
     renderer: Renderer,
@@ -25,7 +28,7 @@ struct App {
 }
 
 impl App {
-    fn new() -> Self {
+    fn new(z_index: i32) -> Self {
         let mut heatmaps = Vec::new();
         for i in 0..10 {
             heatmaps.push(create_mock_heatmap(i));
@@ -42,9 +45,37 @@ impl App {
             zoom: 1.0,
             offset_x: 0.5,
             offset_y: 0.5,
-            z_index: 0,
+            z_index,
         }
     }
+}
+
+fn parse_args() -> (i32, Option<Duration>) {
+    let args: Vec<String> = env::args().collect();
+    let mut z_index = 0;
+    let mut quit_after = None;
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--z-index" => {
+                if i + 1 < args.len() {
+                    z_index = args[i + 1].parse().unwrap_or(0);
+                    i += 1;
+                }
+            }
+            "--quit-after-ms" => {
+                if i + 1 < args.len() {
+                    if let Ok(ms) = args[i + 1].parse::<u64>() {
+                        quit_after = Some(Duration::from_millis(ms));
+                    }
+                    i += 1;
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    (z_index, quit_after)
 }
 
 fn create_mock_heatmap(seed: usize) -> Image {
@@ -64,7 +95,7 @@ fn create_mock_heatmap(seed: usize) -> Image {
     img
 }
 
-fn ui<'a>(frame: &mut Frame, app: &'a App, graphics_layer: &mut GraphicsLayer<'a>) {
+fn ui(frame: &mut Frame, app: &App, graphics_layer: &mut GraphicsLayer) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
@@ -157,23 +188,29 @@ fn ui<'a>(frame: &mut Frame, app: &'a App, graphics_layer: &mut GraphicsLayer<'a
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let (initial_z_index, quit_after) = parse_args();
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
-    let backend = CrosstermBackend::new(stdout);
+    let backend = AtomicGraphicsBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new();
+    let mut app = App::new(initial_z_index);
     app.renderer.clear_all_graphics()?;
+    let started_at = Instant::now();
 
     let tick_rate = Duration::from_millis(16); // ~60fps for stress test
 
     loop {
-        let mut graphics_layer = GraphicsLayer::new(&app.renderer);
+        draw_frame(&mut terminal, &app.renderer, |f, graphics_layer| {
+            ui(f, &app, graphics_layer)
+        })?;
 
-        terminal.draw(|f| ui(f, &app, &mut graphics_layer))?;
-
-        graphics_layer.flush()?;
+        if let Some(limit) = quit_after {
+            if started_at.elapsed() >= limit {
+                break;
+            }
+        }
 
         if event::poll(tick_rate)? {
             if let Event::Key(key) = event::read()? {

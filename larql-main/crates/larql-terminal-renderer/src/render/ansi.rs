@@ -1,11 +1,11 @@
 use crate::image_buffer::{Image, Rgb};
 use crate::render::protocol::RenderBackend;
-use std::io::{self, Write};
+use std::io::Write;
 
 pub struct AnsiRenderer;
 
 impl AnsiRenderer {
-    fn render_string(image: &Image) -> Result<String, String> {
+    pub(crate) fn render_string(image: &Image) -> Result<String, String> {
         let mut output = Vec::new();
 
         for y in (0..image.height).step_by(2) {
@@ -32,18 +32,21 @@ impl AnsiRenderer {
 }
 
 impl RenderBackend for AnsiRenderer {
-    fn render(&self, image: &Image) -> Result<(), String> {
-        let mut stdout = io::stdout().lock();
-        write!(stdout, "{}", Self::render_string(image)?).map_err(|e| e.to_string())?;
-
-        stdout.flush().map_err(|e| e.to_string())?;
-        Ok(())
+    fn render_command(&self, image: &Image) -> Result<Vec<u8>, String> {
+        Ok(Self::render_string(image)?.into_bytes())
     }
 
-    fn render_at(&self, image: &Image, x: u16, y: u16, _z_index: i32) -> Result<(), String> {
-        // ANSI half-blocks always render at cursor, z-index not supported natively
-        print!("\x1b[{};{}H", y + 1, x + 1);
-        self.render(image)
+    fn render_command_at(
+        &self,
+        image: &Image,
+        x: u16,
+        y: u16,
+        _z_index: i32,
+    ) -> Result<Vec<u8>, String> {
+        let mut output = Vec::new();
+        write!(output, "\x1b[{};{}H", y + 1, x + 1).map_err(|e| e.to_string())?;
+        output.extend_from_slice(&self.render_command(image)?);
+        Ok(output)
     }
 }
 

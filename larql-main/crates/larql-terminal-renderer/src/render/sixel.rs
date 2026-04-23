@@ -1,13 +1,14 @@
 use crate::dither::dither_floyd_steinberg;
 use crate::image_buffer::Image;
 use crate::quantize::quantize;
+use crate::render::cache::LruCache;
 use crate::render::protocol::RenderBackend;
-use std::collections::HashMap;
-use std::io::{self, Write};
+use rayon::prelude::*;
+use std::io::Write;
 use std::sync::Mutex;
 
 lazy_static::lazy_static! {
-    static ref SIXEL_CACHE: Mutex<HashMap<(u64, usize, usize), String>> = Mutex::new(HashMap::new());
+    static ref SIXEL_CACHE: Mutex<LruCache<(u64, usize, usize), String>> = Mutex::new(LruCache::new(128));
 }
 
 pub struct SixelRenderer;
@@ -19,63 +20,69 @@ impl SixelRenderer {
         height: usize,
         num_colors: usize,
     ) -> Result<String, String> {
-        let mut output = Vec::new();
+        let bands: Vec<usize> = (0..height).step_by(6).collect();
+        let encoded_bands: Result<Vec<String>, String> = bands
+            .into_par_iter()
+            .map(|y_band| Self::encode_single_band(indices, width, height, num_colors, y_band))
+            .collect();
 
+        Ok(encoded_bands?.join(""))
+    }
+
+    fn encode_single_band(
+        indices: &[usize],
+        width: usize,
+        height: usize,
+        num_colors: usize,
+        y_band: usize,
+    ) -> Result<String, String> {
+        let mut output = Vec::new();
         let mut color_masks = vec![vec![0u8; width]; num_colors];
         let mut color_active = vec![false; num_colors];
         let mut active_indices = Vec::with_capacity(num_colors);
 
-        for y_band in (0..height).step_by(6) {
-            for &idx in &active_indices {
-                let mask: &mut Vec<u8> = &mut color_masks[idx];
-                mask.fill(0u8);
-                color_active[idx] = false;
-            }
-            active_indices.clear();
-
-            for bit in 0..6 {
-                let y = y_band + bit;
-                if y >= height {
-                    break;
-                }
-
-                let row_offset = y * width;
-                for x in 0..width {
-                    let c = indices[row_offset + x];
-                    color_masks[c][x] |= 1 << bit;
-                    if !color_active[c] {
-                        color_active[c] = true;
-                        active_indices.push(c);
-                    }
-                }
+        for bit in 0..6 {
+            let y = y_band + bit;
+            if y >= height {
+                break;
             }
 
-            for &color_idx in &active_indices {
-                let band_data = &color_masks[color_idx];
-                write!(output, "#{}", color_idx).map_err(|e| e.to_string())?;
-
-                let mut x = 0;
-                while x < width {
-                    let current_mask = band_data[x];
-                    let mut count = 1;
-                    while x + count < width && band_data[x + count] == current_mask {
-                        count += 1;
-                    }
-                    let sixel_char = (63u8 + current_mask) as char;
-
-                    if count > 3 {
-                        write!(output, "!{}{}", count, sixel_char).map_err(|e| e.to_string())?;
-                    } else {
-                        for _ in 0..count {
-                            output.push(63u8 + current_mask);
-                        }
-                    }
-                    x += count;
+            let row_offset = y * width;
+            for x in 0..width {
+                let c = indices[row_offset + x];
+                color_masks[c][x] |= 1 << bit;
+                if !color_active[c] {
+                    color_active[c] = true;
+                    active_indices.push(c);
                 }
-                write!(output, "$").map_err(|e| e.to_string())?;
             }
-            write!(output, "-").map_err(|e| e.to_string())?;
         }
+
+        for &color_idx in &active_indices {
+            let band_data = &color_masks[color_idx];
+            write!(output, "#{}", color_idx).map_err(|e| e.to_string())?;
+
+            let mut x = 0;
+            while x < width {
+                let current_mask = band_data[x];
+                let mut count = 1;
+                while x + count < width && band_data[x + count] == current_mask {
+                    count += 1;
+                }
+                let sixel_char = (63u8 + current_mask) as char;
+
+                if count > 3 {
+                    write!(output, "!{}{}", count, sixel_char).map_err(|e| e.to_string())?;
+                } else {
+                    for _ in 0..count {
+                        output.push(63u8 + current_mask);
+                    }
+                }
+                x += count;
+            }
+            write!(output, "$").map_err(|e| e.to_string())?;
+        }
+        write!(output, "-").map_err(|e| e.to_string())?;
 
         String::from_utf8(output).map_err(|e| e.to_string())
     }
@@ -83,7 +90,7 @@ impl SixelRenderer {
     pub fn encode(&self, image: &Image) -> Result<String, String> {
         let key = (image.content_key, image.width, image.height);
         {
-            let cache = SIXEL_CACHE.lock().unwrap();
+            let mut cache = SIXEL_CACHE.lock().unwrap();
             if let Some(encoded) = cache.get(&key) {
                 return Ok(encoded.clone());
             }
@@ -123,9 +130,6 @@ impl SixelRenderer {
         let encoded = String::from_utf8(output).map_err(|e| e.to_string())?;
 
         let mut cache = SIXEL_CACHE.lock().unwrap();
-        if cache.len() > 100 {
-            cache.clear();
-        }
         cache.insert(key, encoded.clone());
 
         Ok(encoded)
@@ -133,6 +137,25 @@ impl SixelRenderer {
 
     pub fn clear_cache() {
         SIXEL_CACHE.lock().unwrap().clear();
+    }
+}
+
+impl RenderBackend for SixelRenderer {
+    fn render_command(&self, image: &Image) -> Result<Vec<u8>, String> {
+        Ok(self.encode(image)?.into_bytes())
+    }
+
+    fn render_command_at(
+        &self,
+        image: &Image,
+        x: u16,
+        y: u16,
+        _z_index: i32,
+    ) -> Result<Vec<u8>, String> {
+        let mut output = Vec::new();
+        write!(output, "\x1b[{};{}H", y + 1, x + 1).map_err(|e| e.to_string())?;
+        output.extend_from_slice(&self.render_command(image)?);
+        Ok(output)
     }
 }
 
@@ -281,23 +304,5 @@ mod tests {
         let expected = reference_band_payload(&indices, 4, 7, 2);
 
         assert_eq!(actual, expected);
-    }
-}
-
-impl RenderBackend for SixelRenderer {
-    fn render(&self, image: &Image) -> Result<(), String> {
-        let encoded = self.encode(image)?;
-        let mut stdout = io::stdout().lock();
-        write!(stdout, "{}", encoded).map_err(|e| e.to_string())?;
-        stdout.flush().map_err(|e| e.to_string())?;
-        Ok(())
-    }
-
-    fn render_at(&self, image: &Image, x: u16, y: u16, _z_index: i32) -> Result<(), String> {
-        let encoded = self.encode(image)?;
-        let mut stdout = io::stdout().lock();
-        write!(stdout, "\x1b[{};{}H{}", y + 1, x + 1, encoded).map_err(|e| e.to_string())?;
-        stdout.flush().map_err(|e| e.to_string())?;
-        Ok(())
     }
 }

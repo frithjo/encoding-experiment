@@ -1,13 +1,14 @@
 use crate::image_buffer::Image;
+use crate::render::cache::LruCache;
 use crate::render::protocol::RenderBackend;
 use base64::{engine::general_purpose, Engine as _};
-use std::collections::HashMap;
+use rayon::prelude::*;
 use std::io::{self, Write};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
 
 lazy_static::lazy_static! {
-    static ref LOADED_IMAGES: Mutex<HashMap<(u64, usize, usize), u32>> = Mutex::new(HashMap::new());
+    static ref LOADED_IMAGES: Mutex<LruCache<(u64, usize, usize), u32>> = Mutex::new(LruCache::new(128));
 }
 
 static NEXT_KITTY_ID: AtomicU32 = AtomicU32::new(1);
@@ -16,14 +17,51 @@ pub struct KittyRenderer;
 
 impl KittyRenderer {
     fn upload_command(image: &Image, kitty_id: u32) -> Result<String, String> {
+        if let Some(png_bytes) = image.original_png_bytes() {
+            return Self::upload_png_command(image.width, image.height, png_bytes, kitty_id);
+        }
+
+        Self::upload_rgb_command(image, kitty_id)
+    }
+
+    fn upload_png_command(
+        width: usize,
+        height: usize,
+        png_bytes: &[u8],
+        kitty_id: u32,
+    ) -> Result<String, String> {
+        let mut output = Vec::new();
+        let b64_data = general_purpose::STANDARD.encode(png_bytes);
+        let chunks = b64_data.as_bytes().chunks(4096);
+        let num_chunks = chunks.len();
+
+        for (i, chunk) in chunks.enumerate() {
+            let m = if i == num_chunks - 1 { 0 } else { 1 };
+            if i == 0 {
+                write!(
+                    output,
+                    "\x1b_Ga=t,f=100,s={},v={},i={},m={};",
+                    width, height, kitty_id, m
+                )
+                .map_err(|e| e.to_string())?;
+            } else {
+                write!(output, "\x1b_Gm={};", m).map_err(|e| e.to_string())?;
+            }
+            output.write_all(chunk).map_err(|e| e.to_string())?;
+            write!(output, "\x1b\\").map_err(|e| e.to_string())?;
+        }
+
+        String::from_utf8(output).map_err(|e| e.to_string())
+    }
+
+    fn upload_rgb_command(image: &Image, kitty_id: u32) -> Result<String, String> {
         let mut output = Vec::new();
 
-        let mut rgb_data = Vec::with_capacity(image.width * image.height * 3);
-        for p in &image.pixels {
-            rgb_data.push(p.r);
-            rgb_data.push(p.g);
-            rgb_data.push(p.b);
-        }
+        let rgb_data: Vec<u8> = image
+            .pixels
+            .par_iter()
+            .flat_map_iter(|p| [p.r, p.g, p.b])
+            .collect();
 
         let b64_data = general_purpose::STANDARD.encode(&rgb_data);
         let chunks = b64_data.as_bytes().chunks(4096);
@@ -48,16 +86,27 @@ impl KittyRenderer {
         String::from_utf8(output).map_err(|e| e.to_string())
     }
 
-    fn upload_image(&self, image: &Image) -> Result<Option<String>, String> {
+    fn delete_image_command(kitty_id: u32) -> String {
+        format!("\x1b_Ga=d,i={}\x1b\\", kitty_id)
+    }
+
+    fn upload_image(&self, image: &Image) -> Result<(Option<String>, u32), String> {
         let mut loaded = LOADED_IMAGES.lock().unwrap();
         let key = (image.content_key, image.width, image.height);
-        if loaded.contains_key(&key) {
-            return Ok(None);
+        if let Some(kitty_id) = loaded.get(&key) {
+            return Ok((None, kitty_id));
         }
         let kitty_id = NEXT_KITTY_ID.fetch_add(1, Ordering::Relaxed);
 
-        loaded.insert(key, kitty_id);
-        Ok(Some(Self::upload_command(image, kitty_id)?))
+        let evicted = loaded.insert(key, kitty_id);
+        drop(loaded);
+
+        let mut command = String::new();
+        if let Some((_, evicted_id)) = evicted {
+            command.push_str(&Self::delete_image_command(evicted_id));
+        }
+        command.push_str(&Self::upload_command(image, kitty_id)?);
+        Ok((Some(command), kitty_id))
     }
 
     fn place_command(image_id: u32, x_cell: u16, y_cell: u16, z_index: i32) -> String {
@@ -78,12 +127,10 @@ impl KittyRenderer {
         z_index: i32,
     ) -> Result<String, String> {
         let mut output = String::new();
-        if let Some(upload) = self.upload_image(image)? {
+        let (upload, kitty_id) = self.upload_image(image)?;
+        if let Some(upload) = upload {
             output.push_str(&upload);
         }
-        let loaded = LOADED_IMAGES.lock().unwrap();
-        let kitty_id = loaded[&(image.content_key, image.width, image.height)];
-        drop(loaded);
         output.push_str(&Self::place_command(kitty_id, x_cell, y_cell, z_index));
         Ok(output)
     }
@@ -109,19 +156,18 @@ impl KittyRenderer {
 }
 
 impl RenderBackend for KittyRenderer {
-    fn render(&self, image: &Image) -> Result<(), String> {
-        let mut stdout = io::stdout().lock();
-        write!(stdout, "{}", self.render_command(image, 0, 0, 0)?).map_err(|e| e.to_string())?;
-        stdout.flush().map_err(|e| e.to_string())?;
-        Ok(())
+    fn render_command(&self, image: &Image) -> Result<Vec<u8>, String> {
+        Ok(self.render_command(image, 0, 0, 0)?.into_bytes())
     }
 
-    fn render_at(&self, image: &Image, x: u16, y: u16, z_index: i32) -> Result<(), String> {
-        let mut stdout = io::stdout().lock();
-        write!(stdout, "{}", self.render_command(image, x, y, z_index)?)
-            .map_err(|e| e.to_string())?;
-        stdout.flush().map_err(|e| e.to_string())?;
-        Ok(())
+    fn render_command_at(
+        &self,
+        image: &Image,
+        x: u16,
+        y: u16,
+        z_index: i32,
+    ) -> Result<Vec<u8>, String> {
+        Ok(self.render_command(image, x, y, z_index)?.into_bytes())
     }
 }
 
@@ -153,6 +199,34 @@ mod tests {
         assert!(first.contains("a=p,i=1,z=0"));
         assert!(!second.contains("a=t,f=24"));
         assert_eq!(second, "\x1b[6;5H\x1b_Ga=p,i=1,z=7\x1b\\");
+    }
+
+    #[test]
+    fn kitty_untouched_png_uses_png_passthrough() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        KittyRenderer::reset_for_tests();
+        let renderer = KittyRenderer;
+        let png_bytes = vec![137, 80, 78, 71, 13, 10, 26, 10];
+        let image = Image::from_png_bytes(1, 1, vec![1, 2, 3], png_bytes);
+
+        let output = renderer.render_command(&image, 0, 0, 0).unwrap();
+
+        assert!(output.contains("a=t,f=100"));
+        assert!(output.contains("a=p,i=1,z=0"));
+    }
+
+    #[test]
+    fn kitty_transformed_png_falls_back_to_rgb_upload() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        KittyRenderer::reset_for_tests();
+        let renderer = KittyRenderer;
+        let image = Image::from_png_bytes(2, 1, vec![1, 2, 3, 4, 5, 6], vec![1, 2, 3, 4]);
+        let cropped = image.crop(0, 0, 1, 1);
+
+        let output = renderer.render_command(&cropped, 0, 0, 0).unwrap();
+
+        assert!(output.contains("a=t,f=24"));
+        assert!(!output.contains("a=t,f=100"));
     }
 
     #[test]

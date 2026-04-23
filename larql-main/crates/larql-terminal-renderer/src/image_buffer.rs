@@ -1,3 +1,5 @@
+use rayon::prelude::*;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
 
@@ -34,6 +36,15 @@ pub struct Image {
     pub pixels: Vec<Rgb>,
     pub(crate) content_key: u64,
     pub(crate) oklab_cache: Mutex<Option<Vec<Oklab>>>,
+    pub(crate) source: ImageSourceKind,
+}
+
+#[derive(Clone)]
+pub enum ImageSourceKind {
+    Generated,
+    OriginalPng {
+        bytes: Arc<Vec<u8>>,
+    },
 }
 
 impl Image {
@@ -46,6 +57,7 @@ impl Image {
             pixels: vec![Rgb::new(0, 0, 0); width * height],
             content_key: 0,
             oklab_cache: Mutex::new(None),
+            source: ImageSourceKind::Generated,
         }
     }
 
@@ -58,6 +70,7 @@ impl Image {
             pixels: vec![Rgb::new(0, 0, 0); width * height],
             content_key: 0,
             oklab_cache: Mutex::new(None),
+            source: ImageSourceKind::Generated,
         }
     }
 
@@ -77,7 +90,16 @@ impl Image {
             pixels,
             content_key,
             oklab_cache: Mutex::new(None),
+            source: ImageSourceKind::Generated,
         }
+    }
+
+    pub fn from_png_bytes(width: usize, height: usize, rgb: Vec<u8>, png_bytes: Vec<u8>) -> Self {
+        let mut image = Self::from_rgb(width, height, rgb);
+        image.source = ImageSourceKind::OriginalPng {
+            bytes: Arc::new(png_bytes),
+        };
+        image
     }
 
     pub fn get(&self, x: usize, y: usize) -> Option<&Rgb> {
@@ -91,7 +113,7 @@ impl Image {
     pub fn ensure_oklab(&self) {
         let mut cache = self.oklab_cache.lock().unwrap();
         if cache.is_none() {
-            *cache = Some(self.pixels.iter().map(|p| p.to_oklab()).collect());
+            *cache = Some(self.pixels.par_iter().map(|p| p.to_oklab()).collect());
         }
     }
 
@@ -157,6 +179,7 @@ impl Image {
             pixels: self.pixels.clone(),
             content_key: self.content_key,
             oklab_cache: Mutex::new(cache.clone()),
+            source: self.source.clone(),
         }
     }
 
@@ -170,6 +193,13 @@ impl Image {
             }
         }
         new_img
+    }
+
+    pub fn original_png_bytes(&self) -> Option<&[u8]> {
+        match &self.source {
+            ImageSourceKind::OriginalPng { bytes } => Some(bytes.as_slice()),
+            ImageSourceKind::Generated => None,
+        }
     }
 }
 

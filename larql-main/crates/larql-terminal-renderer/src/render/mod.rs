@@ -1,4 +1,5 @@
 pub mod ansi;
+mod cache;
 pub mod iterm2;
 pub mod kitty;
 pub mod protocol;
@@ -87,6 +88,21 @@ impl Renderer {
             BackendType::Kitty => KittyRenderer.render_at(image, x, y, z_index),
             BackendType::ITerm2 => ITerm2Renderer.render_at(image, x, y, z_index),
             BackendType::Ansi => AnsiRenderer.render_at(image, x, y, z_index),
+        }
+    }
+
+    pub fn render_command_at(
+        &self,
+        image: &Image,
+        x: u16,
+        y: u16,
+        z_index: i32,
+    ) -> Result<Vec<u8>, String> {
+        match self.backend_type {
+            BackendType::Sixel => SixelRenderer.render_command_at(image, x, y, z_index),
+            BackendType::Kitty => KittyRenderer.render_command_at(image, x, y, z_index),
+            BackendType::ITerm2 => ITerm2Renderer.render_command_at(image, x, y, z_index),
+            BackendType::Ansi => AnsiRenderer.render_command_at(image, x, y, z_index),
         }
     }
 

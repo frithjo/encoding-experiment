@@ -12,11 +12,17 @@ name = "dashboard_stress_test"
 path = "src/bin/dashboard_stress_test.rs"
 required-features = ["ratatui", "crossterm"]
 
+[[bin]]
+name = "sixel_reverse_clipping_probe"
+path = "src/bin/sixel_reverse_clipping_probe.rs"
+required-features = ["ratatui", "crossterm"]
+
 [dependencies]
 # Basic terminal support (will add more for ioctl etc later)
 libc = "0.2"
 base64 = "0.22"
 lazy_static = "1.4"
+rayon = "1.10"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"], optional = true }
 ratatui = { version = "0.26", optional = true }
 crossterm = { version = "0.27", optional = true }
