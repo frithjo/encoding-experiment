@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::state::AppState;
-use larql_inference::forward::{predict_with_ffn_attention, PredictResultWithAttention};
 use larql_inference::ffn::WeightFfn;
+use larql_inference::forward::{predict_with_ffn_attention, PredictResultWithAttention};
 
 /// Tool call request body (MCP/Native compatible)
 #[derive(Debug, Deserialize)]
@@ -61,7 +61,12 @@ pub async fn handle_tools_call(
         "context_map_with_query" => handle_context_map_with_query(&state, req.arguments).await?,
         "load_model" => handle_load_model(&state, req.arguments).await?,
         "batch_dla_scan" => handle_batch_dla_scan(&state, req.arguments).await?,
-        _ => return Err((StatusCode::BAD_REQUEST, format!("Unknown tool: {}", req.name))),
+        _ => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!("Unknown tool: {}", req.name),
+            ))
+        }
     };
 
     Ok(Json(ToolCallResponse { result }))
@@ -72,7 +77,9 @@ async fn handle_get_model_info(
     state: &AppState,
     _args: serde_json::Value,
 ) -> Result<serde_json::Value, (StatusCode, String)> {
-    let model = state.models.first()
+    let model = state
+        .models
+        .first()
         .ok_or_else(|| (StatusCode::NOT_FOUND, "No model loaded".to_string()))?;
 
     let config = ModelConfig {
@@ -80,7 +87,7 @@ async fn handle_get_model_info(
         num_layers: model.config.num_layers,
         hidden_dim: model.config.hidden_size,
         num_attention_heads: 32, // Default fallback
-        num_kv_heads: 4, // Default fallback
+        num_kv_heads: 4,         // Default fallback
         head_dim: model.config.hidden_size / 32,
         vocab_size: model.config.vocab_size,
         max_position_embeddings: 8192, // Default fallback
@@ -88,7 +95,8 @@ async fn handle_get_model_info(
         family: model.config.model.clone(),
     };
 
-    Ok(serde_json::to_value(config).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?)
+    Ok(serde_json::to_value(config)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?)
 }
 
 /// Handle context_map tool
@@ -96,28 +104,44 @@ async fn handle_context_map(
     state: &AppState,
     args: serde_json::Value,
 ) -> Result<serde_json::Value, (StatusCode, String)> {
-    let model = state.models.first()
+    let model = state
+        .models
+        .first()
         .ok_or_else(|| (StatusCode::NOT_FOUND, "No model loaded".to_string()))?;
 
-    let args_map: std::collections::HashMap<String, serde_json::Value> = serde_json::from_value(args)
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid arguments: {}", e)))?;
+    let args_map: std::collections::HashMap<String, serde_json::Value> =
+        serde_json::from_value(args)
+            .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid arguments: {}", e)))?;
 
-    let prompt = args_map.get("prompt")
+    let prompt = args_map
+        .get("prompt")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "Missing prompt argument".to_string()))?;
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                "Missing prompt argument".to_string(),
+            )
+        })?;
 
-    let layer = args_map.get("layer")
+    let layer = args_map
+        .get("layer")
         .and_then(|v| v.as_u64())
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "Missing layer argument".to_string()))?
-        as usize;
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                "Missing layer argument".to_string(),
+            )
+        })? as usize;
 
-    let top_k = args_map.get("top_k")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(5) as usize;
+    let top_k = args_map.get("top_k").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
 
     // Tokenize the prompt
-    let tokens = model.tokenizer.encode(prompt, false)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Tokenization error: {}", e)))?;
+    let tokens = model.tokenizer.encode(prompt, false).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Tokenization error: {}", e),
+        )
+    })?;
 
     if tokens.ids.is_empty() {
         return Ok(serde_json::json!([]));
@@ -126,7 +150,9 @@ async fn handle_context_map(
     // Get embeddings for the tokens
     let mut entries = Vec::new();
     for (pos, token_id) in tokens.ids.iter().enumerate() {
-        let token_str = model.tokenizer.decode(&[*token_id], false)
+        let token_str = model
+            .tokenizer
+            .decode(&[*token_id], false)
             .unwrap_or_else(|_| "<unk>".to_string());
 
         entries.push(ContextMapEntry {
@@ -142,7 +168,8 @@ async fn handle_context_map(
     // Limit to top_k
     entries.truncate(top_k);
 
-    Ok(serde_json::to_value(entries).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?)
+    Ok(serde_json::to_value(entries)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?)
 }
 
 /// Handle context_map_with_query tool
@@ -159,12 +186,19 @@ async fn handle_load_model(
     state: &AppState,
     args: serde_json::Value,
 ) -> Result<serde_json::Value, (StatusCode, String)> {
-    let args_map: std::collections::HashMap<String, serde_json::Value> = serde_json::from_value(args)
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid arguments: {}", e)))?;
+    let args_map: std::collections::HashMap<String, serde_json::Value> =
+        serde_json::from_value(args)
+            .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid arguments: {}", e)))?;
 
-    let model_id = args_map.get("model_id")
+    let model_id = args_map
+        .get("model_id")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "Missing model_id argument".to_string()))?;
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                "Missing model_id argument".to_string(),
+            )
+        })?;
 
     // Check if the requested model is already loaded
     for model in &state.models {
@@ -173,7 +207,10 @@ async fn handle_load_model(
         }
     }
 
-    Err((StatusCode::NOT_FOUND, format!("Model not loaded: {}", model_id)))
+    Err((
+        StatusCode::NOT_FOUND,
+        format!("Model not loaded: {}", model_id),
+    ))
 }
 
 /// Handle batch_dla_scan tool
@@ -181,31 +218,47 @@ async fn handle_batch_dla_scan(
     state: &AppState,
     args: serde_json::Value,
 ) -> Result<serde_json::Value, (StatusCode, String)> {
-    let model = state.models.first()
+    let model = state
+        .models
+        .first()
         .ok_or_else(|| (StatusCode::NOT_FOUND, "No model loaded".to_string()))?;
 
-    let args_map: std::collections::HashMap<String, serde_json::Value> = serde_json::from_value(args)
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid arguments: {}", e)))?;
+    let args_map: std::collections::HashMap<String, serde_json::Value> =
+        serde_json::from_value(args)
+            .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid arguments: {}", e)))?;
 
-    let prompt = args_map.get("prompt")
+    let prompt = args_map
+        .get("prompt")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "Missing prompt argument".to_string()))?;
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                "Missing prompt argument".to_string(),
+            )
+        })?;
 
     // Tokenize the prompt
-    let tokens = model.tokenizer.encode(prompt, false)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Tokenization error: {}", e)))?;
+    let tokens = model.tokenizer.encode(prompt, false).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Tokenization error: {}", e),
+        )
+    })?;
 
     if tokens.ids.is_empty() {
-        return Ok(serde_json::json!({
-            "attention": [],
-            "num_layers": model.config.num_layers,
-            "seq_len": 0
-        }));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Empty prompt results in no tokens".to_string(),
+        ));
     }
 
     // Get model weights for inference
-    let weights = model.get_or_load_weights()
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to load model weights: {}", e)))?;
+    let weights = model.get_or_load_weights().map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to load model weights: {}", e),
+        )
+    })?;
 
     // Create WeightFfn backend for dense FFN computation
     let ffn = WeightFfn { weights };
@@ -220,7 +273,8 @@ async fn handle_batch_dla_scan(
     );
 
     // Convert attention data to JSON format
-    let attention_data: Vec<serde_json::Value> = result.attention
+    let attention_data: Vec<serde_json::Value> = result
+        .attention
         .into_iter()
         .map(|layer_capture| {
             serde_json::json!({

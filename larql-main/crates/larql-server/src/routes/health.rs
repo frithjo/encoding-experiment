@@ -16,6 +16,7 @@ pub async fn handle_health(State(state): State<Arc<AppState>>) -> Json<serde_jso
 
     Json(serde_json::json!({
         "status": "ok",
+        "pid": std::process::id(),
         "uptime_seconds": uptime,
         "requests_served": served,
     }))
