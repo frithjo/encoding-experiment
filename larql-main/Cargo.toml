@@ -12,7 +12,7 @@ members = [
     "crates/larql-server",
     "crates/larql-python",
     "crates/larql-terminal-browser",
-    "crates/kv-cache-benchmark",
+    "experiments/kv-cache-benchmark",
     "crates/larql-tensor",
 ]
 default-members = [
@@ -25,7 +25,7 @@ default-members = [
     "crates/larql-lql",
     "crates/larql-cli",
     "crates/larql-server",
-    "crates/kv-cache-benchmark",
+    "experiments/kv-cache-benchmark",
 ]
 
 [workspace.package]
@@ -40,14 +40,3 @@ repository = "https://github.com/chrishayuk/chuk-larql-rs"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-
-[workspace.features]
-default = []
-# HTTP dependencies - enables network functionality across crates
-http = ["larql-core/http", "larql-lql/http", "larql-cli/http"]
-# Async HTTP for server use cases
-http-async = ["larql-core/http-async", "larql-server/http-async"]
-# HuggingFace integration - consolidated in larql-core
-huggingface = ["larql-core/huggingface", "larql-vindex/huggingface", "larql-server/huggingface"]
-# Metal GPU backend (Apple Silicon)
-metal = ["larql-compute/metal", "larql-inference/metal", "larql-vindex/metal"]

@@ -27,7 +27,6 @@ larql-lql         lexer/parser/executor/REPL + USE REMOTE client
 larql-server      HTTP + gRPC server serving vindexes
 larql-cli         top-level `larql` binary (every subcommand lives in commands/)
 larql-python      PyO3 bindings (maturin-built, module name `larql._native`)
-kv-cache-benchmark    standalone benchmark crate
 ```
 
 The CLI is a thin dispatcher: each `larql <cmd>` lives in [crates/larql-cli/src/commands/extraction/](crates/larql-cli/src/commands/extraction/) or [crates/larql-cli/src/commands/query/](crates/larql-cli/src/commands/query/) and is wired into the `Commands` enum in [crates/larql-cli/src/main.rs](crates/larql-cli/src/main.rs). `larql serve` exec's into `larql-server`. `larql repl` and `larql lql` delegate to `larql_lql::run_repl`/`run_statement`.
@@ -60,6 +59,28 @@ uv run --no-sync pytest tests/                       # binding + UI tests
 ```
 
 Or via the Makefile: `make python-setup | python-build | python-test | python-clean`.
+
+## Python SDK vs UI Split
+
+The Python package has been split into SDK-only and SDK+UI installation modes:
+
+**SDK only (minimal footprint):**
+```bash
+pip install larql
+```
+Installs only core bindings (numpy dependency). Use for programmatic access, data science, and integrations.
+
+**SDK + UI (interactive workbench):**
+```bash
+pip install "larql[ui]"
+```
+Installs SDK plus workbench UI (starlette, jinja2, uvicorn, python-multipart). Required for `larql-workbench` CLI.
+
+**Namespace migration:**
+- The `larql.ui` namespace has been removed. Use `larql_ui.ui` for UI imports.
+- The `larql` namespace remains stable for core SDK APIs (load, session, Vindex, WalkModel, etc.).
+- See [crates/larql-python/README.md](crates/larql-python/README.md) for installation patterns.
+- See [docs/architecture/python-bindings-ui-split.md](docs/architecture/python-bindings-ui-split.md) for design details.
 
 ## Key architectural invariants
 

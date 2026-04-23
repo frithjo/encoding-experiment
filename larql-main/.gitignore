@@ -30,5 +30,8 @@ build/
 # output
 output/
 data/
-experiments/
 vindexes/
+node_modules/
+
+# Generated UI artifact
+crates/larql-python/python/larql/ui/static/async_runs.js

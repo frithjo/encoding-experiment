@@ -79,20 +79,25 @@ Add `--f16` to halve file sizes with negligible accuracy loss.
 
 ## Architecture
 
-Eight crates. Clean dependency chain.
+Core crates in `crates/` with clean dependency chain. Experimental work in `experiments/`.
 
 ```
-larql-models      Model config, architecture traits, weight loading, quant/dequant
-    ↓
-larql-vindex      Vindex lifecycle: extract, load, query, mutate, patch, save
-    ↓
-larql-core        Graph algorithms, merge, diff
-larql-inference   Forward pass, BLAS-fused attention, Metal GPU, WalkFfn
-    ↓
-larql-lql         LQL parser, executor, REPL, USE REMOTE client
-    ↓
-larql-server      HTTP/gRPC server: serve vindexes over the network
-larql-cli         CLI commands (extract-index, build, serve, repl, convert, hf, verify)
+crates/
+  larql-models      Model config, architecture traits, weight loading, quant/dequant
+      ↓
+  larql-vindex      Vindex lifecycle: extract, load, query, mutate, patch, save
+      ↓
+  larql-core        Graph algorithms, merge, diff
+  larql-inference   Forward pass, BLAS-fused attention, Metal GPU, WalkFfn
+      ↓
+  larql-lql         LQL parser, executor, REPL, USE REMOTE client
+      ↓
+  larql-server      HTTP/gRPC server: serve vindexes over the network
+  larql-cli         CLI commands (extract-index, build, serve, repl, convert, hf, verify)
+  larql-python      PyO3 bindings and workbench UI
+
+experiments/
+  kv-cache-benchmark    KV strategy benchmarking and prototyping
 ```
 
 ### larql-vindex
@@ -343,10 +348,13 @@ See [docs/residual-trace.md](docs/residual-trace.md) for the full writeup.
 | [docs/cli.md](docs/cli.md) | CLI reference |
 | [docs/inference-engine.md](docs/inference-engine.md) | Inference engine — BLAS-fused attention, Metal GPU, auto-calibration |
 | [docs/ffn-graph-layer.md](docs/ffn-graph-layer.md) | FFN graph layer — mmap walk faster than dense (517ms vs 535ms), all 34 layers |
-| [docs/walk-boundary-sweep.md](docs/walk-boundary-sweep.md) | Walk boundary sweep — correctness proof across all layer boundaries |
+| [docs/perf/walk-boundary-sweep.md](docs/perf/walk-boundary-sweep.md) | Walk boundary sweep — correctness proof across all layer boundaries |
 | [docs/knowledge-pipeline.md](docs/knowledge-pipeline.md) | Knowledge labelling pipeline |
 | [docs/residual-trace.md](docs/residual-trace.md) | Residual stream trace — decomposition, storage, tiered context |
 | [docs/trace-format-spec.md](docs/trace-format-spec.md) | Trace file format specification (.bin, .bndx, .ctxt) |
+| [docs/architecture/README.md](docs/architecture/README.md) | Productized structure, release surface, and crate role matrix |
+| [docs/perf/README.md](docs/perf/README.md) | Performance and benchmark documentation index |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Zone/dependency rules and contribution checklist |
 
 ## Building & Testing
 
