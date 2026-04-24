@@ -1,5 +1,6 @@
 use clap::Parser;
 use crossterm::event::{KeyCode, KeyEvent};
+use larql_lql::{parse as parse_lql, Session};
 use larql_terminal_renderer::{GraphicsLayer, Image, ImageWidget, Renderer, Rgb};
 use ratatui::{
     layout::{Constraint, Direction, Layout},
@@ -20,22 +21,19 @@ pub struct Cli {
     pub server: String,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct ToolCallRequest {
-    pub name: String,
-    pub arguments: serde_json::Value,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct ToolCallResponse {
-    pub result: serde_json::Value,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct AttentionData {
-    pub layer: usize,
-    pub heads: Vec<Vec<f32>>,
-}
+// Re-export from larql-inference for type compatibility
+pub use larql_inference::analysis::{
+    AttentionLayer as AttentionData,
+    LogitLensLayer as LogitLensData,
+    HeadDlaLayer,
+    HeadContribution,
+    StepTopHeadSummary,
+    TokenAnalysis,
+    FirstFalseOrigin,
+    AnalysisSummary,
+    GeneratedStep,
+    LayerRidge as RidgeByLayer,
+};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct CircuitHighlight {
@@ -46,75 +44,16 @@ pub struct CircuitHighlight {
     pub color_rgb: (u8, u8, u8),
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct HeadContribution {
-    pub layer: usize,
-    pub head: usize,
-    pub source_token: usize,
-    pub contribution: f64,
-}
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct StepTopHeadSummary {
-    pub false_content: Vec<HeadContribution>,
-    pub material_coherence: Vec<HeadContribution>,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct TokenAnalysis {
-    pub position: usize,
-    pub token_id: u32,
-    pub token: String,
-    pub probability: f64,
-    pub label: String,
-    pub truth_mass: f64,
-    pub false_mass: f64,
-    pub coherence_mass: f64,
-    pub ridge: f64,
-    pub top_heads: StepTopHeadSummary,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct FirstFalseOrigin {
-    pub position: usize,
-    pub token_id: u32,
-    pub token: String,
-    pub layer: usize,
-    pub head: usize,
-    pub source_token: usize,
-    pub contribution: f64,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct AnalysisSummary {
-    pub first_false_position: Option<usize>,
-    pub first_false_token: Option<String>,
-    pub first_false_origin: Option<FirstFalseOrigin>,
-    pub top_coherence_heads: Vec<HeadContribution>,
-    pub top_false_content_heads: Vec<HeadContribution>,
-    pub materially_false_detected: bool,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct GeneratedStep {
-    pub position: usize,
-    pub token_id: u32,
-    pub token: String,
-    pub probability: f64,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct RidgeByLayer {
-    pub layer: usize,
-    pub ridge: f64,
-}
-
+// BatchDlaResult: TUI's result type, aligned with larql-inference's AnalysisResult
+// for single-pass JSON deserialization. Adds TUI-specific 'circuits' field.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct BatchDlaResult {
     pub attention: Vec<AttentionData>,
+    #[serde(default)]
     pub logit_lens: Option<Vec<LogitLensData>>,
     #[serde(default)]
-    pub head_dla: Vec<AttentionData>,
+    pub head_dla: Vec<HeadDlaLayer>,
     pub num_layers: usize,
     pub predictions: Vec<(String, f64)>,
     pub seq_len: usize,
@@ -131,12 +70,6 @@ pub struct BatchDlaResult {
     pub analysis_summary: Option<AnalysisSummary>,
     #[serde(default)]
     pub ridge_by_layer: Vec<RidgeByLayer>,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct LogitLensData {
-    pub layer: usize,
-    pub predictions: Vec<(String, f64)>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -269,6 +202,48 @@ impl ManualTargetDraft {
     }
 }
 
+
+fn build_analyze_infer_ast(
+    prompt: &str,
+    analysis: &RecipeAnalysis,
+    top: usize,
+) -> larql_lql::Statement {
+    let mode = match analysis.mode.as_str() {
+        "workflow_probe" => larql_lql::ast::AnalysisMode::WorkflowProbe,
+        _ => larql_lql::ast::AnalysisMode::FactProbe,
+    };
+
+    larql_lql::Statement::AnalyzeInfer {
+        prompt: prompt.to_string(),
+        mode,
+        truth_spans: analysis.truth_spans.clone(),
+        materially_false_spans: analysis.materially_false_spans.clone(),
+        coherence_markers: analysis.coherence_markers.clone(),
+        max_generated_tokens: analysis.max_generated_tokens.map(|v| v as u32),
+        ridge_dead_zone: analysis.ridge_dead_zone,
+        top: Some(top as u32),
+        format: Some(larql_lql::ast::OutputFormat::Json),
+    }
+}
+
+/// Execute a generic LQL statement remotely and return the output
+pub async fn execute_lql_remote(
+    server: &str,
+    lql_statement: &str,
+) -> Result<Vec<String>, String> {
+    let mut session = Session::new();
+    session
+        .connect_remote(server)
+        .map_err(|e| format!("Failed to connect remote LQL session: {e}"))?;
+
+    let stmt = parse_lql(lql_statement)
+        .map_err(|e| format!("Failed to parse LQL statement: {e}"))?;
+    session
+        .execute(&stmt)
+        .map_err(|e| format!("Remote LQL execution failed: {e}"))
+}
+
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ManualField {
     Prompt,
@@ -304,41 +279,39 @@ impl ManualField {
     }
 }
 
-pub async fn call_batch_dla_scan(
-    server: &str,
+pub async fn execute_batch_dla_scan_lql(
+    session: &mut Session,
     prompt: &str,
     analysis: Option<&RecipeAnalysis>,
 ) -> Result<BatchDlaResult, String> {
-    let client = reqwest::Client::new();
-    let request = ToolCallRequest {
-        name: "batch_dla_scan".to_string(),
-        arguments: serde_json::json!({
-            "prompt": prompt,
-            "include_strings": true,
-            "analysis": analysis
-        }),
+    let stmt = match analysis {
+        Some(analysis) => build_analyze_infer_ast(prompt, analysis, 5),
+        None => larql_lql::Statement::AnalyzeInfer {
+            prompt: prompt.to_string(),
+            mode: larql_lql::ast::AnalysisMode::FactProbe,
+            truth_spans: Vec::new(),
+            materially_false_spans: Vec::new(),
+            coherence_markers: Vec::new(),
+            max_generated_tokens: None,
+            ridge_dead_zone: None,
+            top: Some(5),
+            format: Some(larql_lql::ast::OutputFormat::Json),
+        },
     };
 
-    let response = client
-        .post(format!("{server}/tools/call"))
-        .header("Content-Type", "application/json")
-        .json(&request)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to call API: {e}"))?;
+    let output = session
+        .execute(&stmt)
+        .map_err(|e| format!("Remote LQL execution failed: {e}"))?;
 
-    if response.status().is_success() {
-        let tool_response: ToolCallResponse = response
-            .json()
-            .await
-            .map_err(|e| format!("Failed to parse response: {e}"))?;
-        serde_json::from_value(tool_response.result)
-            .map_err(|e| format!("Failed to parse result: {e}"))
-    } else {
-        let status = response.status();
-        let error_text = response.text().await.unwrap_or_default();
-        Err(format!("API error ({status}): {error_text}"))
-    }
+    // The executor returns formatted JSON as a single string
+    let json_str = output
+        .into_iter()
+        .next()
+        .ok_or_else(|| "Remote LQL execution returned no output".to_string())?;
+
+    // Single-pass deserialization directly to BatchDlaResult
+    serde_json::from_str(&json_str)
+        .map_err(|e| format!("Failed to parse analysis JSON: {e}"))
 }
 
 pub fn attention_to_image(
@@ -497,6 +470,8 @@ pub struct App {
     pub cursor_y: usize,
     pub z_index: i32,
     pub is_scanning: bool,
+    pub session: Option<larql_lql::Session>,
+    pub server: String,
     #[cfg(feature = "head-isolation")]
     pub selected_head: Option<usize>,
     #[cfg(feature = "layer-diff")]
@@ -504,7 +479,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new() -> Self {
+    pub fn new(server: String) -> Self {
         let mut list_state = ListState::default();
         list_state.select(Some(0));
         let mut recipe_list_state = ListState::default();
@@ -528,6 +503,8 @@ impl App {
             cursor_y: 0,
             z_index: 0,
             is_scanning: false,
+            session: None,
+            server,
             #[cfg(feature = "head-isolation")]
             selected_head: None,
             #[cfg(feature = "layer-diff")]
@@ -537,6 +514,17 @@ impl App {
 
     pub fn prompt(&self) -> &str {
         &self.manual.prompt
+    }
+
+    fn ensure_session(&mut self) -> Result<(), String> {
+        if self.session.is_none() {
+            let mut session = Session::new();
+            session
+                .connect_remote(&self.server)
+                .map_err(|e| format!("Failed to connect remote LQL session: {e}"))?;
+            self.session = Some(session);
+        }
+        Ok(())
     }
 
     fn selected_recipe(&self) -> Option<&Recipe> {
@@ -632,7 +620,7 @@ impl App {
         self.list_state.select(selection);
     }
 
-    pub fn handle_key(&mut self, key: KeyEvent, rt: &Runtime, server: &str) -> bool {
+    pub fn handle_key(&mut self, key: KeyEvent, rt: &Runtime) -> bool {
         match key.code {
             KeyCode::Tab => {
                 self.focus = match self.focus {
@@ -669,8 +657,18 @@ impl App {
                         }
                         self.error = None;
                         self.is_scanning = true;
+                        if let Err(err) = self.ensure_session() {
+                            self.error = Some(err);
+                            self.is_scanning = false;
+                            return false;
+                        }
                         let analysis = self.manual.build_analysis();
-                        match rt.block_on(call_batch_dla_scan(server, &self.manual.prompt, analysis.as_ref()))
+                        let session = self.session.as_mut().unwrap();
+                        match rt.block_on(execute_batch_dla_scan_lql(
+                            session,
+                            &self.manual.prompt,
+                            analysis.as_ref(),
+                        ))
                         {
                             Ok(result) => {
                                 self.result = Some(result);
@@ -717,8 +715,11 @@ impl App {
                     }
                     KeyCode::Char('c') | KeyCode::Char('C') => {
                         if let Some(recipe) = self.selected_recipe() {
-                            self.last_export =
-                                Some(format!("Exported LQL: EXPLAIN INFER \"{}\" TOP 5;", recipe.prompt));
+                            let stmt = build_analyze_infer_ast(&recipe.prompt, &recipe.analysis, 5);
+                            self.last_export = Some(format!(
+                                "Exported LQL: {}",
+                                stmt.to_string()
+                            ));
                         }
                     }
                     KeyCode::Char('x') => {
@@ -1166,9 +1167,10 @@ fn stats_summary_text(res: &BatchDlaResult) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        attention_to_image, stats_summary_text, AnalysisSummary, App, AttentionData, BatchDlaResult,
-        HeadContribution, ManualField, Recipe, RecipeAnalysis, RecipeStore, RecipeUiDefaults,
-        RidgeByLayer, StepTopHeadSummary, TokenAnalysis,
+        attention_to_image, build_analyze_infer_ast, stats_summary_text,
+        AnalysisSummary, App, AttentionData, BatchDlaResult, HeadContribution, HeadDlaLayer,
+        ManualField, Recipe, RecipeAnalysis, RecipeStore, RecipeUiDefaults, RidgeByLayer,
+        StepTopHeadSummary, TokenAnalysis,
     };
 
     fn mock_result(num_layers: usize) -> BatchDlaResult {
@@ -1180,7 +1182,7 @@ mod tests {
                 })
                 .collect(),
             logit_lens: None,
-            head_dla: vec![AttentionData {
+            head_dla: vec![HeadDlaLayer {
                 layer: 0,
                 heads: vec![vec![0.1, 0.2], vec![0.3, 0.4]],
             }],
@@ -1236,7 +1238,7 @@ mod tests {
 
     #[test]
     fn regenerate_heatmaps_clamps_selected_layer_to_new_result() {
-        let mut app = App::new();
+        let mut app = App::new("http://localhost:8080".to_string());
         app.result = Some(mock_result(3));
         app.regenerate_heatmaps();
         app.list_state.select(Some(2));
@@ -1309,10 +1311,32 @@ mod tests {
 
     #[test]
     fn manual_field_cycle_covers_all_fields() {
-        let mut app = App::new();
+        let mut app = App::new("http://localhost:8080".to_string());
         for _ in 0..ManualField::ALL.len() {
             app.cycle_manual_field(1);
         }
         assert_eq!(app.manual_field, ManualField::Prompt);
+    }
+
+    #[test]
+    fn exported_lql_preserves_full_analysis_spec() {
+        let stmt = build_analyze_infer_ast(
+            "The capital of Freedonia is",
+            &RecipeAnalysis {
+                mode: "fact_probe".to_string(),
+                truth_spans: vec!["Markov".to_string()],
+                materially_false_spans: vec!["Paris".to_string(), "London".to_string()],
+                coherence_markers: vec!["capital".to_string(), "is".to_string()],
+                max_generated_tokens: Some(1),
+                ridge_dead_zone: Some(0.05),
+            },
+            5,
+        );
+        let lql = stmt.to_string();
+
+        assert_eq!(
+            lql,
+            "ANALYZE INFER \"The capital of Freedonia is\" MODE FACT_PROBE TRUTH_SPANS (\"Markov\") FALSE_SPANS (\"Paris\", \"London\") COHERENCE_MARKERS (\"capital\", \"is\") MAX_GENERATED_TOKENS 1 RIDGE_DEAD_ZONE 0.05 TOP 5 FORMAT JSON;"
+        );
     }
 }

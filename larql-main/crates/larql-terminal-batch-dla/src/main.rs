@@ -17,7 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let backend = AtomicGraphicsBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new();
+    let mut app = App::new(cli.server.clone());
     app.renderer.clear_all_graphics()?;
 
     loop {
@@ -27,7 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if event::poll(std::time::Duration::from_millis(16))? {
             if let event::Event::Key(key) = event::read()? {
-                if app.handle_key(key, &rt, &cli.server) {
+                if app.handle_key(key, &rt) {
                     break;
                 }
             }

@@ -7,8 +7,8 @@ mod tests {
     #[test]
     fn test_head_isolation_cycling() {
         let rt = Runtime::new().unwrap();
-        let mut app = App::new();
-        
+        let mut app = App::new("http://localhost:8080".to_string());
+
         // Mock result with 2 layers, each with 2 heads
         let mock_result = BatchDlaResult {
             attention: vec![
@@ -28,23 +28,23 @@ mod tests {
             analysis_summary: None,
             ridge_by_layer: vec![],
         };
-        
+
         app.result = Some(mock_result);
         app.focus = Focus::Image;
         app.selected_head = None; // Start with Avg
-        
+
         let key_h = KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE);
-        
+
         // 1st press: Head 0
-        app.handle_key(key_h, &rt, "");
+        app.handle_key(key_h, &rt);
         assert_eq!(app.selected_head, Some(0));
-        
+
         // 2nd press: Head 1
-        app.handle_key(key_h, &rt, "");
+        app.handle_key(key_h, &rt);
         assert_eq!(app.selected_head, Some(1));
-        
+
         // 3rd press: Back to Avg (None)
-        app.handle_key(key_h, &rt, "");
+        app.handle_key(key_h, &rt);
         assert_eq!(app.selected_head, None);
     }
 }

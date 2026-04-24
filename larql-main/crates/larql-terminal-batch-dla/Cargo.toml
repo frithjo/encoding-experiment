@@ -10,13 +10,14 @@ required-features = ["ratatui", "crossterm"]
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
-reqwest = { version = "0.12", features = ["json"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tokio = { version = "1", features = ["full"] }
 ratatui = { version = "0.26", optional = true }
 crossterm = { version = "0.27", optional = true }
+larql-lql = { path = "../larql-lql" }
 larql-terminal-renderer = { path = "../larql-terminal-renderer" }
+larql-inference = { path = "../larql-inference" }
 
 [features]
 default = ["ratatui", "crossterm"]
