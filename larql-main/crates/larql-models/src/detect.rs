@@ -1028,10 +1028,13 @@ mod tests {
     #[test]
     fn test_detect_gemma4_real_config() {
         // Test against the actual HuggingFace config.json if available
-        let config_path = std::env::var("HOME").ok().map(|h| {
-            std::path::PathBuf::from(h)
-                .join(".cache/huggingface/hub/models--google--gemma-4-31B-it")
-        });
+        let home = std::env::var("LARQL_PATHS__HOME_DIR")
+            .or_else(|_| std::env::var("HOME"))
+            .expect("LARQL_PATHS__HOME_DIR or HOME must be set for this test");
+        let cache_dir = std::env::var("LARQL_HUGGINGFACE__CACHE_DIR")
+            .unwrap_or_else(|_| ".cache/huggingface/hub".to_string());
+        let config_path = std::path::PathBuf::from(home)
+            .join(format!("{cache_dir}/models--google--gemma-4-31B-it"));
         let config_path = match config_path {
             Some(p) if p.exists() => {
                 // Find the snapshot

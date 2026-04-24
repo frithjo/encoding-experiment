@@ -22,7 +22,7 @@ fn history_path() -> Option<std::path::PathBuf> {
 }
 
 fn dirs_or_home() -> Option<std::path::PathBuf> {
-    std::env::var_os("HOME").map(std::path::PathBuf::from)
+    std::env::var_os("LARQL_PATHS__HOME_DIR").map(std::path::PathBuf::from)
 }
 
 /// Run the interactive REPL.

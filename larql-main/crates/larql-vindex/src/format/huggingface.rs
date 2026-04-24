@@ -226,32 +226,26 @@ impl PublishCallbacks for SilentPublishCallbacks {}
 
 #[cfg(feature = "huggingface")]
 fn get_hf_token() -> Result<String, VindexError> {
-    // Try environment variable first
-    if let Ok(token) = std::env::var("HF_TOKEN") {
-        return Ok(token);
-    }
+    // Require LARQL_HUGGINGFACE__TOKEN environment variable
+    let token = std::env::var("LARQL_HUGGINGFACE__TOKEN")
+        .map_err(|_| VindexError::IoError(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "LARQL_HUGGINGFACE__TOKEN environment variable not set. Set it via config/local.toml, .env, or environment variable."
+        )))?;
 
-    // Try token file
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    let token_path = PathBuf::from(&home).join(".huggingface").join("token");
+    // Try token file as fallback
+    let home = std::env::var("LARQL_PATHS__HOME_DIR")
+        .map_err(|_| VindexError::IoError(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "LARQL_PATHS__HOME_DIR environment variable not set. Set it via config/local.toml, .env, or environment variable."
+        )))?;
+    let token_path = PathBuf::from(home).join(".huggingface").join("token");
     if token_path.exists() {
-        let token = std::fs::read_to_string(&token_path)?;
-        return Ok(token.trim().to_string());
+        let file_token = std::fs::read_to_string(&token_path)?;
+        return Ok(file_token.trim().to_string());
     }
 
-    // Try newer cache location
-    let token_path = PathBuf::from(&home)
-        .join(".cache")
-        .join("huggingface")
-        .join("token");
-    if token_path.exists() {
-        let token = std::fs::read_to_string(&token_path)?;
-        return Ok(token.trim().to_string());
-    }
-
-    Err(VindexError::Parse(
-        "HuggingFace token not found. Set HF_TOKEN or run `huggingface-cli login`.".into(),
-    ))
+    Ok(token)
 }
 
 #[cfg(feature = "huggingface")]

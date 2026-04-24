@@ -190,10 +190,12 @@ pub fn resolve_model_path(model: &str) -> Result<PathBuf, ModelError> {
 
     // Try HuggingFace cache
     let cache_name = format!("models--{}", model.replace('/', "--"));
-    let home = std::env::var("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("."));
-    let hf_cache = home.join(format!(".cache/huggingface/hub/{cache_name}/snapshots"));
+    let home = std::env::var("LARQL_PATHS__HOME_DIR")
+        .map_err(|_| anyhow::anyhow!("LARQL_PATHS__HOME_DIR not set. Set it via config/local.toml, .env, or environment variable."))?
+        .into();
+    let cache_dir = std::env::var("LARQL_HUGGINGFACE__CACHE_DIR")
+        .unwrap_or_else(|_| ".cache/huggingface/hub".to_string());
+    let hf_cache = home.join(format!("{cache_dir}/{cache_name}/snapshots"));
 
     if hf_cache.is_dir() {
         // Find the snapshot that has actual model files (safetensors or config.json+weights)
