@@ -213,6 +213,21 @@ struct ServeArgs {
 }
 
 fn main() {
+    // Load configuration at startup
+    // This loads from config/default.toml, config/local.toml, .env, and LARQL__ env vars
+    let _config = match larql_core::load_config() {
+        Ok(cfg) => {
+            // Config loaded successfully - environment variables are now available
+            cfg
+        }
+        Err(e) => {
+            // Config loading failed - log warning but continue with defaults
+            eprintln!("Warning: Failed to load configuration: {e}");
+            eprintln!("Using default values and environment variables");
+            larql_core::AppConfig::default()
+        }
+    };
+
     let cli = Cli::parse();
 
     let result = match cli.command {
