@@ -132,5 +132,8 @@ def run_experiment(vindex_path: str):
 
 
 if __name__ == "__main__":
-    vindex_path = sys.argv[1] if len(sys.argv) > 1 else "/home/arty/Documents/projects/encoding-experiment/larql-main/data/bitnet_b1_58-large/vindex"
+    vindex_path = sys.argv[1] if len(sys.argv) > 1 else os.environ.get(
+        "VINDEX_PATH",
+        "/home/arty/Documents/projects/encoding-experiment/larql-main/data/bitnet_b1_58-large/vindex"
+    )
     run_experiment(vindex_path)

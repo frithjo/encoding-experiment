@@ -26,6 +26,17 @@ cd crates/larql-python
 maturin develop --release
 ```
 
+## Model Support
+
+All experiments support both BitNet and Gemma models. Set the `VINDEX_PATH` environment variable to select your model:
+
+```bash
+export VINDEX_PATH=data/bitnet_b1_58-large/vindex  # BitNet
+export VINDEX_PATH=output/gemma3-4b-v2.vindex      # Gemma
+```
+
+See [docs/model-governance.md](../docs/model-governance.md) for details on model representation policy and configuration.
+
 ## Running Experiments
 
 Experiments take a vindex path as an argument:
