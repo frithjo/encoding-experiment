@@ -54,7 +54,7 @@ cargo run -p larql-terminal-browser -- http://127.0.0.1:8000
 Explicit binary path:
 
 ```bash
-cargo run -p larql-terminal-browser -- --carbonyl-bin /home/arty/.opencode/bin/carbonyl http://127.0.0.1:8000
+cargo run -p larql-terminal-browser -- --carbonyl-bin /path/to/carbonyl http://127.0.0.1:8000
 ```
 
 Install repo component runtime:

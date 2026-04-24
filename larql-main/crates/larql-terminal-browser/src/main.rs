@@ -1,7 +1,6 @@
 //! First-party terminal browser launcher for the LARQL workbench.
 //!
-//! This delegates rendering to Carbonyl (Chromium in terminal),
-//! as described in `/home/arty/Documents/projects/carbonyl/readme.md`.
+//! This delegates rendering to Carbonyl (Chromium in terminal).
 
 use clap::Parser;
 use std::{
@@ -99,7 +98,7 @@ fn main() -> ExitCode {
                 carbonyl, err
             );
             eprintln!(
-                "Install Carbonyl (see /home/arty/Documents/projects/carbonyl/readme.md) \
+                "Install Carbonyl for terminal browser functionality \
 or install/link repo runtime via apps/terminal-runtime/scripts/install-carbonyl-runtime.sh."
             );
             return ExitCode::from(1);
