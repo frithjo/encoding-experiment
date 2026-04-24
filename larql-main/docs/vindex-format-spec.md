@@ -118,7 +118,7 @@ A vindex can be built at three levels, each adding more weight components:
 | Level | LQL Syntax | Components | Size (f16, 4B) | Enables |
 |-------|-----------|------------|-----------------|---------|
 | Browse | `EXTRACT MODEL ... INTO ...` | gate + embed + down_meta | ~3 GB | WALK, DESCRIBE, SELECT |
-| Inference | `... WITH INFERENCE` | + attn_weights + norms | ~6 GB | + INFER, EXPLAIN INFER |
+| Inference | `... WITH INFERENCE` | + attn_weights + norms | ~6 GB | + INFER, EXPLAIN INFER, ANALYZE INFER |
 | All | `... WITH ALL` | + up, down, lm_head | ~10 GB | + COMPILE |
 
 ```rust

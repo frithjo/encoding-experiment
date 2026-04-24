@@ -76,7 +76,7 @@ Three extraction levels:
 | Level | CLI Flag | LQL Syntax | Size (f16) | Enables |
 |-------|----------|-----------|-----------|---------|
 | Browse | `--level browse` (default) | `EXTRACT MODEL ... INTO ...` | ~3 GB | DESCRIBE, WALK, SELECT |
-| Inference | `--level inference` | `... WITH INFERENCE` | ~6 GB | + INFER |
+| Inference | `--level inference` | `... WITH INFERENCE` | ~6 GB | + INFER, EXPLAIN INFER, ANALYZE INFER |
 | All | `--level all` | `... WITH ALL` | ~10 GB | + COMPILE |
 
 Add `--f16` to halve file sizes with negligible accuracy loss.
@@ -140,7 +140,7 @@ LQL parser and executor. 20+ statement types across 5 categories:
 
 - **Lifecycle**: EXTRACT, COMPILE, DIFF, USE
 - **Browse**: WALK, DESCRIBE, SELECT, EXPLAIN WALK
-- **Inference**: INFER, EXPLAIN INFER
+- **Inference**: INFER, EXPLAIN INFER, ANALYZE INFER
 - **Mutation**: INSERT, DELETE, UPDATE, MERGE
 - **Patches**: BEGIN PATCH, SAVE PATCH, APPLY PATCH, SHOW PATCHES, REMOVE PATCH
 - **Introspection**: SHOW RELATIONS/LAYERS/FEATURES/MODELS/PATCHES, STATS
@@ -164,6 +164,16 @@ WALK "The capital of France is" TOP 10;
 
 -- Run inference (needs model weights in vindex)
 INFER "The capital of France is" TOP 5 COMPARE;
+
+-- Scientific attribution with explicit truth/false annotations
+ANALYZE INFER "The capital of Freedonia is"
+    MODE FACT_PROBE
+    TRUTH_SPANS ("Markov")
+    FALSE_SPANS ("Paris", "London")
+    COHERENCE_MARKERS ("The", "capital", "of", "is")
+    MAX_GENERATED_TOKENS 1
+    RIDGE_DEAD_ZONE 0.05
+    TOP 5;
 
 -- Trace the residual stream (decomposed forward pass)
 TRACE "The capital of France is" FOR "Paris";

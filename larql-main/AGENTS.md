@@ -104,7 +104,7 @@ Installs SDK plus workbench UI (starlette, jinja2, uvicorn, python-multipart). R
 ## Model Representation
 
 - **Equal model representation:** All experiments, tests, and documentation must support both bitnet and gemma models equally. When adding new experiments, ensure they work with both model families or clearly document model-specific requirements.
-- **Environment variable configuration:** Never hardcode model paths. Use `VINDEX_PATH` or `MODEL_PATH` environment variables with sensible defaults. See `.env.example` for standard environment variables.
+- **Environment variable configuration:** Never hardcode model paths. Use `LARQL_VINDEX__PATH` or `LARQL_MODEL__PATH` environment variables with sensible defaults. See `.env.example` for standard environment variables.
 - **Model-agnostic defaults:** When providing default paths in code, prefer environment variable patterns over hardcoded paths. Document which models are supported in experiment READMEs.
 - **Multi-model testing:** When adding tests or experiments, verify they work with at least two different model families before considering the implementation complete.
 

@@ -222,7 +222,7 @@ Track error buildup in residual streams.
 
 ### Batch DLA Scan
 
-**Status:** Currently implemented as server tool, migrating to LQL ANALYZE statement
+**Status:** Implemented through the shared `larql-inference` analysis engine. Exposed as `ANALYZE INFER` in LQL and as the `batch_dla_scan` server adapter.
 
 Direct Logit Attribution analysis across multiple analysis blocks. This capability provides scientific attribution with explicit truth/coherence annotations for experimental analysis.
 
@@ -242,29 +242,32 @@ Direct Logit Attribution analysis across multiple analysis blocks. This capabili
 - Generation trace with coherence markers
 
 **Canonical Flow:**
-This analysis is being migrated to the core LQL language surface as an ANALYZE statement. The canonical flow will be:
+The canonical flow is:
 - `larql-inference`: Exposes structured analysis API
 - `larql-lql`: Parses ANALYZE INFER statement, executes via structured API
 - `larql-server`: batch_dla_scan route becomes transport adapter over same API
-- `larql-terminal-batch-dla`: Consumes analysis via LQL or server adapter
+- `larql-terminal-batch-dla`: Should prefer LQL execution directly; server adapter remains transport-compatible for non-LQL clients
 
-**Planned LQL Syntax:**
+**LQL Syntax:**
 ```lql
 ANALYZE INFER "The capital of Freedonia is"
     MODE FACT_PROBE
-    TRUTH_SPANS ["Markov"]
-    FALSE_SPANS ["Paris", "London"]
-    COHERENCE_MARKERS ["The", "capital", "of", "is"]
+    TRUTH_SPANS ("Markov")
+    FALSE_SPANS ("Paris", "London")
+    COHERENCE_MARKERS ("The", "capital", "of", "is")
+    MAX_GENERATED_TOKENS 1
+    RIDGE_DEAD_ZONE 0.05
     TOP 5;
 ```
 
 **Current Access:**
-- Server HTTP endpoint: `POST /v1/tools/batch_dla_scan` (temporary, will become adapter)
-- TUI: `larql-terminal-batch-dla` crate (will migrate to LQL consumption)
+- LQL: `ANALYZE INFER ...`
+- Server HTTP endpoint: `POST /tools/call` with tool name `batch_dla_scan`
+- TUI: `larql-terminal-batch-dla` crate exports full `ANALYZE INFER ...` queries and should migrate toward direct LQL execution
 
 **Extraction Level Required:** inference
 
-**Migration Status:** In progress. See canonical flow documentation for architecture details.
+**Ownership Rule:** Scientific analysis semantics live in `larql-inference`. LQL is the first-class language surface. `batch_dla_scan` is transport, not semantic ownership.
 
 ---
 

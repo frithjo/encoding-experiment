@@ -99,15 +99,81 @@ LQL is a query language for neural network weights treated as a graph database. 
 |---|---|
 | `ANALYZE INFER` | Scientific attribution with explicit truth/coherence annotations |
 
-> Planned (not yet implemented): The ANALYZE statement family provides structured
-> scientific analysis capabilities including truth/false span resolution, coherence
-> attribution, ridge accumulation, and head DLA analysis. This statement will replace
-> the current server-only `batch_dla_scan` tool and integrate scientific analysis
-> into the core LQL language surface. See canonical flow documentation for
-> architecture details.
+**Syntax:**
 
-> **Note:** The machinery for this analysis exists in `larql-inference` and the
-> server `batch_dla_scan` route, but the LQL language surface is not yet implemented.
+```
+ANALYZE INFER <prompt_string>
+    [MODE {FACT_PROBE | WORKFLOW_PROBE}]
+    [TRUTH_SPANS ("span1", "span2", ...)]
+    [FALSE_SPANS ("span1", "span2", ...)]
+    [COHERENCE_MARKERS ("marker1", "marker2", ...)]
+    [MAX_GENERATED_TOKENS <n>]
+    [RIDGE_DEAD_ZONE <f32>]
+    [TOP <n>]
+    [FORMAT {JSON | CSV}]
+```
+
+**Clauses:**
+
+- `prompt_string`: The text to analyze
+- `MODE FACT_PROBE`: Exact span resolution, truth/false attribution (default when not specified)
+- `MODE WORKFLOW_PROBE`: Mass-based attribution, coherence tracking
+- `TRUTH_SPANS`: List of ground-truth spans for attribution
+- `FALSE_SPANS`: List of materially false spans for false attribution
+- `COHERENCE_MARKERS`: List of coherence marker spans
+- `MAX_GENERATED_TOKENS`: Maximum number of tokens to generate (default: 1)
+- `RIDGE_DEAD_ZONE`: Ridge dead zone threshold (default: 0.05)
+- `TOP`: Number of top predictions to return (default: 5)
+- `FORMAT JSON`: Output machine-readable JSON instead of formatted text
+- `FORMAT CSV`: Not implemented (parse-time error)
+
+**Output:**
+
+By default, returns formatted text with:
+- Analysis summary (first false position/token, materially false detection)
+- Top coherence heads (layer, head, source token, contribution)
+- Top false content heads (layer, head, source token, contribution)
+- Ridge by layer
+- Token analysis (position, token, probability, label, truth/false/coherence masses, ridge)
+- Generation trace
+- Top predictions
+
+With `FORMAT JSON`, returns the full structured `AnalysisResult` as JSON, including:
+- `attention`: Per-layer attention matrices
+- `logit_lens`: Per-layer logit lens data
+- `head_dla`: Per-head direct logit attribution
+- `num_layers`: Number of layers
+- `seq_len`: Sequence length
+- `tokens`: Token IDs
+- `strings`: Token strings
+- `predictions`: Top predictions with probabilities
+- `generation_trace`: Step-by-step generation data
+- `token_analysis`: Per-token attribution analysis
+- `analysis_summary`: High-level analysis summary
+- `ridge_by_layer`: Ridge values per layer
+
+**Example:**
+
+```
+ANALYZE INFER "The capital of France is Paris."
+    MODE FACT_PROBE
+    TRUTH_SPANS ("Paris", "France")
+    FALSE_SPANS ("London")
+    TOP 10
+```
+
+**Implementation Note:**
+
+This statement delegates to the structured analysis API in `larql-inference` (the `analyze_infer` function), which implements the canonical scientific analysis logic previously available only via the server `batch_dla_scan` tool. The executor formats the structured result for human or machine consumption.
+
+**Error Cases:**
+
+- `ANALYZE INFER requires model weights`: Vindex was built without `--include-weights` or `WITH INFERENCE`. Remedy: Rebuild vindex with inference-level extraction.
+- `Empty prompt results in no tokens`: Prompt string tokenizes to empty. Remedy: Provide non-empty prompt.
+- `Failed to encode analysis span`: Span text cannot be tokenized. Remedy: Check span text encoding.
+- `Analysis span tokenized to empty`: Span text tokenizes to empty. Remedy: Use non-empty span text.
+- `Unsupported analysis mode`: Invalid mode string. Remedy: Use `fact_probe` or `workflow_probe`.
+- `CSV format is not yet implemented`: FORMAT CSV clause rejected at parse time. Remedy: Use FORMAT JSON or omit FORMAT clause.
 
 ---
 
@@ -138,9 +204,9 @@ EXTRACT MODEL <model_id> INTO <vindex_path>
 --   Enables: WALK, DESCRIBE, SELECT, EXPLAIN WALK
 --   Size: ~3 GB (f16)
 --
--- WITH INFERENCE: adds attention weights for INFER.
+-- WITH INFERENCE: adds attention weights for inference and analysis.
 --   Adds: attn_weights (Q, K, V, O per layer)
---   Enables: + INFER, EXPLAIN INFER
+--   Enables: + INFER, EXPLAIN INFER, ANALYZE INFER
 --   Size: ~6 GB (f16)
 --
 -- WITH ALL: adds all weights for COMPILE.
@@ -727,6 +793,7 @@ LQL abstracts over two backends through a common trait. Every query statement wo
 | EXPLAIN WALK | ✅ Walk trace from index | ✅ Walk trace from matmul |
 | INFER | ✅ With `--include-weights` | ✅ Full forward pass |
 | EXPLAIN INFER | ✅ With `--include-weights` | ✅ Full forward pass + trace |
+| ANALYZE INFER | ✅ With `--include-weights` | ✅ Full forward pass + structured attribution |
 | SHOW RELATIONS | ✅ From label cache | ✅ Cluster on-the-fly (slow) |
 | SHOW LAYERS | ✅ From metadata | ✅ Computed from weights |
 | SHOW FEATURES | ✅ Index lookup | ✅ Dense scan per layer |
@@ -1441,12 +1508,13 @@ DESCRIBE "Einstein" STREAM LIMIT 20;
 
 The layer-level byte offsets in gate_vectors.bin enable this — each layer can be fetched and scanned independently. For remote vindexes, the client sees results from L14 while L15-27 are still downloading.
 
-### 11.6 Planned LQL Surfaces (machinery exists, language doesn't)
+### 11.6 Planned LQL Surfaces (language still missing)
 
 These are not aspirational research — the underlying capabilities live in
 `larql-inference` and `larql-vindex` today. They are listed here because
-the LQL surface for them has not yet landed, and the spec previously
-described grammars that did not match the parser.
+their LQL surface has not yet landed. `ANALYZE INFER` is no longer part of
+this section: it is implemented in the parser/executor and is part of the
+canonical language surface.
 
 - **`TRACE ... DIFF <prompt_b> [AT LAYER <n>]`** — cross-prompt comparison
   of two captured traces (cosine, delta_norm, side-by-side top-1).

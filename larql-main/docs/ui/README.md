@@ -132,13 +132,13 @@ UI consumers (TUI, Workbench, etc.)
 
 **UI Adapter Pattern:**
 - UIs should not implement scientific analysis logic
-- UIs should consume LQL ANALYZE statements or call server adapters
+- UIs should prefer executing LQL `ANALYZE INFER` directly and only fall back to server adapters where a direct LQL path is not available
 - Server tool routes are transport adapters, not analysis owners
 - Scientific semantics live in core crates (larql-inference)
 - TUI recipes compile to explicit LQL ANALYZE clauses
 
 **Example:**
-- `larql-terminal-batch-dla` should call LQL ANALYZE or server adapter
+- `larql-terminal-batch-dla` should migrate from direct `batch_dla_scan` transport calls to executing `ANALYZE INFER` more directly
 - `larql-python` workbench should execute LQL statements, not duplicate logic
 - Server `batch_dla_scan` route is a thin adapter over larql-inference API
 
