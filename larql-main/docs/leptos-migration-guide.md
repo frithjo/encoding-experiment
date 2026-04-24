@@ -1,6 +1,8 @@
 # Leptos Migration Guide: Model-Specific Tools
 
-This document describes the migration patterns for moving model-specific tools from React (chuk-kv-anatomist) to Leptos with larql-server backend.
+**Status:** Active Migration
+
+This document describes the migration patterns for moving model-specific tools from React (chuk-kv-anatomist) to Leptos with larql-server backend. See [docs/ui/README.md](docs/ui/README.md) for overall UI strategy and interface status.
 
 ## Architecture Overview
 

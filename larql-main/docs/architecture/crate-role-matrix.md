@@ -32,7 +32,7 @@ recommended migration path.
 | `larql-cli` | interface | User CLI commands and orchestration | critical | stable | Keep in interface; strict command-surface compatibility |
 | `larql-server` | interface | Network API surface (HTTP/gRPC) | critical | stable | Keep in interface; codify API compatibility policy |
 | `larql-python` | interface | Python bindings and UI flows | critical | managed | Keep in interface; consider split between SDK vs UI later |
-| `larql-terminal-browser` | interface | Terminal-first browsing UX | medium | iterative | Keep in interface; evaluate if long-term supported surface |
+| `larql-terminal-browser` | interface | Terminal-first browsing UX (primary interface) | high | stable | Keep in interface; primary interface for terminal workflows. See ui/README.md for UI strategy. |
 | `kv-cache-benchmark` | experimental | Benchmark/prototyping for KV strategies | low | iterative | Keep isolated; avoid runtime coupling into interface crates |
 
 ## Priority Actions by Crate
@@ -55,8 +55,6 @@ recommended migration path.
 - `larql-python`:
   - Evaluate split of Python SDK core vs UI app surface if release cadence or
     dependency policy diverges.
-- `larql-terminal-browser`:
-  - Decide whether it remains release-facing or transitions to optional tooling.
 
 ## Ownership / PR Checklist
 

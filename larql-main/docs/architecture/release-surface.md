@@ -3,14 +3,16 @@
 This file defines what is considered release-facing versus internal/experimental
 for the current workspace.
 
+**Note:** Release surfaces are interfaces to the core analytic framework (vindex + LQL). The core value is the analytic capability—viewing transformer models as graph-like databases and providing deep profiling tools. See [VISION.md](../../VISION.md) for the core analytic framework vision. See [ui/README.md](../ui/README.md) for UI strategy and interface options.
+
 ## Release-Facing Surfaces
 
-These crates form the user-facing product surface:
+These crates form the user-facing product surface as interfaces to the analytic framework:
 
 - `crates/larql-cli` (CLI binary)
 - `crates/larql-server` (HTTP/gRPC service surface)
 - `crates/larql-python` (Python package and UI integration)
-- `crates/larql-terminal-browser` (terminal browsing interface)
+- `crates/larql-terminal-browser` (terminal browsing interface - primary interface)
 
 ## Core Runtime Surfaces (Not Directly User-Facing)
 

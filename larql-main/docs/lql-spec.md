@@ -93,6 +93,22 @@ LQL is a query language for neural network weights treated as a graph database. 
 > Planned (not yet implemented): `TRACE ... DIFF`, boundary stores, tiered
 > context stores. See §11.
 
+### 2.8 Scientific Analysis (requires model weights in vindex)
+
+| Statement | Purpose |
+|---|---|
+| `ANALYZE INFER` | Scientific attribution with explicit truth/coherence annotations |
+
+> Planned (not yet implemented): The ANALYZE statement family provides structured
+> scientific analysis capabilities including truth/false span resolution, coherence
+> attribution, ridge accumulation, and head DLA analysis. This statement will replace
+> the current server-only `batch_dla_scan` tool and integrate scientific analysis
+> into the core LQL language surface. See canonical flow documentation for
+> architecture details.
+
+> **Note:** The machinery for this analysis exists in `larql-inference` and the
+> server `batch_dla_scan` route, but the LQL language surface is not yet implemented.
+
 ---
 
 ## 3. Grammar
