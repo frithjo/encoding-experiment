@@ -22,4 +22,4 @@ pub use video::{FfmpegDecoder, VideoFrame, VideoProbe};
 pub mod ratatui_impl;
 
 #[cfg(feature = "ratatui")]
-pub use ratatui_impl::{AtomicGraphicsBackend, GraphicsLayer, ImageWidget, draw_frame};
+pub use ratatui_impl::{draw_frame, AtomicGraphicsBackend, GraphicsLayer, ImageWidget};

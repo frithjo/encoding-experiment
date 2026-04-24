@@ -50,8 +50,7 @@ impl VideoProbe {
             ));
         }
 
-        let stdout = String::from_utf8(output.stdout)
-            .map_err(|e| e.to_string())?;
+        let stdout = String::from_utf8(output.stdout).map_err(|e| e.to_string())?;
         let mut lines = stdout
             .lines()
             .map(str::trim)

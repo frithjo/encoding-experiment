@@ -1,6 +1,6 @@
 use larql_terminal_renderer::{
-    FfmpegDecoder, VideoProbe, fit_to_pixels, get_terminal_size_with_pixel_query, resize_nearest,
-    BackendType, Image, Renderer,
+    fit_to_pixels, get_terminal_size_with_pixel_query, resize_nearest, BackendType, FfmpegDecoder,
+    Image, Renderer, VideoProbe,
 };
 use std::env;
 use std::path::PathBuf;
@@ -125,7 +125,7 @@ fn run_interactive_image(image: Image, mut renderer: Renderer) -> Result<(), Str
         style::force_color_output,
         terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     };
-    use larql_terminal_renderer::{AtomicGraphicsBackend, ImageWidget, draw_frame};
+    use larql_terminal_renderer::{draw_frame, AtomicGraphicsBackend, ImageWidget};
     use ratatui::{
         layout::{Constraint, Direction, Layout},
         widgets::{Block, Borders, Paragraph},
@@ -187,37 +187,36 @@ fn run_interactive_image(image: Image, mut renderer: Renderer) -> Result<(), Str
 
     loop {
         draw_frame(&mut terminal, &renderer, |frame, graphics_layer| {
-                let chunks = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([Constraint::Min(1), Constraint::Length(3)])
-                    .split(frame.size());
-                let image_area = chunks[0];
-                let block = Block::default().borders(Borders::ALL).title("termimg");
-                let inner = block.inner(image_area);
-                frame.render_widget(block, image_area);
-                frame.render_widget(
-                    ImageWidget::new(&image, &renderer)
-                        .zoom(zoom)
-                        .offset(offset_x, offset_y)
-                        .z_index(-1),
-                    inner,
-                );
-                graphics_layer.add_with_view(&image, inner, offset_x, offset_y, zoom, -1);
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Min(1), Constraint::Length(3)])
+                .split(frame.size());
+            let image_area = chunks[0];
+            let block = Block::default().borders(Borders::ALL).title("termimg");
+            let inner = block.inner(image_area);
+            frame.render_widget(block, image_area);
+            frame.render_widget(
+                ImageWidget::new(&image, &renderer)
+                    .zoom(zoom)
+                    .offset(offset_x, offset_y)
+                    .z_index(-1),
+                inner,
+            );
+            graphics_layer.add_with_view(&image, inner, offset_x, offset_y, zoom, -1);
 
-                let help = if show_inspect {
-                    format!(
+            let help = if show_inspect {
+                format!(
                         "backend={:?} zoom={:.2} pan=({:.2},{:.2}) | arrows pan | +/- zoom | b backend | i inspect | q quit",
                         renderer.backend_type, zoom, offset_x, offset_y
                     )
-                } else {
-                    "arrows pan | +/- zoom | b backend | i inspect | q quit".to_string()
-                };
-                frame.render_widget(
-                    Paragraph::new(help).block(Block::default().borders(Borders::ALL)),
-                    chunks[1],
-                );
-            })
-        ?;
+            } else {
+                "arrows pan | +/- zoom | b backend | i inspect | q quit".to_string()
+            };
+            frame.render_widget(
+                Paragraph::new(help).block(Block::default().borders(Borders::ALL)),
+                chunks[1],
+            );
+        })?;
 
         if event::poll(Duration::from_millis(100)).map_err(|e| e.to_string())? {
             if let Event::Key(key) = event::read().map_err(|e| e.to_string())? {
@@ -294,7 +293,7 @@ fn run_interactive_video(
         style::force_color_output,
         terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     };
-    use larql_terminal_renderer::{AtomicGraphicsBackend, ImageWidget, draw_frame};
+    use larql_terminal_renderer::{draw_frame, AtomicGraphicsBackend, ImageWidget};
     use ratatui::{
         layout::{Constraint, Direction, Layout},
         widgets::{Block, Borders, Paragraph},
@@ -354,7 +353,9 @@ fn run_interactive_video(
                 .constraints([Constraint::Min(1), Constraint::Length(3)])
                 .split(frame.size());
             let image_area = chunks[0];
-            let block = Block::default().borders(Borders::ALL).title("termimg video");
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .title("termimg video");
             let inner = block.inner(image_area);
             frame.render_widget(block, image_area);
             frame.render_widget(

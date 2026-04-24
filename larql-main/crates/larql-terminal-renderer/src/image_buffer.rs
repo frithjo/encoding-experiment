@@ -1,6 +1,6 @@
 use rayon::prelude::*;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 use std::sync::Mutex;
 
 static NEXT_IMAGE_ID: AtomicU32 = AtomicU32::new(1);
@@ -42,9 +42,7 @@ pub struct Image {
 #[derive(Clone)]
 pub enum ImageSourceKind {
     Generated,
-    OriginalPng {
-        bytes: Arc<Vec<u8>>,
-    },
+    OriginalPng { bytes: Arc<Vec<u8>> },
 }
 
 impl Image {

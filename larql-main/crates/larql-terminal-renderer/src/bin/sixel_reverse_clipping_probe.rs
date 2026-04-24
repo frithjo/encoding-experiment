@@ -3,8 +3,8 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use larql_terminal_renderer::{
-    AtomicGraphicsBackend, BackendType, GraphicsLayer, Image, ImageWidget, Renderer, Rgb,
-    draw_frame,
+    draw_frame, AtomicGraphicsBackend, BackendType, GraphicsLayer, Image, ImageWidget, Renderer,
+    Rgb,
 };
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},

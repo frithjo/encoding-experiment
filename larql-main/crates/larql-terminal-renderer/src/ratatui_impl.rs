@@ -24,6 +24,7 @@ pub struct ImageWidget<'a> {
     offset_y: f32,
     zoom: f32,
     z_index: i32,
+    labels: Option<&'a [String]>,
 }
 
 #[cfg(feature = "ratatui")]
@@ -36,7 +37,13 @@ impl<'a> ImageWidget<'a> {
             offset_y: 0.0,
             zoom: 1.0,
             z_index: 0,
+            labels: None,
         }
+    }
+
+    pub fn labels(mut self, labels: &'a [String]) -> Self {
+        self.labels = Some(labels);
+        self
     }
 
     pub fn z_index(mut self, z: i32) -> Self {
@@ -99,6 +106,65 @@ impl<'a> ImageWidget<'a> {
             }
         }
     }
+
+    fn render_labels(&self, area: Rect, buf: &mut Buffer) {
+        let Some(labels) = self.labels else {
+            return;
+        };
+        if labels.is_empty() || area.width < 5 || area.height < 5 {
+            return;
+        }
+
+        let view_w = (self.image.width as f32 / self.zoom) as usize;
+        let view_h = (self.image.height as f32 / self.zoom) as usize;
+        let start_x = (self.offset_x * (self.image.width - view_w) as f32) as usize;
+        let start_y = (self.offset_y * (self.image.height - view_h) as f32) as usize;
+
+        use ratatui::style::{Color, Style};
+        let label_style = Style::default().fg(Color::Yellow).bg(Color::Black);
+
+        // X axis (Top)
+        let mut next_available_x = 0;
+        for x in 0..area.width {
+            if x < next_available_x {
+                continue;
+            }
+            let img_x = start_x + (x as f32 / area.width as f32 * view_w as f32) as usize;
+            if let Some(label) = labels.get(img_x) {
+                for (i, c) in label.chars().enumerate() {
+                    if x + i as u16 >= area.width {
+                        break;
+                    }
+                    let cell = buf.get_mut(area.left() + x + i as u16, area.top());
+                    cell.set_char(c);
+                    cell.set_style(label_style);
+                    cell.set_skip(false);
+                    next_available_x = x + i as u16 + 2;
+                }
+            }
+        }
+
+        // Y axis (Left)
+        let mut next_available_y = 0;
+        for y in 0..area.height {
+            if y < next_available_y {
+                continue;
+            }
+            let img_y = start_y + (y as f32 / area.height as f32 * view_h as f32) as usize;
+            if let Some(label) = labels.get(img_y) {
+                for (i, c) in label.chars().take(5).enumerate() {
+                    if i as u16 >= area.width {
+                        break;
+                    }
+                    let cell = buf.get_mut(area.left() + i as u16, area.top() + y);
+                    cell.set_char(c);
+                    cell.set_style(label_style);
+                    cell.set_skip(false);
+                }
+                next_available_y = y + 1;
+            }
+        }
+    }
 }
 
 #[cfg(feature = "ratatui")]
@@ -120,6 +186,7 @@ impl<'a> Widget for ImageWidget<'a> {
                 }
             }
         }
+        self.render_labels(area, buf);
     }
 }
 
@@ -583,7 +650,10 @@ mod tests {
 
         let fragments = subtract_occlusion(area, &buf);
 
-        assert_eq!(fragments, vec![Rect::new(0, 0, 1, 2), Rect::new(3, 0, 1, 2)]);
+        assert_eq!(
+            fragments,
+            vec![Rect::new(0, 0, 1, 2), Rect::new(3, 0, 1, 2)]
+        );
     }
 
     #[test]
@@ -591,7 +661,8 @@ mod tests {
         let area = Rect::new(0, 0, 4, 2);
         let mut buf = Buffer::empty(area);
         for x in area.left()..area.right() {
-            buf.get_mut(x, 0).set_style(Style::default().fg(Color::Yellow));
+            buf.get_mut(x, 0)
+                .set_style(Style::default().fg(Color::Yellow));
         }
 
         assert_eq!(subtract_occlusion(area, &buf), vec![area]);
