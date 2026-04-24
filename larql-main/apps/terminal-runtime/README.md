@@ -14,8 +14,11 @@ This component owns the terminal browser runtime used by the LARQL workbench.
 From `larql-main/`:
 
 ```bash
+# Auto-download pinned version (recommended)
 ./apps/terminal-runtime/scripts/install-carbonyl-runtime.sh
 ```
+
+This downloads the pinned Carbonyl release (see `CARBONYL_VERSION` for version/SHA256) and installs the minimal runtime subset.
 
 Or with explicit source path:
 
