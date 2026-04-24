@@ -13,7 +13,9 @@ LARQL experiments must support multiple model families equally. No single model 
 
 Use environment variables for model paths to ensure flexibility:
 
-- `VINDEX_PATH`: Primary vindex path (default varies by experiment)
+- `_PATH`:Primary vindex path (default varies by experiment)
+- `BITNET_VINDEX_PATH`: Bitnet-specific path
+- `GEMMA_VINDEX_PATH`: Gemma-specific path
 - `BITNET_VINDEX_PATH`: Bitnet-specific path
 - `GEMMA_VINDEX_PATH`: Gemma-specific path
 - `BITNET_MODEL_ID`: HuggingFace model ID for BitNet extraction
@@ -21,9 +23,9 @@ Use environment variables for model paths to ensure flexibility:
 
 Example:
 ```bash
-export VINDEX_PATH=data/bitnet_b1_58-large/vindex
+export _PATH=ata/bitnet_b1_58-large/vindex
 # or
-export VINDEX_PATH=output/gemma3-4b-v2.vindex
+VINDEX_PATH=output/gemma3-4b-v2.vindex
 ```
 
 See `.env.example` for a complete template.
@@ -40,9 +42,9 @@ When creating new experiments:
 ### 2. Environment Variables
 Never hardcode model paths in code. Use:
 ```python
-vindex_path = os.environ.get("VINDEX_PATH", "default/path/to/vindex")
+vindex_path = os.environ.get("LARQL_VINDEX__PATH", "default/path/to/vindex")
 ```
-Or in shell scripts:
+Or in shell scripts:LARQL__
 ```bash
 ./target/release/larql-server ${VINDEX_PATH:-default/path} --port 8080
 ```
