@@ -36,7 +36,7 @@ mod attention_projections {
     #[test]
     fn qkv_projection() {
         // h_norm @ W_q.T: [seq, hidden] x [hidden, num_heads*head_dim] → [seq, num_heads*head_dim]
-        let backend = CpuBackend;
+        let backend = CpuBackend::default();
         let h_norm = synth_matrix(6, 256, 1); // scaled-down hidden
         let w_q = synth_matrix(256, 256, 2); // [out, in] — transposed in dot_proj
         let result = backend.matmul_transb(h_norm.view(), w_q.view());
@@ -49,7 +49,7 @@ mod attention_projections {
     #[test]
     fn qk_transpose() {
         // Q @ K^T: [seq, head_dim] x [seq, head_dim] → [seq, seq]
-        let backend = CpuBackend;
+        let backend = CpuBackend::default();
         let q = synth_matrix(6, 64, 10);
         let k = synth_matrix(6, 64, 20);
         let scores = backend.matmul_transb(q.view(), k.view());
@@ -61,7 +61,7 @@ mod attention_projections {
     #[test]
     fn scores_times_v() {
         // softmax(scores) @ V: [seq, seq] x [seq, head_dim] → [seq, head_dim]
-        let backend = CpuBackend;
+        let backend = CpuBackend::default();
         // Simulate softmax output (row-stochastic)
         let mut scores = Array2::<f32>::zeros((6, 6));
         for i in 0..6 {
@@ -77,7 +77,7 @@ mod attention_projections {
     #[test]
     fn output_projection() {
         // attn_out @ W_o.T: [seq, num_heads*head_dim] x [num_heads*head_dim, hidden]
-        let backend = CpuBackend;
+        let backend = CpuBackend::default();
         let attn = synth_matrix(6, 256, 40);
         let w_o = synth_matrix(256, 256, 50);
         let out = backend.matmul_transb(attn.view(), w_o.view());
@@ -123,7 +123,7 @@ mod ffn {
     #[test]
     fn gate_projection() {
         // x @ W_gate.T: [seq, hidden] x [hidden, intermediate]
-        let backend = CpuBackend;
+        let backend = CpuBackend::default();
         let x = synth_matrix(6, 256, 300);
         let w_gate = synth_matrix(512, 256, 301); // [intermediate, hidden]
         let gate = backend.matmul_transb(x.view(), w_gate.view());
@@ -132,7 +132,7 @@ mod ffn {
 
     #[test]
     fn up_projection() {
-        let backend = CpuBackend;
+        let backend = CpuBackend::default();
         let x = synth_matrix(6, 256, 302);
         let w_up = synth_matrix(512, 256, 303);
         let up = backend.matmul_transb(x.view(), w_up.view());
@@ -142,7 +142,7 @@ mod ffn {
     #[test]
     fn down_projection() {
         // activation @ W_down.T: [seq, intermediate] x [intermediate, hidden]
-        let backend = CpuBackend;
+        let backend = CpuBackend::default();
         let act = synth_matrix(6, 512, 304);
         let w_down = synth_matrix(256, 512, 305); // [hidden, intermediate]
         let out = backend.matmul_transb(act.view(), w_down.view());
@@ -156,7 +156,7 @@ mod logits {
     #[test]
     fn final_projection() {
         // last_hidden @ lm_head.T: [1, hidden] x [hidden, vocab]
-        let backend = CpuBackend;
+        let backend = CpuBackend::default();
         let hidden = synth_matrix(1, 256, 400);
         let lm_head = synth_matrix(1000, 256, 401); // [vocab, hidden]
         let logits = backend.matmul_transb(hidden.view(), lm_head.view());
@@ -187,7 +187,7 @@ mod factory {
 
     #[test]
     fn cpu_and_default_agree() {
-        let cpu = CpuBackend;
+        let cpu = CpuBackend::default();
         let def = default_backend();
         let a = synth_matrix(8, 16, 600);
         let b = synth_matrix(16, 12, 601);
@@ -203,7 +203,7 @@ mod factory {
 
     #[test]
     fn cpu_and_default_transb_agree() {
-        let cpu = CpuBackend;
+        let cpu = CpuBackend::default();
         let def = default_backend();
         let a = synth_matrix(8, 16, 700);
         let b = synth_matrix(12, 16, 701);
@@ -235,7 +235,7 @@ mod metal_tests {
     #[test]
     fn metal_matmul_matches_cpu() {
         let metal = MetalBackend::new_default().expect("Metal unavailable");
-        let cpu = CpuBackend;
+        let cpu = CpuBackend::default();
 
         let a = synth_matrix(32, 128, 800);
         let b = synth_matrix(128, 64, 801);
@@ -252,7 +252,7 @@ mod metal_tests {
     #[test]
     fn metal_transb_matches_cpu() {
         let metal = MetalBackend::new().expect("Metal unavailable");
-        let cpu = CpuBackend;
+        let cpu = CpuBackend::default();
 
         let a = synth_matrix(32, 128, 802);
         let b = synth_matrix(64, 128, 803);
@@ -292,7 +292,7 @@ mod metal_tests {
     fn metal_small_matrix_fallback() {
         // Matrices below GPU_MIN_DIM should fall back to CPU and still be correct.
         let metal = MetalBackend::new().expect("Metal unavailable");
-        let cpu = CpuBackend;
+        let cpu = CpuBackend::default();
 
         let a = synth_matrix(4, 8, 1100);
         let b = synth_matrix(8, 3, 1101);
@@ -308,7 +308,7 @@ mod metal_tests {
     fn metal_large_attention_scale() {
         // Full attention-scale: 10 heads, seq=24, head_dim=256
         let metal = MetalBackend::new().expect("Metal unavailable");
-        let cpu = CpuBackend;
+        let cpu = CpuBackend::default();
 
         let q = synth_matrix(24, 256, 1200);
         let k = synth_matrix(24, 256, 1201);

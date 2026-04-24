@@ -97,7 +97,7 @@ pub fn capture_ffn_activation_matrix(
         // `trace_forward_full`'s capture path but without the top-K
         // truncation that happens there.
         let need_activation = l == layer;
-        let (h_new, activation, _, _) = match crate::forward::layer::run_layer_with_capture(
+        let (h_new, activation, _, _, _) = match crate::forward::layer::run_layer_with_capture(
             weights,
             &h,
             l,
@@ -265,7 +265,7 @@ pub fn trace_forward_full(
         let need_activation = capture_activations && is_capture_layer;
         let need_attention = capture_attention && is_capture_layer;
 
-        let (h_new, activation, attn_weights, _) = match run_layer_with_capture(
+        let (h_new, activation, attn_weights, _, _) = match run_layer_with_capture(
             weights,
             &h,
             layer,

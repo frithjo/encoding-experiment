@@ -197,7 +197,7 @@ fn main() {
     );
 
     // Always benchmark CPU
-    let cpu = CpuBackend;
+    let cpu = CpuBackend::default();
     bench_backend("CPU", &cpu);
 
     // Benchmark default (may be Metal if feature enabled)

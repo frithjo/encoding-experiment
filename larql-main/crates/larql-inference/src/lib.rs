@@ -1,5 +1,6 @@
 // blas_src link is provided by larql-tensor (renamed as `ndarray`) via the `blas` feature.
 
+pub mod analysis;
 pub mod attention;
 pub mod capture;
 pub mod error;
@@ -31,6 +32,11 @@ pub use larql_compute::{
 
 // Re-export essentials at crate root.
 pub use attention::AttentionWeights;
+pub use analysis::{
+    analyze_infer, AnalysisMode, AnalysisRequest, AnalysisResult, AnalysisSummary, AttentionLayer,
+    FirstFalseOrigin, GeneratedStep, HeadContribution, HeadDlaLayer, LayerRidge, LogitLensLayer,
+    StepTopHeadSummary, TokenAnalysis,
+};
 pub use capture::{
     CaptureCallbacks, CaptureConfig, InferenceModel, TopKEntry, VectorFileHeader, VectorRecord,
 };

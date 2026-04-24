@@ -39,7 +39,7 @@ fn main() {
     println!("=== MatMul Backend Demo ===\n");
 
     // ── 1. Backend detection + calibration ──
-    let cpu = CpuBackend;
+    let cpu = CpuBackend::default();
     println!("CPU backend: {}", cpu.name());
 
     let t0 = Instant::now();

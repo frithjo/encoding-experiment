@@ -45,6 +45,13 @@ pub struct PredictResult {
     pub predictions: Vec<(String, f64)>,
 }
 
+#[derive(Clone, Debug)]
+pub struct TokenPrediction {
+    pub token_id: u32,
+    pub text: String,
+    pub probability: f64,
+}
+
 /// Prediction result with per-layer residual capture.
 pub struct PredictResultWithResiduals {
     pub predictions: Vec<(String, f64)>,
@@ -56,6 +63,9 @@ pub struct PredictResultWithAttention {
     pub predictions: Vec<(String, f64)>,
     pub attention: Vec<LayerAttentionCapture>,
     pub residuals: Vec<(usize, Vec<f32>)>,
+    pub logit_lens: Vec<(usize, Vec<(String, f64)>)>,
+    pub head_dla: Vec<(usize, Vec<Vec<f32>>)>, // (layer, head_index -> DLA_vector)
+    pub final_hidden: Vec<f32>,
 }
 
 /// Per-layer computation strategy.
@@ -112,9 +122,11 @@ pub use embed::embed_tokens_pub;
 pub use layer::{run_attention_public, run_ffn};
 pub use memit::{run_memit, MemitFact, MemitFactResult, MemitResult};
 pub use predict::{
-    logit_lens_top1, logits_to_predictions_pub, predict, predict_from_hidden,
-    predict_from_hidden_with_ffn, predict_with_ffn, predict_with_ffn_attention,
-    predict_with_ffn_trace, predict_with_router, predict_with_strategy, predict_with_temperature,
+    hidden_vec_to_token_predictions, hidden_vec_token_probability,
+    incremental_forward_append_token, logit_lens_top1, logits_to_predictions_pub, predict,
+    predict_from_hidden, predict_from_hidden_with_ffn, predict_with_ffn,
+    predict_with_ffn_attention, predict_with_ffn_trace, predict_with_router, predict_with_strategy,
+    predict_with_temperature, prepare_incremental_forward_state, IncrementalForwardState,
 };
 pub use trace::{
     calibrate_scalar_gains, capture_decoy_residuals, capture_ffn_activation_matrix,
