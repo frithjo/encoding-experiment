@@ -139,10 +139,198 @@ pre {
   color: var(--tty-muted);
 }
 
+/* Minimal header for task switcher layout */
 .site-header {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
   gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--tty-border);
+}
+
+.task-switcher {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.task-switcher-label {
+  color: var(--tty-muted);
+  font-size: 0.85em;
+  margin-right: 0.25rem;
+}
+
+.task-link {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--tty-border);
+  background: var(--tty-bg);
+  color: var(--tty-fg);
+  text-decoration: none;
+  border-radius: 2px;
+  font-size: 0.85em;
+}
+
+.task-link:hover {
+  border-color: var(--tty-accent);
+  color: var(--tty-accent);
+}
+
+.task-link.active {
+  border-color: var(--tty-accent);
+  background: var(--tty-surface);
+  color: var(--tty-accent);
+  font-weight: bold;
+}
+
+.keyboard-hints {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.hint {
+  padding: 0.15rem 0.4rem;
+  border: 1px solid var(--tty-border);
+  background: var(--tty-bg);
+  color: var(--tty-dim);
+  font-size: 0.8em;
+  border-radius: 2px;
+}
+
+/* Compact header for small terminals */
+@media (max-width: 60ch) {
+  .site-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    margin-bottom: 1rem;
+  }
+  
+  .keyboard-hints {
+    align-self: flex-end;
+  }
+  
+  .task-switcher {
+    gap: 0.25rem;
+  }
+  
+  .task-link {
+    padding: 0.2rem 0.4rem;
+    font-size: 0.8em;
+  }
+}
+
+/* Minimal task layout */
+.page-title {
+  margin: 0 0 1.5rem;
+  font-size: 1.35rem;
+  font-weight: normal;
+  color: var(--tty-fg);
+}
+
+.task-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.task-form label {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--tty-fg);
+  font-weight: normal;
+}
+
+.task-form input,
+.task-form select,
+.task-form textarea {
+  width: 100%;
+  padding: 0.4rem;
+  background: var(--tty-bg);
+  border: 1px solid var(--tty-border);
+  color: var(--tty-fg);
+  border-radius: 2px;
+}
+
+.task-form input:focus,
+.task-form select:focus,
+.task-form textarea:focus {
+  outline: none;
+  border-color: var(--tty-accent);
+}
+
+.form-row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.form-col {
+  flex: 1;
+  min-width: 6rem;
+}
+
+.checkbox-col {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+}
+
+.submit-button {
+  padding: 0.6rem 1.2rem;
+  background: var(--tty-accent);
+  color: #0d0d0d;
+  border: none;
+  border-radius: 2px;
+  font-size: 0.95em;
+  font-weight: bold;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.submit-button:hover {
+  background: var(--tty-accent-dim);
+}
+
+.submit-button kbd {
+  margin-left: 0.5rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Compact forms for small terminals */
+@media (max-width: 60ch) {
+  .page-title {
+    margin: 0 0 1rem;
+    font-size: 1.2rem;
+  }
+  
+  .task-form {
+    gap: 0.75rem;
+  }
+  
+  .task-form label {
+    margin-bottom: 0.25rem;
+  }
+  
+  .form-row {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .form-col {
+    min-width: auto;
+  }
+  
+  .submit-button {
+    width: 100%;
+    align-self: stretch;
+  }
 }
 
 @media (min-width: 70ch) {

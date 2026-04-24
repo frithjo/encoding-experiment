@@ -1,39 +1,19 @@
 {% extends "base.html" %}
 
 {% block content %}
-{% if current_workspace %}
-<section class="panel lql-hints">
-  <h2>Relation introspection</h2>
-  <p class="panel-lead">Same vindex as the workspace. In the console, try <code>SHOW RELATIONS;</code> (layers L14–27 by default, plus raw token stats in verbose/raw modes) and <code>STATS;</code> for model + classifier counts. Python also exposes <code>session.vindex.relations()</code> (cluster catalogue) and <code>session.vindex.probe_relations()</code> (probe names from <code>feature_labels.json</code>). The graph API’s <code>larql.load_graph(...).list_relations()</code> is unrelated — that lists edge types in a loaded graph CSV.</p>
-</section>
-{% endif %}
+<h1 class="page-title">LQL Console</h1>
 
-<section class="panel">
-  <h2>LQL Console</h2>
-  <p class="panel-lead">Run raw LQL. Semicolon optional.</p>
-  <form method="post" class="stack-form" id="lql-form">
-    <label for="query">Query</label>
-    <textarea id="query" name="query" rows="10">{{ query }}</textarea>
-    <button type="submit" aria-label="Execute LQL query">Run query</button>
-    <div class="checkbox-row lql-async-toggle">
-      <input type="checkbox" id="lql_async">
-      <label for="lql_async">Background run (API + polling — avoids blocking on long queries)</label>
-    </div>
-  </form>
-</section>
-
-<div class="panel lql-async-panel" id="lql-async-panel" hidden>
-  <h3>Async LQL status</h3>
-  <p class="muted" id="lql-async-status" role="status"></p>
-  <div id="lql-async-result"></div>
-</div>
+<form method="post" class="task-form" id="lql-form">
+  <label for="query">Query</label>
+  <textarea id="query" name="query" rows="8" placeholder="STATS or DESCRIBE ...">{{ query }}</textarea>
+  
+  <button type="submit" class="submit-button">Run query <kbd>Ctrl+Enter</kbd></button>
+</form>
 
 {% if run %}
-<section class="panel">
-  <div class="panel-header">
-    <h2>{{ run.summary }}</h2>
-    <span>{{ run.duration_ms }} ms</span>
-  </div>
+<section class="panel result-panel">
+  <h2>Result</h2>
+  <div class="muted">{{ run.summary }} | {{ run.duration_ms }} ms</div>
   <pre>{% for line in run.raw.lines %}{{ line }}
 {% endfor %}</pre>
   <details class="tty-details">
@@ -42,32 +22,4 @@
   </details>
 </section>
 {% endif %}
-<script>
-(function () {
-  var form = document.getElementById("lql-form");
-  var asyncCb = document.getElementById("lql_async");
-  var panel = document.getElementById("lql-async-panel");
-  var statusEl = document.getElementById("lql-async-status");
-  var resultEl = document.getElementById("lql-async-result");
-  if (!form || !asyncCb || !panel || !statusEl || !resultEl) return;
-
-  form.addEventListener("submit", function (ev) {
-    if (!asyncCb.checked) return;
-    ev.preventDefault();
-    var query = (document.getElementById("query") || {}).value || "";
-    if (!query.trim()) {
-      window.alert("Query required.");
-      return;
-    }
-    window.LarqlAsyncRuns.submitAndPoll({
-      scope: "lql",
-      url: "/api/lql/query",
-      body: { query: query.trim(), async: true },
-      panel: panel,
-      statusEl: statusEl,
-      resultEl: resultEl
-    });
-  });
-})();
-</script>
 {% endblock %}

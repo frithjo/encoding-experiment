@@ -1,64 +1,37 @@
 {% extends "base.html" %}
 
 {% block content %}
-{% if current_workspace %}
-<section class="panel relation-label-sources">
-  <h2>Relation labels</h2>
-  {% if current_workspace.relation_count %}
-  <p class="muted"><code>vindex.relations()</code> lists <strong>cluster</strong> relation types only (from <code>relation_clusters.json</code>). Edge <code>source</code> is <strong>probe</strong>, <strong>cluster</strong>, or <strong>none</strong>. Verbose surfaces more cluster-backed labels.</p>
-  <p class="relation-label-chips muted">{% for rel in current_workspace.relation_labels[:16] %}<code>{{ rel.name }}</code>{% if not loop.last %} · {% endif %}{% endfor %}{% if current_workspace.relation_count > 16 %} <span>…</span>{% endif %}</p>
-  <p class="muted"><a href="#relation-label-sources">Full table (counts, tokens)</a> in the workspace strip.</p>
-  {% elif current_workspace.num_probe_labels %}
-  <p class="muted">No cluster catalogue — <code>relations()</code> is empty — but <strong>{{ current_workspace.num_probe_labels }}</strong> probe-labelled feature(s) exist. Use <code>vindex.probe_relations()</code> for aggregated names, or describe for edges (<code>source: probe</code>).</p>
-  {% if current_workspace.probe_relation_labels %}
-  <p class="relation-label-chips muted">{% for pr in current_workspace.probe_relation_labels[:16] %}<code>{{ pr.name }}</code> ({{ pr.count }}){% if not loop.last %} · {% endif %}{% endfor %}{% if current_workspace.probe_relation_labels|length > 16 %} …{% endif %}</p>
-  {% endif %}
-  <p class="muted"><a href="#relation-label-sources">Tables in workspace strip</a></p>
-  {% else %}
-  <p class="muted">No cluster catalogue and no probe labels. <code>relations()</code> is empty; describe edges may be sparse or use <code>?</code> for relation.</p>
-  {% endif %}
-</section>
-{% endif %}
+<h1 class="page-title">Explorer</h1>
 
-<section class="panel">
-  <h2>Explorer</h2>
-  <p class="panel-lead">Describe entity using current vindex. Good for quick knowledge browse.</p>
-  <form method="post" class="stack-form" id="explorer-form">
-    <label for="entity">Entity</label>
-    <input id="entity" name="entity" type="text" value="{{ form_data.entity }}" placeholder="France">
+<form method="post" class="task-form" id="explorer-form">
+  <label for="entity">Entity</label>
+  <input id="entity" name="entity" type="text" value="{{ form_data.entity }}" placeholder="France">
 
-    <label for="band">Band</label>
-    <select id="band" name="band">
-      {% for band_name in ["knowledge", "syntax", "output", "all"] %}
-      <option value="{{ band_name }}" {% if form_data.band == band_name %}selected{% endif %}>{{ band_name }}</option>
-      {% endfor %}
-    </select>
-
-    <div class="checkbox-row">
-      <input type="checkbox" id="explorer_verbose" name="verbose" {% if form_data.verbose %}checked{% endif %}>
-      <label for="explorer_verbose">Verbose labels</label>
+  <div class="form-row">
+    <div class="form-col">
+      <label for="band">Band</label>
+      <select id="band" name="band">
+        {% for band_name in ["knowledge", "syntax", "output", "all"] %}
+        <option value="{{ band_name }}" {% if form_data.band == band_name %}selected{% endif %}>{{ band_name }}</option>
+        {% endfor %}
+      </select>
     </div>
 
-    <button type="submit" aria-label="Run describe on entity">Describe</button>
-    <div class="checkbox-row explorer-async-toggle">
-      <input type="checkbox" id="explorer_async">
-      <label for="explorer_async">Background run (API + polling — avoids blocking on long describes)</label>
+    <div class="form-col checkbox-col">
+      <div class="checkbox-row">
+        <input type="checkbox" id="explorer_verbose" name="verbose" {% if form_data.verbose %}checked{% endif %}>
+        <label for="explorer_verbose">Verbose</label>
+      </div>
     </div>
-  </form>
-</section>
+  </div>
 
-<div class="panel explorer-async-panel" id="explorer-async-panel" hidden>
-  <h3>Async describe status</h3>
-  <p class="muted" id="explorer-async-status" role="status"></p>
-  <div id="explorer-async-result"></div>
-</div>
+  <button type="submit" class="submit-button">Describe <kbd>Ctrl+Enter</kbd></button>
+</form>
 
 {% if run %}
-<section class="panel">
-  <div class="panel-header">
-    <h2>{{ run.summary }}</h2>
-    <span>{{ run.duration_ms }} ms</span>
-  </div>
+<section class="panel result-panel">
+  <h2>Result</h2>
+  <div class="muted">{{ run.summary }} | {{ run.duration_ms }} ms</div>
   {% if run.raw.edges %}
   <div class="result-list">
     {% for edge in run.raw.edges %}
@@ -84,34 +57,4 @@
   </details>
 </section>
 {% endif %}
-<script>
-(function () {
-  var form = document.getElementById("explorer-form");
-  var asyncCb = document.getElementById("explorer_async");
-  var panel = document.getElementById("explorer-async-panel");
-  var statusEl = document.getElementById("explorer-async-status");
-  var resultEl = document.getElementById("explorer-async-result");
-  if (!form || !asyncCb || !panel || !statusEl || !resultEl) return;
-
-  form.addEventListener("submit", function (ev) {
-    if (!asyncCb.checked) return;
-    ev.preventDefault();
-    var entity = (document.getElementById("entity") || {}).value || "";
-    var band = (document.getElementById("band") || {}).value || "knowledge";
-    var verbose = (document.getElementById("explorer_verbose") || {}).checked;
-    if (!entity.trim()) {
-      window.alert("Entity required.");
-      return;
-    }
-    window.LarqlAsyncRuns.submitAndPoll({
-      scope: "explorer",
-      url: "/api/explorer/describe",
-      body: { entity: entity.trim(), band: band, verbose: verbose, async: true },
-      panel: panel,
-      statusEl: statusEl,
-      resultEl: resultEl
-    });
-  });
-})();
-</script>
 {% endblock %}

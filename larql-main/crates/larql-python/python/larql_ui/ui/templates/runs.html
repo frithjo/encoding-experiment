@@ -1,11 +1,12 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="panel">
-  <h2>Runs</h2>
-  <p class="panel-lead">Recent executions from Studio, Explorer, LQL, and recipes.</p>
-  <p class="muted">Only the {{ run_history_limit }} most recent runs are kept; older entries are removed when new runs are saved.</p>
-  {% if runs %}
+<h1 class="page-title">Runs</h1>
+
+{% if runs %}
+<section class="panel result-panel">
+  <h2>Recent Runs ({{ runs|length }})</h2>
+  <div class="muted">Only the {{ run_history_limit }} most recent runs are kept</div>
   <div class="result-list">
     {% for run in runs %}
     <article class="result-card">
@@ -25,8 +26,112 @@
     </article>
     {% endfor %}
   </div>
-  {% else %}
-  <p>No runs yet.</p>
-  {% endif %}
 </section>
+{% else %}
+<p class="muted">No runs yet.</p>
+{% endif %}
+
+<section class="panel panel-inline">
+  <details id="import-runs-details">
+    <summary>Import <kbd>I</kbd></summary>
+    <form class="stack-form">
+      <label for="import-runs-json">JSON</label>
+      <textarea id="import-runs-json" name="json" rows="4" placeholder="Paste exported JSON..."></textarea>
+      <button type="button" id="import-runs-submit">Import</button>
+    </form>
+  </details>
+</section>
+
+<section class="panel panel-inline">
+  <details id="export-runs-details">
+    <summary>Export <kbd>E</kbd></summary>
+    <form class="stack-form">
+      <label for="export-runs-json">JSON</label>
+      <textarea id="export-runs-json" name="json" rows="4" readonly></textarea>
+      <div class="button-row">
+        <button type="button" id="export-runs-load">Load</button>
+        <button type="button" id="export-runs-copy">Copy</button>
+      </div>
+    </form>
+  </details>
+</section>
+
+<script>
+  (function() {
+    const exportDetails = document.getElementById('export-runs-details');
+    const importDetails = document.getElementById('import-runs-details');
+    const exportJson = document.getElementById('export-runs-json');
+    const importJson = document.getElementById('import-runs-json');
+    const exportLoad = document.getElementById('export-runs-load');
+    const exportCopy = document.getElementById('export-runs-copy');
+    const importSubmit = document.getElementById('import-runs-submit');
+
+    if (exportLoad) {
+      exportLoad.addEventListener('click', async () => {
+        const res = await fetch('/api/runs/export');
+        const data = await res.json();
+        if (data.error) {
+          alert('Export failed: ' + data.error);
+          return;
+        }
+        exportJson.value = data.runs;
+      });
+    }
+
+    if (exportCopy) {
+      exportCopy.addEventListener('click', () => {
+        exportJson.select();
+        document.execCommand('copy');
+        alert('Copied to clipboard');
+      });
+    }
+
+    if (importSubmit) {
+      importSubmit.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const json = importJson.value.trim();
+        if (!json) {
+          alert('Please paste JSON to import');
+          return;
+        }
+        const res = await fetch('/api/runs/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ json })
+        });
+        const data = await res.json();
+        if (data.error) {
+          alert('Import failed: ' + data.error);
+          return;
+        }
+        alert(`Imported ${data.imported} runs`);
+        importDetails.open = false;
+        location.reload();
+      });
+    }
+
+    document.addEventListener('keydown', (event) => {
+      const t = event.target;
+      const tag = t && t.tagName;
+      const inTextField = t && (t.isContentEditable === true || (tag && ["INPUT", "TEXTAREA", "SELECT"].includes(tag)));
+      if (inTextField) return;
+      
+      if (event.key === 'e' && event.altKey && exportDetails) {
+        exportDetails.open = !exportDetails.open;
+        if (exportDetails.open) {
+          exportLoad.click();
+        }
+        return;
+      }
+      
+      if (event.key === 'i' && event.altKey && importDetails) {
+        importDetails.open = !importDetails.open;
+        if (importDetails.open) {
+          importJson.value = '';
+        }
+        return;
+      }
+    });
+  })();
+</script>
 {% endblock %}

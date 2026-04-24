@@ -1,49 +1,38 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="panel">
-  <h2>Residual trace</h2>
-  <p class="panel-lead">Full forward pass via <code>WalkModel.trace(prompt, positions)</code> — residual / attention / FFN deltas per layer. Requires <strong>model weights</strong> in the vindex.</p>
+<h1 class="page-title">Residual Trace</h1>
 
-  {% if current_workspace and not supports_trace %}
-  <p class="banner error" role="status">Trace is unavailable for this workspace: no model weights (browse-only vindex). Extract with <code>--level all</code> or equivalent to enable inference and trace.</p>
-  {% endif %}
+{% if current_workspace and not supports_trace %}
+<section class="banner error" role="alert">Trace unavailable: no model weights in vindex. Extract with --level all to enable.</section>
+{% endif %}
 
-  <form method="post" class="stack-form">
-    <label for="trace_prompt">Prompt</label>
-    <textarea id="trace_prompt" name="prompt" rows="6" {% if current_workspace and not supports_trace %}readonly aria-disabled="true"{% endif %}>{{ form_data.prompt }}</textarea>
+<form method="post" class="task-form">
+  <label for="trace_prompt">Prompt</label>
+  <textarea id="trace_prompt" name="prompt" rows="6" {% if current_workspace and not supports_trace %}readonly aria-disabled="true"{% endif %} placeholder="Enter prompt...">{{ form_data.prompt }}</textarea>
 
-    <label for="trace_positions">Positions</label>
-    <select id="trace_positions" name="positions" {% if current_workspace and not supports_trace %}disabled{% endif %}>
-      <option value="last" {% if form_data.positions == "last" %}selected{% endif %}>last (default)</option>
-      <option value="all" {% if form_data.positions == "all" %}selected{% endif %}>all</option>
-    </select>
-
-    <label for="trace_walk_top_k">WalkModel top-k (features)</label>
-    <input id="trace_walk_top_k" name="walk_top_k" type="number" min="1" step="1" value="{{ form_data.walk_top_k }}" {% if current_workspace and not supports_trace %}readonly aria-disabled="true"{% endif %}>
-
-    <div class="button-row">
-      <button type="submit" aria-label="Run residual trace" {% if current_workspace and not supports_trace %}disabled{% endif %}>Run trace</button>
+  <div class="form-row">
+    <div class="form-col">
+      <label for="trace_positions">Positions</label>
+      <select id="trace_positions" name="positions" {% if current_workspace and not supports_trace %}disabled{% endif %}>
+        <option value="last" {% if form_data.positions == "last" %}selected{% endif %}>last</option>
+        <option value="all" {% if form_data.positions == "all" %}selected{% endif %}>all</option>
+      </select>
     </div>
-    <div class="checkbox-row trace-async-toggle">
-      <input type="checkbox" id="trace_async" {% if current_workspace and not supports_trace %}disabled{% endif %}>
-      <label for="trace_async">Background run (fetch <code>/api/trace/run</code> + poll — avoids blocking the browser on long traces)</label>
-    </div>
-  </form>
-</section>
 
-<div class="panel trace-async-panel" id="trace-async-panel" hidden>
-  <h3>Async trace status</h3>
-  <p class="muted" id="trace-async-status" role="status"></p>
-  <div id="trace-async-result"></div>
-</div>
+    <div class="form-col">
+      <label for="trace_walk_top_k">WalkModel top-k</label>
+      <input id="trace_walk_top_k" name="walk_top_k" type="number" min="1" step="1" value="{{ form_data.walk_top_k }}" {% if current_workspace and not supports_trace %}readonly aria-disabled="true"{% endif %}>
+    </div>
+  </div>
+
+  <button type="submit" class="submit-button" {% if current_workspace and not supports_trace %}disabled{% endif %}>Run trace <kbd>Ctrl+Enter</kbd></button>
+</form>
 
 {% if run and run.kind == "trace" %}
-<section class="panel">
-  <div class="panel-header">
-    <h2>{{ run.summary }}</h2>
-    <span>{{ run.duration_ms }} ms</span>
-  </div>
+<section class="panel result-panel">
+  <h2>Result</h2>
+  <div class="muted">{{ run.summary }} | {{ run.duration_ms }} ms</div>
   <p><strong>Tokens:</strong> {{ run.raw.tokens|length }} · <strong>Nodes:</strong> {{ run.raw.n_nodes }} · <strong>Layers:</strong> {{ run.raw.n_layers }} · <strong>positions:</strong> {{ run.raw.positions }}</p>
   {% if run.raw.layer_summaries %}
   <div class="table-scroll">
@@ -72,44 +61,4 @@
   </details>
 </section>
 {% endif %}
-<script>
-(function () {
-  var form = document.querySelector("section.panel form.stack-form");
-  var asyncCb = document.getElementById("trace_async");
-  var panel = document.getElementById("trace-async-panel");
-  var statusEl = document.getElementById("trace-async-status");
-  var resultEl = document.getElementById("trace-async-result");
-  if (!form || !asyncCb || !panel || !statusEl || !resultEl) return;
-  if (asyncCb.disabled) return;
-
-  form.addEventListener("submit", function (ev) {
-    if (!asyncCb.checked) return;
-    ev.preventDefault();
-    var prompt = (document.getElementById("trace_prompt") || {}).value || "";
-    var positions = (document.getElementById("trace_positions") || {}).value || "last";
-    var walkTop = (document.getElementById("trace_walk_top_k") || {}).value || "8192";
-    if (!prompt.trim()) {
-      window.alert("Prompt required.");
-      return;
-    }
-    window.LarqlAsyncRuns.submitAndPoll({
-      scope: "trace",
-      url: "/api/trace/run",
-      body: {
-        prompt: prompt,
-        positions: positions,
-        walk_top_k: parseInt(walkTop, 10) || 8192,
-        async: true
-      },
-      panel: panel,
-      statusEl: statusEl,
-      resultEl: resultEl,
-      maxAttempts: 600,
-      resultUrlBuilder: function (runId) {
-        return "/partials/trace-summary?run_id=" + encodeURIComponent(runId);
-      }
-    });
-  });
-})();
-</script>
 {% endblock %}

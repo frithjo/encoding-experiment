@@ -1,90 +1,50 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="panel">
-  <h2>Studio</h2>
-  <p class="panel-lead">Pick recipe or ad-hoc template, choose engine, fill variables, run or compare batch (single <code>{placeholder}</code> only).</p>
+<h1 class="page-title">Studio</h1>
 
-  <form id="studio-form" method="post" class="stack-form">
-    <label for="recipe_id">Recipe (optional)</label>
-    <select id="recipe_id" name="recipe_id">
-      <option value="">— Ad-hoc template —</option>
-      {% for rec in recipes %}
-      <option value="{{ rec.id }}" data-default-engine="{{ rec.effective_engine('') }}" {% if form_data.recipe_id == rec.id %}selected{% endif %}>{{ rec.name }} ({{ rec.kind }})</option>
-      {% endfor %}
-    </select>
+<form id="studio-form" method="post" class="task-form">
+  <label for="engine">Engine</label>
+  <select id="engine" name="engine">
+    <option value="describe" {% if form_data.engine == 'describe' %}selected{% endif %}>describe</option>
+    <option value="lql" {% if form_data.engine == 'lql' %}selected{% endif %}>lql</option>
+    <option value="infer" {% if form_data.engine == 'infer' %}selected{% endif %} {% if not supports_infer %}disabled{% endif %}>infer</option>
+    <option value="walk_model" {% if form_data.engine == 'walk_model' %}selected{% endif %} {% if not supports_walk_model %}disabled{% endif %}>walk_model</option>
+  </select>
 
-    <label for="engine">Engine</label>
-    <select id="engine" name="engine">
-      <option value="describe" {% if form_data.engine == 'describe' %}selected{% endif %}>describe</option>
-      <option value="lql" {% if form_data.engine == 'lql' %}selected{% endif %}>lql</option>
-      <option value="infer" {% if form_data.engine == 'infer' %}selected{% endif %} {% if not supports_infer %}disabled{% endif %}>infer</option>
-      <option value="walk_model" {% if form_data.engine == 'walk_model' %}selected{% endif %} {% if not supports_walk_model %}disabled{% endif %}>walk_model</option>
-    </select>
-    {% if not supports_infer %}
-    <p class="muted">infer requires model weights in the vindex.</p>
-    {% endif %}
-    {% if not supports_walk_model %}
-    <p class="muted">walk_model requires mmap weights and a successful WalkModel load (workspace strip).</p>
-    {% endif %}
+  <label for="inline_template">Subject</label>
+  <textarea id="inline_template" name="inline_template" rows="3" placeholder="Enter subject or template...">{{ form_data.inline_template }}</textarea>
 
-    <label for="inline_template">Ad-hoc template (when no recipe)</label>
-    <textarea id="inline_template" name="inline_template" rows="3">{{ form_data.inline_template }}</textarea>
-
-    <label for="band">Describe band</label>
-    <select id="band" name="band">
-      {% for band_name in ["knowledge", "syntax", "output", "all"] %}
-      <option value="{{ band_name }}" {% if form_data.band == band_name %}selected{% endif %}>{{ band_name }}</option>
-      {% endfor %}
-    </select>
-
-    <div class="checkbox-row">
-      <input type="checkbox" id="studio_verbose" name="verbose" {% if form_data.verbose %}checked{% endif %}>
-      <label for="studio_verbose">Verbose describe</label>
+  <div class="form-row">
+    <div class="form-col">
+      <label for="band">Band</label>
+      <select id="band" name="band">
+        {% for band_name in ["knowledge", "syntax", "output", "all"] %}
+        <option value="{{ band_name }}" {% if form_data.band == band_name %}selected{% endif %}>{{ band_name }}</option>
+        {% endfor %}
+      </select>
     </div>
 
-    <label for="infer_top_k_predictions">Top-k predictions (infer / walk_model)</label>
-    <input id="infer_top_k_predictions" name="infer_top_k_predictions" type="number" min="1" value="{{ form_data.infer_top_k_predictions }}">
-
-    <label for="walk_top_k">WalkModel top_k features</label>
-    <input id="walk_top_k" name="walk_top_k" type="number" min="1" value="{{ form_data.walk_top_k }}">
-
-    {% if variable_names %}
-    <fieldset class="stack-fieldset">
-      <legend>Variables</legend>
-      {% for name in variable_names %}
-      <label for="studio_var_{{ loop.index0 }}">{{ name }}</label>
-      <input id="studio_var_{{ loop.index0 }}" name="{{ name }}" type="text" value="{{ variables_form[name] if variables_form and name in variables_form else '' }}" autocomplete="off">
-      {% endfor %}
-    </fieldset>
-    {% endif %}
-
-    <label for="compare_subjects">Compare — one batch key per line</label>
-    <textarea id="compare_subjects" name="compare_subjects" rows="4" placeholder="France&#10;Germany">{{ form_data.compare_subjects }}</textarea>
-
-    <div class="button-row">
-      <button type="submit" id="studio-run-button" formaction="/studio/run" formmethod="post" aria-label="Run studio template or ad-hoc query">Run</button>
-      <button type="submit" id="studio-compare-button" formaction="/studio/compare" formmethod="post" class="secondary" aria-label="Compare batch across subjects">Compare batch</button>
+    <div class="form-col">
+      <label for="infer_top_k_predictions">Top-k</label>
+      <input id="infer_top_k_predictions" name="infer_top_k_predictions" type="number" min="1" value="{{ form_data.infer_top_k_predictions }}">
     </div>
-    <div class="checkbox-row">
-      <input type="checkbox" id="studio_async_background" name="async_background">
-      <label for="studio_async_background">Background run (Run only; compare always executes in-page)</label>
-    </div>
-  </form>
-</section>
 
-<div class="panel studio-async-panel" id="studio-async-panel" hidden>
-  <h3>Background studio run</h3>
-  <p class="muted" id="studio-async-status" role="status"></p>
-  <div id="studio-async-result"></div>
-</div>
+    <div class="form-col checkbox-col">
+      <div class="checkbox-row">
+        <input type="checkbox" id="studio_verbose" name="verbose" {% if form_data.verbose %}checked{% endif %}>
+        <label for="studio_verbose">Verbose</label>
+      </div>
+    </div>
+  </div>
+
+  <button type="submit" class="submit-button">Run <kbd>Ctrl+Enter</kbd></button>
+</form>
 
 {% if run %}
-<section class="panel">
-  <div class="panel-header">
-    <h2>{{ run.summary }}</h2>
-    <span>{{ run.engine }} | {{ run.duration_ms }} ms</span>
-  </div>
+<section class="panel result-panel">
+  <h2>Result</h2>
+  <div class="muted">{{ run.summary }} | {{ run.engine }} | {{ run.duration_ms }} ms</div>
   {% if run.raw.predictions %}
   <ul class="predictions">
     {% for p in run.raw.predictions %}
@@ -114,90 +74,4 @@
   </details>
 </section>
 {% endif %}
-
-{% if compare_runs %}
-<section class="panel">
-  <h2>Compare results ({{ compare_runs|length }})</h2>
-  <div class="result-list">
-    {% for r in compare_runs %}
-    <article class="result-card">
-      <div class="panel-header">
-        <strong>{{ r.title }}</strong>
-        <span>{{ r.summary }}</span>
-      </div>
-      {% if r.raw.predictions %}
-      <div class="muted">Top: {{ r.raw.predictions[0].token }} ({{ (r.raw.predictions[0].probability * 100) | round(1) }}%)</div>
-      {% endif %}
-      <details class="tty-details">
-        <summary>Raw</summary>
-        <pre>{{ r.raw|to_pretty_json }}</pre>
-      </details>
-    </article>
-    {% endfor %}
-  </div>
-</section>
-{% endif %}
-<script>
-(function () {
-  var recipeSel = document.getElementById("recipe_id");
-  var engineSel = document.getElementById("engine");
-  var form = document.getElementById("studio-form");
-  var asyncCb = document.getElementById("studio_async_background");
-  var runBtn = document.getElementById("studio-run-button");
-  var compareBtn = document.getElementById("studio-compare-button");
-  if (!recipeSel || !engineSel) return;
-
-  function applyRecipeDefaultEngine() {
-    var opt = recipeSel.selectedOptions[0];
-    if (!opt || !opt.value) {
-      engineSel.value = "describe";
-      return;
-    }
-    var def = opt.getAttribute("data-default-engine");
-    if (!def) return;
-    var match = engineSel.querySelector('option[value="' + def + '"]');
-    if (match && !match.disabled) engineSel.value = def;
-  }
-
-  recipeSel.addEventListener("change", applyRecipeDefaultEngine);
-
-  if (form && asyncCb && compareBtn) {
-    form.addEventListener("submit", function (event) {
-      var submitter = event.submitter;
-      var compareAction = submitter && submitter.getAttribute("formaction") === "/studio/compare";
-      asyncCb.disabled = !!compareAction;
-      if (compareAction) asyncCb.checked = false;
-    });
-  }
-
-  if (runBtn && asyncCb) {
-    runBtn.addEventListener("click", function () {
-      asyncCb.disabled = false;
-    });
-  }
-})();
-
-(function () {
-  var pollId = {% if studio_async_poll_id %}"{{ studio_async_poll_id }}"{% else %}null{% endif %};
-  var panel = document.getElementById("studio-async-panel");
-  var statusEl = document.getElementById("studio-async-status");
-  var resultEl = document.getElementById("studio-async-result");
-  if (!pollId || !panel || !statusEl || !resultEl) return;
-  function startPolling() {
-    if (!window.LarqlAsyncRuns) return;
-    window.LarqlAsyncRuns.pollRun({
-      scope: "studio",
-      runId: pollId,
-      panel: panel,
-      statusEl: statusEl,
-      resultEl: resultEl
-    });
-  }
-  if (window.LarqlAsyncRuns) {
-    startPolling();
-    return;
-  }
-  document.addEventListener("DOMContentLoaded", startPolling, { once: true });
-})();
-</script>
 {% endblock %}
