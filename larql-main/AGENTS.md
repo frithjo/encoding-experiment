@@ -101,6 +101,40 @@ Installs SDK plus workbench UI (starlette, jinja2, uvicorn, python-multipart). R
 - **Walk FFN is sparse-by-design and can beat dense** (517ms vs 535ms on Gemma 4B) because gate KNN (K≈10) skips most of the 10,240 features per layer. If you touch FFN code, preserve this invariant — see [docs/ffn-graph-layer.md](docs/ffn-graph-layer.md).
 - **MXFP4 quantized MoE (GPT-OSS) has degraded DESCRIBE/WALK** due to 4-bit precision; `INFER` is the supported path. Don't assume all model families are equivalent — see [docs/vindex-operations-spec.md](docs/vindex-operations-spec.md).
 
+## Configuration System
+
+LARQL uses a centralized configuration system to eliminate hardcoded values and path dependencies. Configuration is loaded from multiple sources in priority order:
+
+1. Default values from config structs
+2. `config/default.toml` (committed defaults)
+3. `config/local.toml` (git-ignored local overrides)
+4. `.env` file (dotenv format, git-ignored)
+5. Environment variables with `LARQL__` prefix
+
+**Canonical Environment Variables:**
+- `LARQL_VINDEX__PATH` - Vindex path for loading vector index
+- `LARQL_MODEL__PATH` - Model path (HuggingFace model ID or local path)
+- `LARQL_HUGGINGFACE__TOKEN` - HuggingFace API token
+- `LARQL_HUGGINGFACE__CACHE_DIR` - HuggingFace cache directory (relative to home)
+- `LARQL_PATHS__HOME_DIR` - Home directory
+
+**Loading Configuration in Code:**
+```rust
+use larql_core::{load_config, AppConfig};
+
+let config = load_config()?;
+let vindex_path = &config.vindex.path;
+let model_path = &config.models.path;
+```
+
+**Breaking Changes (no backward compatibility):**
+- `HF_TOKEN` → Use `LARQL_HUGGINGFACE__TOKEN`
+- `HOME` → Use `LARQL_PATHS__HOME_DIR`
+- `VINDEX_PATH` → Use `LARQL_VINDEX__PATH`
+- `MODEL_PATH` → Use `LARQL_MODEL__PATH`
+
+See [docs/configuration.md](docs/configuration.md) for complete configuration guide.
+
 ## Model Representation
 
 - **Equal model representation:** All experiments, tests, and documentation must support both bitnet and gemma models equally. When adding new experiments, ensure they work with both model families or clearly document model-specific requirements.
@@ -110,6 +144,7 @@ Installs SDK plus workbench UI (starlette, jinja2, uvicorn, python-multipart). R
 
 ## Where to find things
 
+- Configuration guide: [docs/configuration.md](docs/configuration.md)
 - LQL language spec: [docs/lql-spec.md](docs/lql-spec.md) (v0.3)
 - Vindex file format: [docs/vindex-format-spec.md](docs/vindex-format-spec.md)
 - Operations + patches: [docs/vindex-operations-spec.md](docs/vindex-operations-spec.md)

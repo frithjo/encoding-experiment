@@ -33,6 +33,10 @@ larql> INFER "The capital of France is" TOP 3;
 ## Quick Start
 
 ```bash
+# Set configuration (optional, see .env.example for all options)
+export LARQL_MODEL__PATH=google/gemma-3-4b-it
+export LARQL_VINDEX__PATH=gemma3-4b.vindex
+
 # Build
 cargo build --release
 
