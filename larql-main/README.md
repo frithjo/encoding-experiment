@@ -4,6 +4,10 @@ The model IS the database. Query neural network weights like a graph database. N
 
 LARQL decompiles transformer models into a queryable format called a **vindex** (vector index), then provides **LQL** (Lazarus Query Language) to browse, edit, and recompile the model's knowledge.
 
+## Vision
+
+LARQL views transformer models as graph-like databases, enabling analytic tools that provide deep insights into model internals. The framework provides analysis capabilities across model weights, token attributes, edges, heads, and residual stream artifacts. See [VISION.md](VISION.md) for the complete vision statement.
+
 ```sql
 larql> USE "gemma3-4b.vindex";
 Using: gemma3-4b.vindex (34 layers, 348.2K features, relations: 512 types)
@@ -79,7 +83,7 @@ Add `--f16` to halve file sizes with negligible accuracy loss.
 
 ## Architecture
 
-Core crates in `crates/` with clean dependency chain. Experimental work in `experiments/`.
+Core crates in `crates/` with clean dependency chain. Experimental work in `experiments/`. The core value is the analytic framework (vindex + LQL); UIs are interfaces to access these capabilities.
 
 ```
 crates/
@@ -95,10 +99,21 @@ crates/
   larql-server      HTTP/gRPC server: serve vindexes over the network
   larql-cli         CLI commands (extract-index, build, serve, repl, convert, hf, verify)
   larql-python      PyO3 bindings and workbench UI
+  larql-terminal-browser  Terminal browser client (primary interface)
 
 experiments/
   kv-cache-benchmark    KV strategy benchmarking and prototyping
 ```
+
+### Interfaces
+
+The LARQL analytic framework is accessible through multiple interfaces. See [docs/ui/README.md](docs/ui/README.md) for detailed information on each interface and their current status.
+
+- **CLI**: Command-line tools for extraction, querying, and serving
+- **Python SDK**: Programmatic access for data scientists and researchers
+- **Server**: HTTP/gRPC API for remote access
+- **Terminal Browser**: Primary interface for interactive exploration in the terminal
+- **Python Workbench**: Web-based UI for recipe-driven analysis
 
 ### larql-vindex
 

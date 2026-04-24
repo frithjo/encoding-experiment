@@ -1,5 +1,7 @@
 # chuk-kv-anatomist
 
+**DEPRECATED:** This React UI is being migrated to Leptos. See [docs/leptos-migration-guide.md](../../docs/leptos-migration-guide.md) for migration status and details. See [docs/ui/README.md](../../docs/ui/README.md) for overall UI strategy.
+
 Vite + React UI for inspecting KV / context maps against a **Lazarus** backend.
 
 ## Terminal-first workflow

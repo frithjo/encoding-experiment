@@ -10,7 +10,7 @@ cd /home/arty/Documents/projects/encoding-experiment/larql-main
 cargo build --release -p larql-server
 
 # Launch server with vindex
-./target/release/larql-server data/bitnet_b1_58-large/vindex --port 8080 --cors
+./target/release/larql-server ${VINDEX_PATH:-data/bitnet_b1_58-large/vindex} --port 8080 --cors
 ```
 
 Server will listen on: http://0.0.0.0:8080
@@ -64,7 +64,7 @@ curl -X POST http://127.0.0.1:8080/tools/call \
 ```bash
 # Terminal 1: Server
 cd /home/arty/Documents/projects/encoding-experiment/larql-main && \
-./target/release/larql-server data/bitnet_b1_58-large/vindex --port 8080 --cors
+./target/release/larql-server ${VINDEX_PATH:-data/bitnet_b1_58-large/vindex} --port 8080 --cors
 
 # Terminal 2: UI
 cd /home/arty/Documents/projects/encoding-experiment/larql-main/apps/chuk-kv-anatomist && \

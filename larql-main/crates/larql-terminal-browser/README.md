@@ -2,12 +2,12 @@
 
 ## Crate Role
 
-- Role: User-facing terminal UX interface for the workbench
+- Role: User-facing terminal UX interface for the workbench (primary interface)
 - Zone: interface
-- Release impact: medium
-- Stability target: iterative
+- Release impact: high
+- Stability target: stable
 
-**First-party terminal browser** for the LARQL workbench: a Rust-first binary that will render the workbench UI (`larql-ui`, server-rendered HTML) **inside the terminal**.
+**First-party terminal browser** for the LARQL workbench: a Rust-first binary that renders the workbench UI (`larql-ui`, server-rendered HTML) **inside the terminal**. This is the primary interface for terminal-based exploration. See [docs/ui/README.md](../../docs/ui/README.md) for overall UI strategy. See [VISION.md](../../VISION.md) for the core analytic framework vision.
 
 ## Display port and rendering goals
 
@@ -15,7 +15,7 @@
 - **Resolution:** **High logical resolution** is a priority (sharp text, crisp images/video).
 - **GPU acceleration:** **Allowed and expected** when hardware and drivers support it (faster compositing, hardware video decode, smoother high-DPI). Use it by default where Chromium (or the chosen engine) would.
 - **CPU / software fallback:** Remains important for environments **without** a usable GPU—software rendering and decode should still work.
-- **Lightweight:** Minimize idle cost, memory, and dependency sprawl while meeting fidelity—see `plan.md` for the full UX contract.
+- **Lightweight:** Minimize idle cost, memory, and dependency sprawl while meeting fidelity—see `docs/ui/terminal-browser-spec.md` for the full UX contract.
 
 ## Media: images, video, streaming
 
@@ -66,7 +66,7 @@ Install repo component runtime:
 ## Related
 
 - Workbench server: `crates/larql-python` (`larql-ui` entrypoint).
-- Spec: `plan.md` (terminal viewport UX, media, routing, minimal JS).
+- Spec: `docs/ui/terminal-browser-spec.md` (terminal viewport UX, media, routing, minimal JS).
 
 ## Public vs Internal Surface
 

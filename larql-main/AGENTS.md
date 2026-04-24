@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 LARQL decompiles transformer model weights into a **vindex** — a directory of mmap'd files that can be queried like a graph database. **LQL** (Lazarus Query Language) is the SQL-like surface for browsing, mutating, and recompiling that knowledge. The core claim: the model *is* the database, so edits are structural (patch overlays on gate/down matrices), not fine-tuning.
 
+See [VISION.md](VISION.md) for the core analytic framework vision. See [docs/ui/README.md](docs/ui/README.md) for UI strategy and interface guidance.
+
 Three extraction levels gate which LQL statements work: `browse` (DESCRIBE/WALK/SELECT), `inference` (+INFER), `all` (+COMPILE). Patches (`.vlp` JSON files) stack onto a readonly base vindex — INSERT/DELETE/UPDATE auto-start a patch; base files are never mutated.
 
 ## Workspace layout
@@ -20,14 +22,23 @@ larql-compute     CPU/Metal matmul backends, pipeline
 larql-vindex      vindex lifecycle: extract, load, query, mutate, patch, save, Vindexfile
     ↓
 larql-core        graph algorithms (merge, diff, BFS, pagerank, shortest-path)
-larql-inference   forward pass, BLAS-fused attention, Metal GPU, WalkFfn, trace
+larql-inference   forward pass, BLAS-fused attention, Metal GPU, WalkFfn, trace,
+                  structured analysis API for scientific attribution
     ↓
-larql-lql         lexer/parser/executor/REPL + USE REMOTE client
+larql-lql         lexer/parser/executor/REPL + USE REMOTE client + ANALYZE statements
     ↓
-larql-server      HTTP + gRPC server serving vindexes
+larql-server      HTTP + gRPC server serving vindexes (transport adapter for analysis)
 larql-cli         top-level `larql` binary (every subcommand lives in commands/)
 larql-python      PyO3 bindings (maturin-built, module name `larql._native`)
 ```
+
+**Canonical Flow for Scientific Analysis:**
+- `larql-inference`: Exposes structured analysis API (e.g., batch_dla_scan semantics)
+- `larql-lql`: Parses ANALYZE statements, executes via structured analysis API, formats output
+- `larql-server`: Tool routes become transport adapters over the same analysis API
+- `larql-terminal-batch-dla`: Consumes analysis via LQL or server adapter
+
+**Key Invariant:** One experiment engine, one language surface, one transport surface. Scientific analysis semantics live in core crates (larql-inference), not in server routes or UI code.
 
 The CLI is a thin dispatcher: each `larql <cmd>` lives in [crates/larql-cli/src/commands/extraction/](crates/larql-cli/src/commands/extraction/) or [crates/larql-cli/src/commands/query/](crates/larql-cli/src/commands/query/) and is wired into the `Commands` enum in [crates/larql-cli/src/main.rs](crates/larql-cli/src/main.rs). `larql serve` exec's into `larql-server`. `larql repl` and `larql lql` delegate to `larql_lql::run_repl`/`run_statement`.
 
@@ -79,17 +90,23 @@ Installs SDK plus workbench UI (starlette, jinja2, uvicorn, python-multipart). R
 **Namespace migration:**
 - The `larql.ui` namespace has been removed. Use `larql_ui.ui` for UI imports.
 - The `larql` namespace remains stable for core SDK APIs (load, session, Vindex, WalkModel, etc.).
-- See [crates/larql-python/README.md](crates/larql-python/README.md) for installation patterns.
-- See [docs/architecture/python-bindings-ui-split.md](docs/architecture/python-bindings-ui-split.md) for design details.
+- See [crates/larql-python/README.md](crates/larql-python/README.md), [docs/larql-python.md](docs/larql-python.md) for installation patterns and design details.
 
 ## Key architectural invariants
 
-- **Base vindexes are immutable.** All mutation flows through `PatchedVindex` (overlay) — see [crates/larql-vindex/src/patch/core.rs](crates/larql-vindex/src/patch/). `INSERT/DELETE/UPDATE` auto-start a patch; `SAVE PATCH` persists it as `.vlp` JSON. Never write through to base files.
+- **Base vindexes are immutable.** All mutation flows through `PatchedVindex` (overlay) — see [crates/larql-vindex/src/patch/core.rs](crates/larql-vindex/src/patch/core.rs). `INSERT/DELETE/UPDATE` auto-start a patch; `SAVE PATCH` persists it as `.vlp` JSON. Never write through to base files.
 - **`COMPILE CURRENT INTO VINDEX`** bakes patches into a new standalone vindex by hardlinking base weight files (APFS fast path) and rewriting only `down_weights.bin` column-wise. No sidecar at load time.
 - **Storage is mmap-first.** Gate vectors, embeddings, down weights are zero-copy `mmap`'d. f16 is the default dtype (`--f16` halves size with negligible accuracy loss). Don't load entire tensors into RAM unless an operation requires it.
 - **Three extraction levels, not features.** `browse` (~3 GB), `inference` (~6 GB), `all` (~10 GB) — gated by `ExtractLevel` enum in [crates/larql-vindex/src/config/types.rs](crates/larql-vindex/src/config/types.rs). Check level before attempting an operation; fail loudly if weights aren't present.
 - **Walk FFN is sparse-by-design and can beat dense** (517ms vs 535ms on Gemma 4B) because gate KNN (K≈10) skips most of the 10,240 features per layer. If you touch FFN code, preserve this invariant — see [docs/ffn-graph-layer.md](docs/ffn-graph-layer.md).
 - **MXFP4 quantized MoE (GPT-OSS) has degraded DESCRIBE/WALK** due to 4-bit precision; `INFER` is the supported path. Don't assume all model families are equivalent — see [docs/vindex-operations-spec.md](docs/vindex-operations-spec.md).
+
+## Model Representation
+
+- **Equal model representation:** All experiments, tests, and documentation must support both bitnet and gemma models equally. When adding new experiments, ensure they work with both model families or clearly document model-specific requirements.
+- **Environment variable configuration:** Never hardcode model paths. Use `VINDEX_PATH` or `MODEL_PATH` environment variables with sensible defaults. See `.env.example` for standard environment variables.
+- **Model-agnostic defaults:** When providing default paths in code, prefer environment variable patterns over hardcoded paths. Document which models are supported in experiment READMEs.
+- **Multi-model testing:** When adding tests or experiments, verify they work with at least two different model families before considering the implementation complete.
 
 ## Where to find things
 
