@@ -71,7 +71,7 @@ larql> DESCRIBE "France";
 
 ```bash
 # Serve a single vindex
-larql serve <vindex_path> [OPTIONS]
+larql serve [OPTIONS]
 
 # Serve multiple vindexes
 larql serve --dir <directory> [OPTIONS]
@@ -678,7 +678,7 @@ docker run -v ./vindexes:/data -p 8080:8080 larql-server /data/gemma3-4b.vindex
   builder = "dockerfile"
 
 [env]
-  VINDEX_PATH = "/data/gemma3-4b.vindex"
+  LARQL_VINDEX__PATH = "/data/gemma3-4b.vindex"
 
 [mounts]
   source = "vindex_data"
