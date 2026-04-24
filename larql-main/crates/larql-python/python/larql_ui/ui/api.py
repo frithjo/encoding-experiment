@@ -857,13 +857,63 @@ def build_api_routes(
             return JSONResponse({"error": str(exc)}, status_code=500)
         return JSONResponse({"run": run.to_dict()})
 
+    async def api_recipes_export(request: Request) -> Response:
+        try:
+            json_str = ui_store.export_recipes()
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=500)
+        return JSONResponse({"recipes": json_str})
+
+    async def api_recipes_import(request: Request) -> Response:
+        data, err = await parse_json_body(request)
+        if err is not None:
+            return err
+        assert data is not None
+        json_str = str(data.get("json", "")).strip()
+        if not json_str:
+            return JSONResponse({"error": "json field required"}, status_code=400)
+        try:
+            count = ui_store.import_recipes(json_str)
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=500)
+        return JSONResponse({"imported": count})
+
+    async def api_runs_export(request: Request) -> Response:
+        try:
+            json_str = ui_store.export_runs()
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=500)
+        return JSONResponse({"runs": json_str})
+
+    async def api_runs_import(request: Request) -> Response:
+        data, err = await parse_json_body(request)
+        if err is not None:
+            return err
+        assert data is not None
+        json_str = str(data.get("json", "")).strip()
+        if not json_str:
+            return JSONResponse({"error": "json field required"}, status_code=400)
+        try:
+            count = ui_store.import_runs(json_str)
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=500)
+        return JSONResponse({"imported": count})
+
     return [
         Route("/api/workspace/open", api_workspace_open, methods=["POST"]),
         Route("/api/workspace/current", api_workspace_current, methods=["GET"]),
         Route("/api/recipes", api_recipes_post, methods=["POST"]),
+        Route("/api/recipes/export", api_recipes_export, methods=["GET"]),
+        Route("/api/recipes/import", api_recipes_import, methods=["POST"]),
         Route("/api/recipes/{recipe_id}", api_recipes_put, methods=["PUT"]),
         Route("/api/recipes/{recipe_id}", api_recipes_delete, methods=["DELETE"]),
         Route("/api/runs", api_runs_post, methods=["POST"]),
+        Route("/api/runs/export", api_runs_export, methods=["GET"]),
+        Route("/api/runs/import", api_runs_import, methods=["POST"]),
         Route("/api/runs/{run_id}", api_runs_get, methods=["GET"]),
         Route("/api/runs/{run_id}/rerun", api_runs_rerun, methods=["POST"]),
         Route("/api/explorer/describe", api_explorer_describe, methods=["POST"]),

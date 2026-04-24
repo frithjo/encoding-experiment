@@ -184,3 +184,77 @@ class UiStore:
             runs.insert(0, run)
             self._write_json(self.runs_path, [item.to_dict() for item in runs[:limit]])
             self._invalidate_runs_cache()
+
+    def export_recipes(self) -> str:
+        """Export all recipes as JSON string."""
+        recipes = self.list_recipes()
+        return json.dumps([recipe.to_dict() for recipe in recipes], indent=2, sort_keys=True)
+
+    def import_recipes(self, json_str: str) -> int:
+        """Import recipes from JSON string. Returns number of recipes imported."""
+        try:
+            data = json.loads(json_str)
+        except (json.JSONDecodeError, UnicodeError) as exc:
+            raise ValueError(f"Invalid JSON: {exc}") from exc
+        if not isinstance(data, list):
+            raise ValueError("JSON root must be a list of recipe objects")
+        
+        imported = 0
+        with self._file_lock:
+            recipes = list(self.list_recipes())
+            existing_ids = {r.id for r in recipes}
+            
+            for item in data:
+                if not isinstance(item, dict):
+                    continue
+                try:
+                    recipe = RecipeRecord.from_dict(item)
+                    if recipe.id not in existing_ids:
+                        recipes.append(recipe)
+                        existing_ids.add(recipe.id)
+                        imported += 1
+                except (TypeError, ValueError, KeyError):
+                    continue
+            
+            recipes.sort(key=lambda item: item.updated_at, reverse=True)
+            self._write_json(self.recipes_path, [item.to_dict() for item in recipes])
+            self._invalidate_recipes_cache()
+        
+        return imported
+
+    def export_runs(self) -> str:
+        """Export all runs as JSON string."""
+        runs = self.list_runs()
+        return json.dumps([run.to_dict() for run in runs], indent=2, sort_keys=True)
+
+    def import_runs(self, json_str: str) -> int:
+        """Import runs from JSON string. Returns number of runs imported."""
+        try:
+            data = json.loads(json_str)
+        except (json.JSONDecodeError, UnicodeError) as exc:
+            raise ValueError(f"Invalid JSON: {exc}") from exc
+        if not isinstance(data, list):
+            raise ValueError("JSON root must be a list of run objects")
+        
+        imported = 0
+        with self._file_lock:
+            runs = list(self.list_runs())
+            existing_ids = {r.id for r in runs}
+            
+            for item in data:
+                if not isinstance(item, dict):
+                    continue
+                try:
+                    run = RunRecord.from_dict(item)
+                    if run.id not in existing_ids:
+                        runs.append(run)
+                        existing_ids.add(run.id)
+                        imported += 1
+                except (TypeError, ValueError, KeyError):
+                    continue
+            
+            runs.sort(key=lambda item: item.created_at, reverse=True)
+            self._write_json(self.runs_path, [item.to_dict() for item in runs[:DEFAULT_RUN_HISTORY_LIMIT]])
+            self._invalidate_runs_cache()
+        
+        return imported
