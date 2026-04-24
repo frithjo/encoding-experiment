@@ -10,7 +10,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 const TEST_PORT: u16 = 18080;
-const FIXTURE_VINDEX: &str = "../../crates/larql-python/tests/fixtures/ui_walk_trace_vindex";
+const FIXTURE_VINDEX: &str = "/home/arty/Documents/projects/encoding-experiment/larql-main/crates/larql-python/tests/fixtures/ui_walk_trace_vindex";
 
 static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
@@ -112,6 +112,17 @@ fn get_model_config(vindex_path: &str) -> Value {
     serde_json::from_str(&content).expect("Failed to parse index.json")
 }
 
+async fn post_tools_call(client: &Client, request: Value) -> reqwest::Response {
+    let req = client
+        .post(format!("http://localhost:{}/tools/call", TEST_PORT))
+        .json(&request)
+        .build()
+        .unwrap();
+    send_with_retry(client, req)
+        .await
+        .expect("Failed to send request")
+}
+
 #[tokio::test]
 async fn test_batch_dla_scan_attention_layer_count_matches_config() {
     let _guard = lock_test_server();
@@ -129,14 +140,7 @@ async fn test_batch_dla_scan_attention_layer_count_matches_config() {
         }
     });
 
-    let req = client
-        .post(format!("http://localhost:{}/tools/call", TEST_PORT))
-        .json(&request)
-        .build()
-        .unwrap();
-    let response = send_with_retry(&client, req)
-        .await
-        .expect("Failed to send request");
+    let response = post_tools_call(&client, request).await;
 
     // Then: Response contains num_layers equal to model config's num_layers
     assert!(
@@ -173,14 +177,7 @@ async fn test_batch_dla_scan_attention_matrix_dimensions() {
         }
     });
 
-    let req = client
-        .post(format!("http://localhost:{}/tools/call", TEST_PORT))
-        .json(&request)
-        .build()
-        .unwrap();
-    let response = send_with_retry(&client, req)
-        .await
-        .expect("Failed to send request");
+    let response = post_tools_call(&client, request).await;
 
     // Then: Each attention matrix has dimensions matching heads × seq_len
     assert!(response.status().is_success());
@@ -244,14 +241,7 @@ async fn test_batch_dla_scan_token_ids_match_tokenizer() {
         }
     });
 
-    let req = client
-        .post(format!("http://localhost:{}/tools/call", TEST_PORT))
-        .json(&request)
-        .build()
-        .unwrap();
-    let response = send_with_retry(&client, req)
-        .await
-        .expect("Failed to send request");
+    let response = post_tools_call(&client, request).await;
 
     // Then: Response contains token IDs
     assert!(response.status().is_success());
@@ -289,14 +279,7 @@ async fn test_batch_dla_scan_predictions_valid_top_k_format() {
         }
     });
 
-    let req = client
-        .post(format!("http://localhost:{}/tools/call", TEST_PORT))
-        .json(&request)
-        .build()
-        .unwrap();
-    let response = send_with_retry(&client, req)
-        .await
-        .expect("Failed to send request");
+    let response = post_tools_call(&client, request).await;
 
     // Then: Response contains predictions in valid top-k format
     assert!(response.status().is_success());
@@ -342,6 +325,52 @@ async fn test_batch_dla_scan_predictions_valid_top_k_format() {
 }
 
 #[tokio::test]
+async fn test_batch_dla_scan_returns_logit_lens_and_head_dla() {
+    let _guard = lock_test_server();
+    // Given: larql-server is running with ui_walk_trace_vindex loaded
+    let server = start_test_server(FIXTURE_VINDEX).await;
+    let client = Client::new();
+    let prompt = "test prompt for enrichment check";
+
+    // When: POST /tools/call with batch_dla_scan
+    let request = serde_json::json!({
+        "name": "batch_dla_scan",
+        "arguments": {
+            "prompt": prompt
+        }
+    });
+
+    let response = post_tools_call(&client, request).await;
+
+    // Then: Response contains logit_lens and head_dla
+    assert!(response.status().is_success());
+
+    let result: Value = response.json().await.expect("Failed to parse response");
+    let result_data = &result["result"];
+
+    // Check logit_lens
+    assert!(
+        result_data["logit_lens"].is_array(),
+        "logit_lens should be an array"
+    );
+    let logit_lens = result_data["logit_lens"].as_array().unwrap();
+    assert!(!logit_lens.is_empty(), "logit_lens should not be empty");
+
+    // Check head_dla
+    // Note: head_dla might be empty if not captured, but the structure should exist or be handled
+    // In our implementation, we added it to the JSON response.
+    // Let's check if it exists (even if empty depending on how it was captured)
+    if result_data.get("head_dla").is_some() {
+        assert!(
+            result_data["head_dla"].is_array(),
+            "head_dla should be an array"
+        );
+    }
+
+    stop_test_server(server);
+}
+
+#[tokio::test]
 async fn test_batch_dla_scan_error_handling_empty_prompt() {
     let _guard = lock_test_server();
     // Given: larql-server is running with ui_walk_trace_vindex loaded
@@ -356,14 +385,7 @@ async fn test_batch_dla_scan_error_handling_empty_prompt() {
         }
     });
 
-    let req = client
-        .post(format!("http://localhost:{}/tools/call", TEST_PORT))
-        .json(&request)
-        .build()
-        .unwrap();
-    let response = send_with_retry(&client, req)
-        .await
-        .expect("Failed to send request");
+    let response = post_tools_call(&client, request).await;
 
     // Then: Response returns appropriate error
     // Empty prompt should either return error or empty attention array
@@ -387,6 +409,261 @@ async fn test_batch_dla_scan_error_handling_empty_prompt() {
             "Empty prompt should return empty attention"
         );
     }
+
+    stop_test_server(server);
+}
+
+#[tokio::test]
+async fn test_batch_dla_scan_rejects_unknown_analysis_mode() {
+    let _guard = lock_test_server();
+    let server = start_test_server(FIXTURE_VINDEX).await;
+    let client = Client::new();
+
+    let request = serde_json::json!({
+        "name": "batch_dla_scan",
+        "arguments": {
+            "prompt": "test prompt",
+            "analysis": {
+                "mode": "unknown_mode",
+                "truth_spans": [],
+                "materially_false_spans": [],
+                "coherence_markers": [],
+                "max_generated_tokens": 1,
+                "ridge_dead_zone": 0.05
+            }
+        }
+    });
+
+    let response = post_tools_call(&client, request).await;
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+    let body = response.text().await.expect("Failed to read error body");
+    assert!(
+        body.contains("Unsupported analysis mode"),
+        "Unexpected body: {body}"
+    );
+
+    stop_test_server(server);
+}
+
+#[tokio::test]
+async fn test_batch_dla_scan_fact_probe_stops_after_resolved_false_span() {
+    let _guard = lock_test_server();
+    let server = start_test_server(FIXTURE_VINDEX).await;
+    let client = Client::new();
+    let prompt = "test prompt for fact mode";
+
+    let baseline = post_tools_call(
+        &client,
+        serde_json::json!({
+            "name": "batch_dla_scan",
+            "arguments": { "prompt": prompt }
+        }),
+    )
+    .await;
+    assert!(baseline.status().is_success());
+    let baseline_json: Value = baseline.json().await.expect("Failed to parse baseline");
+    let first_prediction = baseline_json["result"]["predictions"][0][0]
+        .as_str()
+        .expect("Missing first prediction token")
+        .to_string();
+
+    let response = post_tools_call(
+        &client,
+        serde_json::json!({
+            "name": "batch_dla_scan",
+            "arguments": {
+                "prompt": prompt,
+                "analysis": {
+                    "mode": "fact_probe",
+                    "truth_spans": [],
+                    "materially_false_spans": [first_prediction],
+                    "coherence_markers": [],
+                    "max_generated_tokens": 3,
+                    "ridge_dead_zone": 0.05
+                }
+            }
+        }),
+    )
+    .await;
+
+    assert!(response.status().is_success());
+    let result: Value = response.json().await.expect("Failed to parse response");
+    let generation_trace = result["result"]["generation_trace"]
+        .as_array()
+        .expect("generation_trace should be an array");
+    let token_analysis = result["result"]["token_analysis"]
+        .as_array()
+        .expect("token_analysis should be an array");
+    let summary = &result["result"]["analysis_summary"];
+
+    assert_eq!(
+        generation_trace.len(),
+        1,
+        "fact_probe should stop after exact false-span resolution"
+    );
+    assert_eq!(
+        token_analysis.len(),
+        1,
+        "fact_probe should only analyze the resolved step"
+    );
+    assert_eq!(
+        summary["materially_false_detected"].as_bool(),
+        Some(true),
+        "fact_probe should mark the resolved false span"
+    );
+    assert_eq!(
+        summary["first_false_position"].as_u64(),
+        Some(0),
+        "fact_probe should report the first false position"
+    );
+
+    stop_test_server(server);
+}
+
+#[tokio::test]
+async fn test_batch_dla_scan_fact_probe_detects_false_alternate_continuation() {
+    let _guard = lock_test_server();
+    let server = start_test_server(FIXTURE_VINDEX).await;
+    let client = Client::new();
+    let prompt = "test prompt for alternate fact path";
+
+    let baseline = post_tools_call(
+        &client,
+        serde_json::json!({
+            "name": "batch_dla_scan",
+            "arguments": { "prompt": prompt }
+        }),
+    )
+    .await;
+    assert!(baseline.status().is_success());
+    let baseline_json: Value = baseline.json().await.expect("Failed to parse baseline");
+    let predictions = baseline_json["result"]["predictions"]
+        .as_array()
+        .expect("Missing predictions array");
+    let false_span = predictions
+        .iter()
+        .skip(1)
+        .filter_map(|prediction| prediction.as_array())
+        .filter_map(|prediction| prediction.first().and_then(Value::as_str))
+        .find(|token| !token.is_empty())
+        .expect("Need a non-top-1 prediction token")
+        .to_string();
+
+    let response = post_tools_call(
+        &client,
+        serde_json::json!({
+            "name": "batch_dla_scan",
+            "arguments": {
+                "prompt": prompt,
+                "analysis": {
+                    "mode": "fact_probe",
+                    "truth_spans": [],
+                    "materially_false_spans": [false_span.clone()],
+                    "coherence_markers": [],
+                    "max_generated_tokens": 3,
+                    "ridge_dead_zone": 0.05
+                }
+            }
+        }),
+    )
+    .await;
+
+    assert!(response.status().is_success());
+    let result: Value = response.json().await.expect("Failed to parse response");
+    let generation_trace = result["result"]["generation_trace"]
+        .as_array()
+        .expect("generation_trace should be an array");
+    let token_analysis = result["result"]["token_analysis"]
+        .as_array()
+        .expect("token_analysis should be an array");
+    let summary = &result["result"]["analysis_summary"];
+
+    assert_eq!(
+        generation_trace.len(),
+        1,
+        "fact_probe should resolve an alternate false continuation at the first analyzed step"
+    );
+    assert_eq!(
+        token_analysis.len(),
+        1,
+        "fact_probe should stop once the alternate false continuation is resolved"
+    );
+    assert_eq!(
+        summary["materially_false_detected"].as_bool(),
+        Some(true),
+        "fact_probe should mark the alternate continuation as materially false"
+    );
+    assert_eq!(
+        summary["first_false_position"].as_u64(),
+        Some(0),
+        "fact_probe should report the alternate continuation at the first position"
+    );
+    assert_eq!(
+        generation_trace[0]["token"].as_str(),
+        Some(false_span.as_str()),
+        "fact_probe should surface the dominant false continuation token"
+    );
+
+    stop_test_server(server);
+}
+
+#[tokio::test]
+async fn test_batch_dla_scan_workflow_probe_accumulates_ridge_across_full_trace() {
+    let _guard = lock_test_server();
+    let server = start_test_server(FIXTURE_VINDEX).await;
+    let client = Client::new();
+
+    let response = post_tools_call(
+        &client,
+        serde_json::json!({
+            "name": "batch_dla_scan",
+            "arguments": {
+                "prompt": "Step-by-step guide to becoming the president of Freedonia",
+                "analysis": {
+                    "mode": "workflow_probe",
+                    "truth_spans": ["Albrecht"],
+                    "materially_false_spans": ["Freedonia", "president of Freedonia"],
+                    "coherence_markers": ["step", "guide", "campaign", "election", "office", "becoming"],
+                    "max_generated_tokens": 3,
+                    "ridge_dead_zone": 0.0
+                }
+            }
+        }),
+    )
+    .await;
+
+    assert!(response.status().is_success());
+    let result: Value = response.json().await.expect("Failed to parse response");
+    let generation_trace = result["result"]["generation_trace"]
+        .as_array()
+        .expect("generation_trace should be an array");
+    let token_analysis = result["result"]["token_analysis"]
+        .as_array()
+        .expect("token_analysis should be an array");
+    let ridge_by_layer = result["result"]["ridge_by_layer"]
+        .as_array()
+        .expect("ridge_by_layer should be an array");
+
+    assert_eq!(
+        generation_trace.len(),
+        3,
+        "workflow_probe should trace the full bounded continuation"
+    );
+    assert_eq!(
+        token_analysis.len(),
+        3,
+        "workflow_probe should analyze every generated step"
+    );
+    assert!(
+        !ridge_by_layer.is_empty(),
+        "workflow_probe should return accumulated ridge values"
+    );
+    assert!(
+        ridge_by_layer.iter().all(|entry| {
+            entry["layer"].as_u64().is_some() && entry["ridge"].as_f64().unwrap_or(-1.0) >= 0.0
+        }),
+        "ridge_by_layer entries should be layer/ridge pairs with non-negative totals"
+    );
 
     stop_test_server(server);
 }

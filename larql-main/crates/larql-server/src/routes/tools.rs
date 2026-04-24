@@ -4,12 +4,11 @@
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;
+use larql_inference::{analyze_infer, AnalysisRequest};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::state::AppState;
-use larql_inference::ffn::WeightFfn;
-use larql_inference::forward::{predict_with_ffn_attention, PredictResultWithAttention};
 
 /// Tool call request body (MCP/Native compatible)
 #[derive(Debug, Deserialize)]
@@ -22,6 +21,24 @@ pub struct ToolCallRequest {
 #[derive(Debug, Serialize)]
 pub struct ToolCallResponse {
     pub result: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct BatchDlaAnalysisArgs {
+    #[serde(default)]
+    pub top_k: Option<usize>,
+    #[serde(default)]
+    pub mode: String,
+    #[serde(default)]
+    pub truth_spans: Vec<String>,
+    #[serde(default)]
+    pub materially_false_spans: Vec<String>,
+    #[serde(default)]
+    pub coherence_markers: Vec<String>,
+    #[serde(default)]
+    pub max_generated_tokens: Option<usize>,
+    #[serde(default)]
+    pub ridge_dead_zone: Option<f32>,
 }
 
 /// Model config response for get_model_info
@@ -49,6 +66,7 @@ pub struct ContextMapEntry {
     pub coefficient: f32,
     pub fraction: f32,
 }
+
 
 /// Handle /tools/call endpoint
 pub async fn handle_tools_call(
@@ -237,20 +255,17 @@ async fn handle_batch_dla_scan(
             )
         })?;
 
-    // Tokenize the prompt
-    let tokens = model.tokenizer.encode(prompt, false).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Tokenization error: {}", e),
-        )
-    })?;
-
-    if tokens.ids.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Empty prompt results in no tokens".to_string(),
-        ));
-    }
+    let analysis: Option<BatchDlaAnalysisArgs> = args_map
+        .get("analysis")
+        .cloned()
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                format!("Invalid analysis argument: {e}"),
+            )
+        })?;
 
     // Get model weights for inference
     let weights = model.get_or_load_weights().map_err(|e| {
@@ -260,35 +275,49 @@ async fn handle_batch_dla_scan(
         )
     })?;
 
-    // Create WeightFfn backend for dense FFN computation
-    let ffn = WeightFfn { weights };
-
-    // Run inference with attention capture
-    let result: PredictResultWithAttention = predict_with_ffn_attention(
-        weights,
-        &*model.tokenizer,
-        &tokens.ids,
-        5, // top_k predictions
-        &ffn,
-    );
-
-    // Convert attention data to JSON format
-    let attention_data: Vec<serde_json::Value> = result
-        .attention
-        .into_iter()
-        .map(|layer_capture| {
-            serde_json::json!({
-                "layer": layer_capture.layer,
-                "heads": layer_capture.weights.heads
-            })
+    let request = analysis
+        .map(|analysis| AnalysisRequest {
+            prompt: prompt.to_string(),
+            top_k: analysis.top_k.unwrap_or(5),
+            mode: analysis.mode,
+            truth_spans: analysis.truth_spans,
+            materially_false_spans: analysis.materially_false_spans,
+            coherence_markers: analysis.coherence_markers,
+            max_generated_tokens: analysis.max_generated_tokens,
+            ridge_dead_zone: analysis.ridge_dead_zone,
         })
-        .collect();
+        .unwrap_or_else(|| AnalysisRequest {
+        prompt: prompt.to_string(),
+        top_k: 5,
+        ..AnalysisRequest::default()
+    });
+    let result = analyze_infer(weights, &*model.tokenizer, model.config.num_layers, &request)
+        .map_err(|e| {
+            let status = if e.starts_with("Unsupported analysis mode")
+                || e.starts_with("Failed to encode analysis span")
+                || e.starts_with("Analysis span")
+                || e.starts_with("Empty prompt results in no tokens")
+            {
+                StatusCode::BAD_REQUEST
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            };
+            (status, e)
+        })?;
 
     Ok(serde_json::json!({
-        "attention": attention_data,
-        "num_layers": model.config.num_layers,
-        "seq_len": tokens.ids.len(),
-        "tokens": tokens.ids.iter().map(|&id| id as usize).collect::<Vec<_>>(),
-        "predictions": result.predictions
+        "attention": result.attention,
+        "logit_lens": result.logit_lens,
+        "head_dla": result.head_dla,
+        "num_layers": result.num_layers,
+        "seq_len": result.seq_len,
+        "tokens": result.tokens,
+        "strings": result.strings,
+        "circuits": Vec::<serde_json::Value>::new(),
+        "predictions": result.predictions,
+        "generation_trace": result.generation_trace,
+        "token_analysis": result.token_analysis,
+        "analysis_summary": result.analysis_summary,
+        "ridge_by_layer": result.ridge_by_layer,
     }))
 }
