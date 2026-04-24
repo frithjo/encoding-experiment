@@ -39,6 +39,7 @@ pub enum Keyword {
     Diff,
     Use,
     Walk,
+    Analyze,
     Select,
     Describe,
     Explain,
@@ -138,6 +139,13 @@ pub enum Keyword {
     Raw,
     Attention,
     Alpha,
+    TruthSpans,
+    FalseSpans,
+    CoherenceMarkers,
+    MaxGeneratedTokens,
+    RidgeDeadZone,
+    FactProbe,
+    WorkflowProbe,
 }
 
 impl Keyword {
@@ -264,6 +272,7 @@ impl Keyword {
             "DIFF" => Some(Self::Diff),
             "USE" => Some(Self::Use),
             "WALK" => Some(Self::Walk),
+            "ANALYZE" => Some(Self::Analyze),
             "SELECT" => Some(Self::Select),
             "DESCRIBE" => Some(Self::Describe),
             "EXPLAIN" => Some(Self::Explain),
@@ -363,6 +372,13 @@ impl Keyword {
             "RAW" => Some(Self::Raw),
             "ATTENTION" => Some(Self::Attention),
             "ALPHA" => Some(Self::Alpha),
+            "TRUTH_SPANS" => Some(Self::TruthSpans),
+            "FALSE_SPANS" => Some(Self::FalseSpans),
+            "COHERENCE_MARKERS" => Some(Self::CoherenceMarkers),
+            "MAX_GENERATED_TOKENS" => Some(Self::MaxGeneratedTokens),
+            "RIDGE_DEAD_ZONE" => Some(Self::RidgeDeadZone),
+            "FACT_PROBE" => Some(Self::FactProbe),
+            "WORKFLOW_PROBE" => Some(Self::WorkflowProbe),
             _ => None,
         }
     }

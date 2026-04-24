@@ -706,6 +706,67 @@ impl Session {
         ))
     }
 
+    pub(crate) fn remote_analyze_infer(
+        &self,
+        prompt: &str,
+        mode: AnalysisMode,
+        truth_spans: &[String],
+        materially_false_spans: &[String],
+        coherence_markers: &[String],
+        max_generated_tokens: Option<u32>,
+        ridge_dead_zone: Option<f32>,
+        top: Option<u32>,
+        format: Option<OutputFormat>,
+    ) -> Result<Vec<String>, LqlError> {
+        let mode_str = match mode {
+            AnalysisMode::FactProbe => "fact_probe",
+            AnalysisMode::WorkflowProbe => "workflow_probe",
+        };
+
+        let analysis_args = if truth_spans.is_empty() && materially_false_spans.is_empty()
+            && coherence_markers.is_empty() && max_generated_tokens.is_none()
+            && ridge_dead_zone.is_none()
+        {
+            None
+        } else {
+            Some(serde_json::json!({
+                "mode": mode_str,
+                "truth_spans": truth_spans,
+                "materially_false_spans": materially_false_spans,
+                "coherence_markers": coherence_markers,
+                "max_generated_tokens": max_generated_tokens.map(|v| v as usize),
+                "ridge_dead_zone": ridge_dead_zone,
+                "top_k": top.unwrap_or(5),
+            }))
+        };
+
+        let tool_request = serde_json::json!({
+            "name": "batch_dla_scan",
+            "arguments": {
+                "prompt": prompt,
+                "analysis": analysis_args,
+            }
+        });
+
+        let result = self.remote_post_json("/tools/call", &tool_request, false)?;
+        let result = result["result"].clone();
+        let result: larql_inference::AnalysisResult = serde_json::from_value(result)
+            .map_err(|e| LqlError::Execution(format!("invalid remote analysis result: {e}")))?;
+
+        match format {
+            Some(OutputFormat::Json) => self.format_analysis_result_json(&result),
+            Some(OutputFormat::Csv) => Err(LqlError::Execution(
+                "CSV format is not implemented for remote ANALYZE INFER".into(),
+            )),
+            Some(OutputFormat::Safetensors) | Some(OutputFormat::Gguf) => {
+                Err(LqlError::Execution(
+                    "Only text and JSON output are supported for remote ANALYZE INFER".into(),
+                ))
+            }
+            None => self.format_analysis_result(&result),
+        }
+    }
+
     pub(crate) fn remote_stats(&self) -> Result<Vec<String>, LqlError> {
         let body = self.remote_get_json("/v1/stats", &[])?;
         let url = match &self.backend {

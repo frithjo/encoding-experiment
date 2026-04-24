@@ -2,6 +2,93 @@ use super::parse;
 use crate::ast::*;
 
 // ══════════════════════════════════════════════════════════════
+// SCIENTIFIC ANALYSIS STATEMENTS
+// ══════════════════════════════════════════════════════════════
+
+// ── ANALYZE INFER ──
+
+#[test]
+fn parse_analyze_infer_minimal() {
+    let stmt = parse(r#"ANALYZE INFER "The capital of France is Paris.";"#).unwrap();
+    match stmt {
+        Statement::AnalyzeInfer {
+            prompt,
+            mode,
+            truth_spans,
+            materially_false_spans,
+            coherence_markers,
+            max_generated_tokens,
+            ridge_dead_zone,
+            top,
+            format,
+        } => {
+            assert_eq!(prompt, "The capital of France is Paris.");
+            assert_eq!(mode, AnalysisMode::FactProbe);
+            assert!(truth_spans.is_empty());
+            assert!(materially_false_spans.is_empty());
+            assert!(coherence_markers.is_empty());
+            assert!(max_generated_tokens.is_none());
+            assert!(ridge_dead_zone.is_none());
+            assert!(top.is_none());
+            assert!(format.is_none());
+        }
+        _ => panic!("expected AnalyzeInfer"),
+    }
+}
+
+#[test]
+fn parse_analyze_infer_with_clauses() {
+    let stmt = parse(
+        r#"ANALYZE INFER "The capital of France is Paris."
+        MODE FACT_PROBE
+        TRUTH_SPANS ("Paris", "France")
+        FALSE_SPANS ("London")
+        COHERENCE_MARKERS ("capital")
+        MAX_GENERATED_TOKENS 10
+        RIDGE_DEAD_ZONE 0.5
+        TOP 10
+        FORMAT JSON;"#
+    ).unwrap();
+    match stmt {
+        Statement::AnalyzeInfer {
+            prompt,
+            mode,
+            truth_spans,
+            materially_false_spans,
+            coherence_markers,
+            max_generated_tokens,
+            ridge_dead_zone,
+            top,
+            format,
+        } => {
+            assert_eq!(prompt, "The capital of France is Paris.");
+            assert_eq!(mode, AnalysisMode::FactProbe);
+            assert_eq!(truth_spans, vec!["Paris", "France"]);
+            assert_eq!(materially_false_spans, vec!["London"]);
+            assert_eq!(coherence_markers, vec!["capital"]);
+            assert_eq!(max_generated_tokens, Some(10));
+            assert_eq!(ridge_dead_zone, Some(0.5));
+            assert_eq!(top, Some(10));
+            assert_eq!(format, Some(OutputFormat::Json));
+        }
+        _ => panic!("expected AnalyzeInfer"),
+    }
+}
+
+#[test]
+fn parse_analyze_infer_workflow_probe() {
+    let stmt = parse(
+        r#"ANALYZE INFER "Test prompt" MODE WORKFLOW_PROBE;"#
+    ).unwrap();
+    match stmt {
+        Statement::AnalyzeInfer { mode, .. } => {
+            assert_eq!(mode, AnalysisMode::WorkflowProbe);
+        }
+        _ => panic!("expected AnalyzeInfer"),
+    }
+}
+
+// ══════════════════════════════════════════════════════════════
 // LIFECYCLE STATEMENTS
 // ══════════════════════════════════════════════════════════════
 

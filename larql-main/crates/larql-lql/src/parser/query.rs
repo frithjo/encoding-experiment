@@ -274,4 +274,86 @@ impl Parser {
             with_attention,
         })
     }
+
+    pub(crate) fn parse_analyze_infer(&mut self) -> Result<Statement, ParseError> {
+        self.expect_keyword(Keyword::Analyze)?;
+        self.expect_keyword(Keyword::Infer)?;
+        let prompt = self.expect_string()?;
+
+        let mut mode = AnalysisMode::FactProbe;
+        let mut truth_spans = Vec::new();
+        let mut materially_false_spans = Vec::new();
+        let mut coherence_markers = Vec::new();
+        let mut max_generated_tokens = None;
+        let mut ridge_dead_zone = None;
+        let mut top = None;
+        let mut format = None;
+
+        loop {
+            match self.peek() {
+                Token::Keyword(Keyword::Mode) => {
+                    self.advance();
+                    mode = if self.check_keyword(Keyword::FactProbe) {
+                        self.advance();
+                        AnalysisMode::FactProbe
+                    } else if self.check_keyword(Keyword::WorkflowProbe) {
+                        self.advance();
+                        AnalysisMode::WorkflowProbe
+                    } else {
+                        return Err(ParseError("expected FACT_PROBE or WORKFLOW_PROBE".to_string()));
+                    };
+                }
+                Token::Keyword(Keyword::TruthSpans) => {
+                    self.advance();
+                    truth_spans = self.parse_string_list()?;
+                }
+                Token::Keyword(Keyword::FalseSpans) => {
+                    self.advance();
+                    materially_false_spans = self.parse_string_list()?;
+                }
+                Token::Keyword(Keyword::CoherenceMarkers) => {
+                    self.advance();
+                    coherence_markers = self.parse_string_list()?;
+                }
+                Token::Keyword(Keyword::MaxGeneratedTokens) => {
+                    self.advance();
+                    max_generated_tokens = Some(self.expect_u32()?);
+                }
+                Token::Keyword(Keyword::RidgeDeadZone) => {
+                    self.advance();
+                    ridge_dead_zone = Some(self.expect_f32()?);
+                }
+                Token::Keyword(Keyword::Top) => {
+                    self.advance();
+                    top = Some(self.expect_u32()?);
+                }
+                Token::Keyword(Keyword::Format) => {
+                    self.advance();
+                    if self.check_keyword(Keyword::Csv) {
+                        return Err(ParseError("CSV format is not yet implemented for ANALYZE INFER. Use FORMAT JSON or omit the FORMAT clause.".to_string()));
+                    }
+                    if self.check_keyword(Keyword::Json) {
+                        self.advance();
+                        format = Some(crate::ast::OutputFormat::Json);
+                    } else {
+                        return Err(ParseError("expected JSON for FORMAT clause".to_string()));
+                    }
+                }
+                _ => break,
+            }
+        }
+
+        self.eat_semicolon();
+        Ok(Statement::AnalyzeInfer {
+            prompt,
+            mode,
+            truth_spans,
+            materially_false_spans,
+            coherence_markers,
+            max_generated_tokens,
+            ridge_dead_zone,
+            top,
+            format,
+        })
+    }
 }

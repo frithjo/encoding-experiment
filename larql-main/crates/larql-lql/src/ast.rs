@@ -48,6 +48,18 @@ pub enum Statement {
         top: Option<u32>,
         compare: bool,
     },
+    /// Scientific attribution analysis with truth/false span resolution
+    AnalyzeInfer {
+        prompt: String,
+        mode: AnalysisMode,
+        truth_spans: Vec<String>,
+        materially_false_spans: Vec<String>,
+        coherence_markers: Vec<String>,
+        max_generated_tokens: Option<u32>,
+        ridge_dead_zone: Option<f32>,
+        top: Option<u32>,
+        format: Option<OutputFormat>,
+    },
     Select {
         source: SelectSource,
         fields: Vec<Field>,
@@ -166,6 +178,334 @@ pub enum Statement {
     },
 }
 
+impl std::fmt::Display for Statement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Statement::Extract {
+                model,
+                output,
+                components,
+                layers,
+                extract_level,
+            } => {
+                write!(f, "EXTRACT MODEL {} INTO {}", quote_string(model), quote_string(output))?;
+                if let Some(comps) = components {
+                    if !comps.is_empty() {
+                        let comp_strs: Vec<String> = comps.iter().map(|c| format!("{:?}", c)).collect();
+                        write!(f, " COMPONENTS ({})", comp_strs.join(", "))?;
+                    }
+                }
+                if let Some(range) = layers {
+                    write!(f, " LAYERS {}..{}", range.start, range.end)?;
+                }
+                write!(f, " LEVEL {:?}", extract_level)?;
+                write!(f, ";")
+            }
+            Statement::Compile {
+                vindex,
+                output,
+                format,
+                target,
+                on_conflict,
+            } => {
+                write!(f, "COMPILE {:?} INTO {}", vindex, quote_string(output))?;
+                if let Some(fmt) = format {
+                    write!(f, " FORMAT {}", fmt)?;
+                }
+                write!(f, " TARGET {:?}", target)?;
+                if let Some(conflict) = on_conflict {
+                    write!(f, " ON_CONFLICT {:?}", conflict)?;
+                }
+                write!(f, ";")
+            }
+            Statement::Use { target } => {
+                match target {
+                    UseTarget::Vindex(path) => write!(f, "USE {}", quote_string(path))?,
+                    UseTarget::Model { id, auto_extract } => {
+                        write!(f, "USE MODEL {}", quote_string(id))?;
+                        if *auto_extract {
+                            write!(f, " AUTO_EXTRACT")?;
+                        }
+                    }
+                    UseTarget::Remote(url) => write!(f, "USE REMOTE {}", quote_string(url))?,
+                }
+                write!(f, ";")
+            }
+            Statement::Walk {
+                prompt,
+                top,
+                layers,
+                mode,
+                compare,
+            } => {
+                write!(f, "WALK {}", quote_string(prompt))?;
+                if let Some(t) = top {
+                    write!(f, " TOP {}", t)?;
+                }
+                if let Some(range) = layers {
+                    write!(f, " LAYERS {}..{}", range.start, range.end)?;
+                }
+                if let Some(m) = mode {
+                    write!(f, " MODE {:?}", m)?;
+                }
+                if *compare {
+                    write!(f, " COMPARE")?;
+                }
+                write!(f, ";")
+            }
+            Statement::Infer { prompt, top, compare } => {
+                write!(f, "INFER {}", quote_string(prompt))?;
+                if let Some(t) = top {
+                    write!(f, " TOP {}", t)?;
+                }
+                if *compare {
+                    write!(f, " COMPARE")?;
+                }
+                write!(f, ";")
+            }
+            Statement::AnalyzeInfer {
+                prompt,
+                mode,
+                truth_spans,
+                materially_false_spans,
+                coherence_markers,
+                max_generated_tokens,
+                ridge_dead_zone,
+                top,
+                format,
+            } => {
+                write!(f, "ANALYZE INFER {}", quote_string(prompt))?;
+                write!(f, " MODE {}", mode)?;
+                if !truth_spans.is_empty() {
+                    write!(f, " TRUTH_SPANS ({})", quote_list(truth_spans))?;
+                }
+                if !materially_false_spans.is_empty() {
+                    write!(f, " FALSE_SPANS ({})", quote_list(materially_false_spans))?;
+                }
+                if !coherence_markers.is_empty() {
+                    write!(f, " COHERENCE_MARKERS ({})", quote_list(coherence_markers))?;
+                }
+                if let Some(max_gen) = max_generated_tokens {
+                    write!(f, " MAX_GENERATED_TOKENS {}", max_gen)?;
+                }
+                if let Some(rdz) = ridge_dead_zone {
+                    write!(f, " RIDGE_DEAD_ZONE {}", rdz)?;
+                }
+                if let Some(t) = top {
+                    write!(f, " TOP {}", t)?;
+                }
+                if let Some(fmt) = format {
+                    write!(f, " FORMAT {}", fmt)?;
+                }
+                write!(f, ";")
+            }
+            Statement::Select {
+                source,
+                fields,
+                conditions,
+                nearest,
+                order,
+                limit,
+            } => {
+                write!(f, "SELECT ")?;
+                for (i, field) in fields.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    match field {
+                        Field::Star => write!(f, "*")?,
+                        Field::Named(name) => write!(f, "{}", name)?,
+                    }
+                }
+                write!(f, " FROM {:?}", source)?;
+                if !conditions.is_empty() {
+                    write!(f, " WHERE ")?;
+                    for (i, cond) in conditions.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, " AND ")?;
+                        }
+                        write!(f, "{} {:?} {}", cond.field, cond.op, format_value(&cond.value))?;
+                    }
+                }
+                if let Some(n) = nearest {
+                    write!(f, " NEAREST {} AT LAYER {}", quote_string(&n.entity), n.layer)?;
+                }
+                if let Some(o) = order {
+                    write!(f, " ORDER BY {} {}", o.field, if o.descending { "DESC" } else { "ASC" })?;
+                }
+                if let Some(l) = limit {
+                    write!(f, " LIMIT {}", l)?;
+                }
+                write!(f, ";")
+            }
+            Statement::Describe {
+                entity,
+                band,
+                layer,
+                relations_only,
+                mode,
+            } => {
+                write!(f, "DESCRIBE {}", quote_string(entity))?;
+                if let Some(b) = band {
+                    write!(f, " BAND {:?}", b)?;
+                }
+                if let Some(l) = layer {
+                    write!(f, " LAYER {}", l)?;
+                }
+                if *relations_only {
+                    write!(f, " RELATIONS_ONLY")?;
+                }
+                write!(f, " MODE {:?}", mode)?;
+                write!(f, ";")
+            }
+            Statement::Explain {
+                prompt,
+                mode,
+                layers,
+                band,
+                verbose,
+                top,
+                relations_only,
+                with_attention,
+            } => {
+                write!(f, "EXPLAIN {} MODE {:?}", quote_string(prompt), mode)?;
+                if let Some(range) = layers {
+                    write!(f, " LAYERS {}..{}", range.start, range.end)?;
+                }
+                if let Some(b) = band {
+                    write!(f, " BAND {:?}", b)?;
+                }
+                if *verbose {
+                    write!(f, " VERBOSE")?;
+                }
+                if let Some(t) = top {
+                    write!(f, " TOP {}", t)?;
+                }
+                if *relations_only {
+                    write!(f, " RELATIONS_ONLY")?;
+                }
+                if *with_attention {
+                    write!(f, " WITH_ATTENTION")?;
+                }
+                write!(f, ";")
+            }
+            Statement::Insert {
+                entity,
+                relation,
+                target,
+                layer,
+                confidence,
+                alpha,
+            } => {
+                write!(f, "INSERT ({}, {}, {})", quote_string(entity), quote_string(relation), quote_string(target))?;
+                if let Some(l) = layer {
+                    write!(f, " AT LAYER {}", l)?;
+                }
+                if let Some(c) = confidence {
+                    write!(f, " CONFIDENCE {}", c)?;
+                }
+                if let Some(a) = alpha {
+                    write!(f, " ALPHA {}", a)?;
+                }
+                write!(f, ";")
+            }
+            Statement::Delete { conditions } => {
+                write!(f, "DELETE")?;
+                if !conditions.is_empty() {
+                    write!(f, " WHERE ")?;
+                    for (i, cond) in conditions.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, " AND ")?;
+                        }
+                        write!(f, "{} {:?} {}", cond.field, cond.op, format_value(&cond.value))?;
+                    }
+                }
+                write!(f, ";")
+            }
+            Statement::Update { set, conditions } => {
+                write!(f, "UPDATE SET ")?;
+                for (i, assignment) in set.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{} = {}", assignment.field, format_value(&assignment.value))?;
+                }
+                if !conditions.is_empty() {
+                    write!(f, " WHERE ")?;
+                    for (i, cond) in conditions.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, " AND ")?;
+                        }
+                        write!(f, "{} {:?} {}", cond.field, cond.op, format_value(&cond.value))?;
+                    }
+                }
+                write!(f, ";")
+            }
+            Statement::Trace {
+                prompt,
+                answer,
+                decompose,
+                layers,
+                positions,
+                save,
+            } => {
+                write!(f, "TRACE {}", quote_string(prompt))?;
+                if let Some(a) = answer {
+                    write!(f, " FOR {}", quote_string(a))?;
+                }
+                if *decompose {
+                    write!(f, " DECOMPOSE")?;
+                }
+                if let Some(range) = layers {
+                    write!(f, " LAYERS {}..{}", range.start, range.end)?;
+                }
+                if let Some(pos) = positions {
+                    write!(f, " POSITIONS {:?}", pos)?;
+                }
+                if let Some(s) = save {
+                    write!(f, " SAVE {}", quote_string(s))?;
+                }
+                write!(f, ";")
+            }
+            _ => write!(f, "{:?}", self),
+        }
+    }
+}
+
+fn format_value(value: &Value) -> String {
+    match value {
+        Value::String(s) => quote_string(s),
+        Value::Number(n) => n.to_string(),
+        Value::Integer(i) => i.to_string(),
+        Value::List(vals) => {
+            let formatted: Vec<String> = vals.iter().map(format_value).collect();
+            format!("({})", formatted.join(", "))
+        }
+    }
+}
+
+pub fn quote_string(s: &str) -> String {
+    let mut quoted = String::with_capacity(s.len() + 2);
+    quoted.push('"');
+    for ch in s.chars() {
+        match ch {
+            '\\' => quoted.push_str("\\\\"),
+            '"' => quoted.push_str("\\\""),
+            '\n' => quoted.push_str("\\n"),
+            '\r' => quoted.push_str("\\r"),
+            '\t' => quoted.push_str("\\t"),
+            _ => quoted.push(ch),
+        }
+    }
+    quoted.push('"');
+    quoted
+}
+
+fn quote_list(values: &[String]) -> String {
+    let quoted: Vec<String> = values.iter().map(|value| quote_string(value)).collect();
+    quoted.join(", ")
+}
+
 #[derive(Debug, Clone)]
 pub enum VindexRef {
     Path(String),
@@ -185,6 +525,24 @@ pub enum ExplainMode {
     Walk,
     /// EXPLAIN INFER — full inference with feature trace
     Infer,
+}
+
+/// Analysis mode for ANALYZE INFER statement
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnalysisMode {
+    /// Fact probe: exact span resolution, truth/false attribution
+    FactProbe,
+    /// Workflow probe: mass-based attribution, coherence tracking
+    WorkflowProbe,
+}
+
+impl std::fmt::Display for AnalysisMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AnalysisMode::FactProbe => write!(f, "FACT_PROBE"),
+            AnalysisMode::WorkflowProbe => write!(f, "WORKFLOW_PROBE"),
+        }
+    }
 }
 
 /// Display mode for DESCRIBE and SHOW RELATIONS output.
@@ -240,6 +598,19 @@ pub enum WalkMode {
 pub enum OutputFormat {
     Safetensors,
     Gguf,
+    Json,
+    Csv,
+}
+
+impl std::fmt::Display for OutputFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OutputFormat::Safetensors => write!(f, "SAFETENSORS"),
+            OutputFormat::Gguf => write!(f, "GGUF"),
+            OutputFormat::Json => write!(f, "JSON"),
+            OutputFormat::Csv => write!(f, "CSV"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

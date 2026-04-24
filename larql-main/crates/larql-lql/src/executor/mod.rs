@@ -53,6 +53,14 @@ pub(crate) enum Backend {
     None,
 }
 
+/// Output format mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OutputMode {
+    #[default]
+    Text,
+    Json,
+}
+
 /// Session state for the REPL / batch executor.
 pub struct Session {
     pub(crate) backend: Backend,
@@ -102,6 +110,17 @@ impl Session {
             decoy_residual_cache: std::collections::HashMap::new(),
             raw_install_residuals: std::collections::HashMap::new(),
         }
+    }
+
+    /// Connect to a remote LQL server. This is a convenience method that
+    /// parses and executes a USE REMOTE statement, eliminating the need
+    /// for callers to manually construct and parse the statement.
+    pub fn connect_remote(&mut self, url: &str) -> Result<(), LqlError> {
+        let use_remote = crate::parse(&format!("USE REMOTE {};", crate::ast::quote_string(url)))
+            .map_err(|e| LqlError::exec("Failed to parse USE REMOTE statement", e))?;
+        self.execute(&use_remote)
+            .map_err(|e| LqlError::exec("Failed to connect to remote server", e))?;
+        Ok(())
     }
 
     /// Ensure a patch session is active. If not, auto-start an anonymous one.
@@ -265,6 +284,27 @@ impl Session {
                 top,
                 compare,
             } => self.exec_infer(prompt, *top, *compare),
+            Statement::AnalyzeInfer {
+                prompt,
+                mode,
+                truth_spans,
+                materially_false_spans,
+                coherence_markers,
+                max_generated_tokens,
+                ridge_dead_zone,
+                top,
+                format,
+            } => self.exec_analyze_infer(
+                prompt,
+                *mode,
+                truth_spans,
+                materially_false_spans,
+                coherence_markers,
+                *max_generated_tokens,
+                *ridge_dead_zone,
+                *top,
+                *format,
+            ),
             Statement::Delete { conditions } => {
                 let mut out = self.ensure_patch_session();
                 out.extend(self.exec_delete(conditions)?);
@@ -328,6 +368,27 @@ impl Session {
                 top,
                 compare,
             } => self.remote_infer(prompt, *top, *compare),
+            Statement::AnalyzeInfer {
+                prompt,
+                mode,
+                truth_spans,
+                materially_false_spans,
+                coherence_markers,
+                max_generated_tokens,
+                ridge_dead_zone,
+                top,
+                format,
+            } => self.remote_analyze_infer(
+                prompt,
+                *mode,
+                truth_spans,
+                materially_false_spans,
+                coherence_markers,
+                *max_generated_tokens,
+                *ridge_dead_zone,
+                *top,
+                *format,
+            ),
             Statement::Stats { .. } => self.remote_stats(),
             Statement::ShowRelations {
                 mode,
@@ -417,7 +478,7 @@ impl Session {
             }
             _ => Err(LqlError::Execution(
                 "this statement is not supported on a remote backend. \
-                 Supported: DESCRIBE, WALK, INFER, EXPLAIN INFER, EXPLAIN WALK, SELECT, STATS, \
+                 Supported: DESCRIBE, WALK, INFER, ANALYZE INFER, EXPLAIN INFER, EXPLAIN WALK, SELECT, STATS, \
                  SHOW RELATIONS, SHOW MODELS, SHOW TOKENS, INSERT, DELETE, UPDATE, \
                  APPLY PATCH, SHOW PATCHES, REMOVE PATCH, USE. \
                  TRACE requires a local vindex (USE \"path.vindex\")."

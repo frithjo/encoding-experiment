@@ -371,6 +371,10 @@ impl Parser {
         matches!(self.peek(), Token::Pipe)
     }
 
+    pub(crate) fn check(&self, expected: Token) -> bool {
+        std::mem::discriminant(&self.peek()) == std::mem::discriminant(&expected)
+    }
+
     pub(crate) fn eat_semicolon(&mut self) {
         if matches!(self.peek(), Token::Semicolon) {
             self.advance();
@@ -445,6 +449,39 @@ impl Parser {
                 expected, tok
             )))
         }
+    }
+
+    pub(crate) fn parse_string_list(&mut self) -> Result<Vec<String>, ParseError> {
+        self.expect_token(&Token::LParen)?;
+        let mut strings = Vec::new();
+        
+        if self.check(Token::RParen) {
+            self.advance();
+            return Ok(strings);
+        }
+        
+        loop {
+            match self.peek() {
+                Token::StringLit(s) => {
+                    self.advance();
+                    strings.push(s);
+                }
+                _ => {
+                    return Err(ParseError(format!(
+                        "expected string literal, got {:?}",
+                        self.peek()
+                    )))
+                }
+            }
+            
+            if self.check(Token::RParen) {
+                self.advance();
+                break;
+            }
+            self.expect_token(&Token::Comma)?;
+        }
+        
+        Ok(strings)
     }
 
     pub(crate) fn expect_ident_eq(&mut self, name: &str) -> Result<(), ParseError> {

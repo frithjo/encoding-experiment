@@ -313,6 +313,201 @@ impl Session {
         Ok(out)
     }
 
+    // ── ANALYZE INFER ──
+    //
+    // Scientific attribution analysis with truth/false span resolution.
+    // Requires model weights and inference-level vindex.
+
+    pub(crate) fn exec_analyze_infer(
+        &mut self,
+        prompt: &str,
+        mode: AnalysisMode,
+        truth_spans: &[String],
+        materially_false_spans: &[String],
+        coherence_markers: &[String],
+        max_generated_tokens: Option<u32>,
+        ridge_dead_zone: Option<f32>,
+        top: Option<u32>,
+        format: Option<crate::ast::OutputFormat>,
+    ) -> Result<Vec<String>, LqlError> {
+        let top_k = top.unwrap_or(5) as usize;
+
+        // Convert AnalysisMode enum to string for larql-inference
+        let mode_str = match mode {
+            AnalysisMode::FactProbe => "fact_probe",
+            AnalysisMode::WorkflowProbe => "workflow_probe",
+        };
+
+        // Weight backend: direct analysis (no vindex needed)
+        if let super::Backend::Weight {
+            weights, tokenizer, ..
+        } = &self.backend
+        {
+            let request = larql_inference::AnalysisRequest {
+                prompt: prompt.to_string(),
+                top_k,
+                mode: mode_str.to_string(),
+                truth_spans: truth_spans.to_vec(),
+                materially_false_spans: materially_false_spans.to_vec(),
+                coherence_markers: coherence_markers.to_vec(),
+                max_generated_tokens: max_generated_tokens.map(|v| v as usize),
+                ridge_dead_zone,
+            };
+
+            let num_layers = weights.num_layers;
+            let result = larql_inference::analyze_infer(weights, tokenizer.as_ref(), num_layers, &request)
+                .map_err(|e| LqlError::Execution(format!("analysis failed: {}", e)))?;
+
+            return self.format_analysis_result(&result);
+        }
+
+        // Vindex backend: load weights and analyze
+        let (path, config, _patched) = self.require_vindex()?;
+
+        if !config.has_model_weights {
+            return Err(LqlError::Execution(format!(
+                "ANALYZE INFER requires model weights. This vindex was built without --include-weights.\n\
+                 Rebuild: EXTRACT MODEL \"{}\" INTO \"{}\" WITH INFERENCE",
+                config.model,
+                path.display(),
+            )));
+        }
+
+        let mut cb = larql_vindex::SilentLoadCallbacks;
+        let weights = larql_vindex::load_model_weights(path, &mut cb)
+            .map_err(|e| LqlError::exec("failed to load model weights", e))?;
+        let tokenizer = larql_vindex::load_vindex_tokenizer(path)
+            .map_err(|e| LqlError::exec("failed to load tokenizer", e))?;
+
+        let request = larql_inference::AnalysisRequest {
+            prompt: prompt.to_string(),
+            top_k,
+            mode: mode_str.to_string(),
+            truth_spans: truth_spans.to_vec(),
+            materially_false_spans: materially_false_spans.to_vec(),
+            coherence_markers: coherence_markers.to_vec(),
+            max_generated_tokens: max_generated_tokens.map(|v| v as usize),
+            ridge_dead_zone,
+        };
+
+        let num_layers = weights.num_layers;
+        let result = larql_inference::analyze_infer(&weights, tokenizer.as_ref(), num_layers, &request)
+            .map_err(|e| LqlError::Execution(format!("analysis failed: {}", e)))?;
+
+        match format {
+            Some(crate::ast::OutputFormat::Json) => self.format_analysis_result_json(&result),
+            _ => self.format_analysis_result(&result),
+        }
+    }
+
+    pub(crate) fn format_analysis_result(
+        &self,
+        result: &larql_inference::AnalysisResult,
+    ) -> Result<Vec<String>, LqlError> {
+        let mut out = Vec::new();
+
+        // Header
+        out.push("Analysis Result:".into());
+        out.push(format!("  Layers: {}", result.num_layers));
+        out.push(format!("  Sequence length: {}", result.seq_len));
+        out.push(String::new());
+
+        // Analysis summary if available
+        if let Some(ref summary) = result.analysis_summary {
+            out.push("Summary:".into());
+            if let Some(pos) = summary.first_false_position {
+                out.push(format!("  First false position: {}", pos));
+            }
+            if let Some(ref token) = summary.first_false_token {
+                out.push(format!("  First false token: {}", token));
+            }
+            if summary.materially_false_detected {
+                out.push("  Materially false: YES".into());
+            } else {
+                out.push("  Materially false: NO".into());
+            }
+            out.push(String::new());
+
+            // Top coherence heads
+            if !summary.top_coherence_heads.is_empty() {
+                out.push("Top Coherence Heads:".into());
+                for (i, head) in summary.top_coherence_heads.iter().take(5).enumerate() {
+                    out.push(format!(
+                        "  {}. L{} H{} (source T{}, contribution: {:.4})",
+                        i + 1, head.layer, head.head, head.source_token, head.contribution
+                    ));
+                }
+                out.push(String::new());
+            }
+
+            // Top false content heads
+            if !summary.top_false_content_heads.is_empty() {
+                out.push("Top False Content Heads:".into());
+                for (i, head) in summary.top_false_content_heads.iter().take(5).enumerate() {
+                    out.push(format!(
+                        "  {}. L{} H{} (source T{}, contribution: {:.4})",
+                        i + 1, head.layer, head.head, head.source_token, head.contribution
+                    ));
+                }
+                out.push(String::new());
+            }
+        }
+
+        // Ridge by layer
+        if !result.ridge_by_layer.is_empty() {
+            out.push("Ridge by Layer:".into());
+            for layer_ridge in &result.ridge_by_layer {
+                out.push(format!("  L{}: {:.4}", layer_ridge.layer, layer_ridge.ridge));
+            }
+            out.push(String::new());
+        }
+
+        // Token analysis
+        if !result.token_analysis.is_empty() {
+            out.push("Token Analysis:".into());
+            for token in &result.token_analysis {
+                out.push(format!(
+                    "  Pos {}: {} ({:.2}%) - {}, truth_mass: {:.4}, false_mass: {:.4}, coherence_mass: {:.4}, ridge: {:.4}",
+                    token.position, token.token, token.probability * 100.0, token.label,
+                    token.truth_mass, token.false_mass, token.coherence_mass, token.ridge
+                ));
+            }
+            out.push(String::new());
+        }
+
+        // Generation trace
+        if !result.generation_trace.is_empty() {
+            out.push("Generation Trace:".into());
+            for step in &result.generation_trace {
+                out.push(format!(
+                    "  Pos {}: {} ({:.2}%)",
+                    step.position, step.token, step.probability * 100.0
+                ));
+            }
+            out.push(String::new());
+        }
+
+        // Top predictions
+        if !result.predictions.is_empty() {
+            out.push("Top Predictions:".into());
+            for (i, (token, prob)) in result.predictions.iter().enumerate().take(10) {
+                out.push(format!("  {}. {} ({:.2}%)", i + 1, token, prob * 100.0));
+            }
+        }
+
+        Ok(out)
+    }
+
+    pub(crate) fn format_analysis_result_json(
+        &self,
+        result: &larql_inference::AnalysisResult,
+    ) -> Result<Vec<String>, LqlError> {
+        // Use serde_json to serialize the result
+        let json = serde_json::to_string_pretty(result)
+            .map_err(|e| LqlError::Execution(format!("JSON serialization failed: {}", e)))?;
+        Ok(vec![json])
+    }
+
     // ── DESCRIBE ──
 
     pub(crate) fn exec_describe(
