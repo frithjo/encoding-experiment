@@ -99,3 +99,7 @@ extract-full:
 predict:
 	cargo run --release -p larql-cli -- predict google/gemma-3-4b-it \
 		--prompt "The capital of France is" -k 10
+
+# Carbonyl runtime verification
+verify-carbonyl:
+	@./apps/terminal-runtime/scripts/install-carbonyl-runtime.sh

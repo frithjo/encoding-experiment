@@ -101,6 +101,8 @@ pub struct VectorIndex {
     pub(crate) attn_q8_mmap: Option<Arc<Mmap>>,
     /// Per-matrix (offset, vals_len, scales_len) in attn_q8_mmap.
     pub(crate) attn_q8_manifest: Option<Vec<(usize, usize, usize)>>,
+    /// Cached residuals store for template-based fast inference (Inference level only).
+    pub cache_store: Option<crate::cache_residuals::CacheStore>,
 }
 
 impl Clone for VectorIndex {
@@ -142,6 +144,7 @@ impl Clone for VectorIndex {
             attn_q4_manifest: self.attn_q4_manifest.clone(),
             attn_q8_mmap: self.attn_q8_mmap.clone(),
             attn_q8_manifest: self.attn_q8_manifest.clone(),
+            cache_store: None, // Cannot clone Mmap, so cache is not preserved in clones
         }
     }
 }
@@ -186,6 +189,7 @@ impl VectorIndex {
             attn_q4_manifest: None,
             attn_q8_mmap: None,
             attn_q8_manifest: None,
+            cache_store: None,
         }
     }
 
@@ -231,6 +235,7 @@ impl VectorIndex {
             attn_q4_manifest: None,
             attn_q8_mmap: None,
             attn_q8_manifest: None,
+            cache_store: None,
         }
     }
 
@@ -405,6 +410,7 @@ impl VectorIndex {
             attn_q4_manifest: None,
             attn_q8_mmap: None,
             attn_q8_manifest: None,
+            cache_store: None,
             num_layers,
             hidden_size,
         })
@@ -621,5 +627,9 @@ impl GateIndex for VectorIndex {
         self.interleaved_q4k_mmap
             .as_ref()
             .map(|m| m.as_ref() as &[u8])
+    }
+
+    fn cache_store(&self) -> Option<&crate::cache_residuals::CacheStore> {
+        self.cache_store.as_ref()
     }
 }

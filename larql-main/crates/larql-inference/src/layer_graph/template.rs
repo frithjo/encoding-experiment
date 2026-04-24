@@ -45,6 +45,30 @@ pub fn detect_template(token_ids: &[u32], templates: &[TemplatePattern]) -> Opti
     best
 }
 
+/// Detect template and load cached residuals from vindex.
+///
+/// Returns (template_id, CachedLayerGraph) if a template matches and cache is available.
+pub fn detect_template_with_cache(
+    token_ids: &[u32],
+    templates: &[TemplatePattern],
+    vindex: &dyn larql_vindex::GateIndex,
+) -> Option<(usize, super::CachedLayerGraph)> {
+    let template_idx = detect_template(token_ids, templates)?;
+    let template = &templates[template_idx];
+
+    // Load cached residuals from vindex
+    let seq_len = token_ids.len();
+    match super::CachedLayerGraph::from_vindex(
+        vindex,
+        template_idx,
+        template.cached_layers.clone(),
+        seq_len,
+    ) {
+        Ok(cache) => Some((template_idx, cache)),
+        Err(_) => None, // Cache load failed, fall back to computation
+    }
+}
+
 // ── Template-guided walk: score only features in the template's universe ──
 
 /// Per-template per-layer feature universe: the set of features that ever

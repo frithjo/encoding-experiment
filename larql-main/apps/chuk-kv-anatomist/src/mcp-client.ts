@@ -11,7 +11,12 @@ import {
 
 export { computeInfrastructureCost, detectSemanticFields, flattenDlaMatrix };
 
-export type { StoreInfo, WindowData, BoundaryData } from './types';
+export type {
+  BatchDlaAnalysisRequest,
+  StoreInfo,
+  WindowData,
+  BoundaryData,
+} from './types';
 
 export async function getModelInfo() {
   return searchClient.getModelInfo();
@@ -21,8 +26,12 @@ export async function loadModel(modelId: string) {
   return searchClient.loadModel(modelId);
 }
 
-export async function batchDlaScan(prompt: string, targetToken?: string) {
-  return searchClient.batchDlaScan(prompt, targetToken);
+export async function batchDlaScan(
+  prompt: string,
+  analysis: import('./types').BatchDlaAnalysisRequest,
+  targetToken?: string,
+) {
+  return searchClient.batchDlaScan(prompt, analysis, targetToken);
 }
 
 export async function extractAttentionOutput(

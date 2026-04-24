@@ -20,7 +20,7 @@ pub mod logits;
 pub mod pipeline_layer;
 pub mod predict;
 pub mod prefill;
-mod template;
+pub mod template;
 mod walk;
 
 use ndarray::Array2;

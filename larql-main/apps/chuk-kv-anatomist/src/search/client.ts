@@ -1,4 +1,5 @@
 import type {
+  BatchDlaAnalysisRequest,
   ModelConfig,
   DLAScanResult,
   ContentProjectionResult,
@@ -16,7 +17,11 @@ export type SearchBackend = 'mcp' | 'native';
 export interface SearchClient {
   getModelInfo(): Promise<ModelConfig>;
   loadModel(modelId: string): Promise<ModelConfig>;
-  batchDlaScan(prompt: string, targetToken?: string): Promise<DLAScanResult>;
+  batchDlaScan(
+    prompt: string,
+    analysis: BatchDlaAnalysisRequest,
+    targetToken?: string,
+  ): Promise<DLAScanResult>;
   extractAttentionOutput(
     prompt: string,
     layer: number,

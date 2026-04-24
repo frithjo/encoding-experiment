@@ -104,7 +104,11 @@ model.vindex/
 ├── tokenizer.json            # HuggingFace tokenizer
 ├── relation_clusters.json    # Cluster centres, labels, counts
 ├── feature_labels.json       # Probe-confirmed labels
-└── weight_manifest.json      # Weight file → offset mapping
+├── weight_manifest.json      # Weight file → offset mapping
+│
+│  # ═══ Inference Acceleration (Inference level only) ═══
+│
+└── cached_residuals.bin      # Pre-computed layer residuals for common templates
 ```
 
 Gate vectors are NOT duplicated — `gate_vectors.bin` IS the W_gate weight matrix. COMPILE reads it directly to reconstruct the safetensors gate tensor.
@@ -392,6 +396,47 @@ pub enum StorageDtype {
     F16,
 }
 ```
+
+---
+
+### 5.X cached_residuals.bin (Inference level only)
+
+Pre-computed layer residuals for common templates, enabling fast inference by skipping computation for template-fixed layers (typically L0-12). This enables 155+ tok/s inference by avoiding redundant computation for repeated prompt patterns.
+
+**Layout:**
+```
+Header (128 bytes)
+Template Index: n_templates × TemplateEntry (24 bytes each)
+Residual Data: contiguous f16 arrays [template][layer][seq_len × hidden_size]
+```
+
+**Header fields:**
+- `magic`: "CRES" (4 bytes)
+- `version`: 1 (4 bytes)
+- `hidden_size`: model hidden dimension (4 bytes)
+- `n_layers`: total layers in model (4 bytes)
+- `n_templates`: number of cached templates (4 bytes)
+- `dtype`: 2 for f16, 4 for f32 (1 byte)
+- `_pad`: padding to 128 bytes (111 bytes)
+
+**TemplateEntry (24 bytes per template):**
+- `template_id`: index into template definitions (4 bytes)
+- `token_count`: number of tokens in template prefix (4 bytes)
+- `layer_start`: first cached layer (4 bytes, typically 0)
+- `layer_end`: last cached layer (4 bytes, typically 12)
+- `data_offset`: byte offset to this template's residual data (8 bytes)
+
+**Residual data:**
+Per-template, per-layer residual vectors stored as f16 (or f32). Each residual is a flattened array of shape `[seq_len × hidden_size]`. The data is contiguous within each template, with layers stored sequentially.
+
+**Size estimate (Gemma 4B, f16):**
+- 3 templates × 13 layers (0-12) × 10 tokens × 2560 hidden × 2 bytes = ~17 MB
+
+**Access pattern:**
+1. Read header to validate magic and version
+2. Read template index to find desired template's offset
+3. Compute layer offset: `template.data_offset + (layer - template.layer_start) × seq_len × hidden_size × sizeof(dtype)`
+4. Read residual vector and decode f16→f32 if needed
 
 ---
 

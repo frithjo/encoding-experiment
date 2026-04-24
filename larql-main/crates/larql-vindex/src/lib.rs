@@ -7,6 +7,7 @@
 // BLAS provided by larql-compute dependency (no direct blas_src needed)
 
 // ── Module structure ──
+pub mod cache_residuals;
 pub mod clustering;
 pub mod config;
 pub mod describe;
@@ -14,6 +15,7 @@ pub mod describe_collect;
 pub mod error;
 pub mod extract;
 pub mod format;
+pub mod hf_client;
 pub mod index;
 pub mod mmap_util;
 pub mod patch;
@@ -94,3 +96,6 @@ pub use patch::refine::{refine_gates, RefineInput, RefineResult, RefinedGate};
 pub use vindexfile::{
     build_from_vindexfile, parse_vindexfile, Vindexfile, VindexfileDirective, VindexfileStage,
 };
+
+// Cache residuals
+pub use cache_residuals::{CacheDtype, CacheStore, CacheWriter};

@@ -228,14 +228,14 @@ impl PublishCallbacks for SilentPublishCallbacks {}
 fn get_hf_token() -> Result<String, VindexError> {
     // Require LARQL_HUGGINGFACE__TOKEN environment variable
     let token = std::env::var("LARQL_HUGGINGFACE__TOKEN")
-        .map_err(|_| VindexError::IoError(std::io::Error::new(
+        .map_err(|_| VindexError::Io(std::io::Error::new(
             std::io::ErrorKind::NotFound,
             "LARQL_HUGGINGFACE__TOKEN environment variable not set. Set it via config/local.toml, .env, or environment variable."
         )))?;
 
     // Try token file as fallback
     let home = std::env::var("LARQL_PATHS__HOME_DIR")
-        .map_err(|_| VindexError::IoError(std::io::Error::new(
+        .map_err(|_| VindexError::Io(std::io::Error::new(
             std::io::ErrorKind::NotFound,
             "LARQL_PATHS__HOME_DIR environment variable not set. Set it via config/local.toml, .env, or environment variable."
         )))?;

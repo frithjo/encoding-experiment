@@ -1,4 +1,5 @@
 import type {
+  BatchDlaAnalysisRequest,
   ModelConfig,
   DLAScanResult,
   ContentProjectionResult,
@@ -70,10 +71,31 @@ export class NativeSearchAdapter implements SearchClient {
     return (await this.invokeTool('load_model', { model_id: modelId })) as ModelConfig;
   }
 
-  async batchDlaScan(prompt: string, targetToken?: string): Promise<DLAScanResult> {
-    const args: Record<string, unknown> = { prompt };
-    if (targetToken) args.target_token = targetToken;
-    return (await this.invokeTool('batch_dla_scan', args)) as DLAScanResult;
+  async batchDlaScan(
+    prompt: string,
+    analysis: BatchDlaAnalysisRequest,
+    targetToken?: string,
+  ): Promise<DLAScanResult> {
+    const request = {
+      prompt,
+      top_k: 5,
+      mode: analysis.mode,
+      truth_spans: analysis.truth_spans,
+      materially_false_spans: analysis.materially_false_spans,
+      coherence_markers: analysis.coherence_markers,
+      max_generated_tokens: analysis.max_generated_tokens ?? null,
+      ridge_dead_zone: analysis.ridge_dead_zone ?? null,
+    };
+    void targetToken;
+    const res = await fetch(`${this.baseUrl}/v1/analyze-infer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
+    return (await res.json()) as DLAScanResult;
   }
 
   async extractAttentionOutput(

@@ -4,17 +4,6 @@ use leptos_router::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
-struct ToolCallRequest {
-    name: String,
-    arguments: serde_json::Value,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-struct ToolCallResponse {
-    result: serde_json::Value,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
 struct AttentionData {
     layer: usize,
     heads: Vec<Vec<f32>>,
@@ -62,46 +51,48 @@ fn BatchDlaScan() -> impl IntoView {
         set_error.set(None);
 
         let prompt_clone = prompt_val.clone();
-        
-        // Call larql-server /tools/call endpoint
-        wasm_bindgen_futures::spawn_local(async move {
-            let request = ToolCallRequest {
-                name: "batch_dla_scan".to_string(),
-                arguments: serde_json::json!({
-                    "prompt": prompt_clone
-                }),
-            };
 
-            match gloo_net::http::Request::post("http://localhost:8080/tools/call")
+        // Call larql-server /v1/analyze-infer endpoint (canonical path)
+        wasm_bindgen_futures::spawn_local(async move {
+            let request = serde_json::json!({
+                "prompt": prompt_clone,
+                "top_k": 5,
+                "mode": "fact_probe",
+                "truth_spans": [],
+                "materially_false_spans": [],
+                "coherence_markers": [],
+                "max_generated_tokens": None,
+                "ridge_dead_zone": None
+            });
+
+            match gloo_net::http::Request::post("http://localhost:8080/v1/analyze-infer")
                 .json(&request)
             {
                 Ok(req) => {
                     match req.send().await {
                         Ok(response) => {
                             if response.ok() {
-                                match response.json::<ToolCallResponse>().await {
-                                    Ok(tool_response) => {
+                                match response.json::<serde_json::Value>().await {
+                                    Ok(result) => {
                                         // Parse the attention data from the response
-                                        if let Ok(result) = serde_json::from_value::<serde_json::Value>(tool_response.result) {
-                                            if let Some(attention) = result.get("attention").and_then(|v| v.as_array()) {
-                                                let parsed_attention: Vec<AttentionData> = attention
+                                        if let Some(attention) = result.get("attention").and_then(|v| v.as_array()) {
+                                            let parsed_attention: Vec<AttentionData> = attention
+                                                .iter()
+                                                .filter_map(|v| serde_json::from_value(v.clone()).ok())
+                                                .collect();
+
+                                            set_attention_data.set(Some(parsed_attention));
+
+                                            if let Some(layers) = result.get("num_layers").and_then(|v| v.as_u64()) {
+                                                set_num_layers.set(layers as usize);
+                                            }
+
+                                            if let Some(tokens_array) = result.get("tokens").and_then(|v| v.as_array()) {
+                                                let parsed_tokens: Vec<usize> = tokens_array
                                                     .iter()
-                                                    .filter_map(|v| serde_json::from_value(v.clone()).ok())
+                                                    .filter_map(|v| v.as_u64().map(|u| u as usize))
                                                     .collect();
-                                                
-                                                set_attention_data.set(Some(parsed_attention));
-                                                
-                                                if let Some(layers) = result.get("num_layers").and_then(|v| v.as_u64()) {
-                                                    set_num_layers.set(layers as usize);
-                                                }
-                                                
-                                                if let Some(tokens_array) = result.get("tokens").and_then(|v| v.as_array()) {
-                                                    let parsed_tokens: Vec<usize> = tokens_array
-                                                        .iter()
-                                                        .filter_map(|v| v.as_u64().map(|u| u as usize))
-                                                        .collect();
-                                                    set_tokens.set(parsed_tokens);
-                                                }
+                                                set_tokens.set(parsed_tokens);
                                             }
                                         }
                                         set_loading.set(false);

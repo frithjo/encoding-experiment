@@ -9,11 +9,12 @@ keywords = ["transformer", "model-config", "llm", "architecture"]
 categories = ["data-structures"]
 
 [dependencies]
-ndarray = { path = "../larql-tensor", package = "larql-tensor" }
+larql-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-larql-core = { path = "../larql-core" }
+anyhow = "1"
+ndarray = { workspace = true }
 
 
 [dev-dependencies]

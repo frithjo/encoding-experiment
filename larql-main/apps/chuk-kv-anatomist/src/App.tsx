@@ -11,7 +11,15 @@ import { InjectionTest } from './components/InjectionTest';
 import { ContextMap } from './components/context-map/ContextMap';
 import { searchClient } from './search';
 import { computeInfrastructureCost } from './search/helpers';
-import type { AppState, LayerTab, SelectedCell, AppMode, ContextMapEntry, StoreInfo } from './types';
+import {
+  defaultBatchDlaAnalysisRequest,
+  type AppState,
+  type LayerTab,
+  type SelectedCell,
+  type AppMode,
+  type ContextMapEntry,
+  type StoreInfo,
+} from './types';
 
 const INITIAL_STATE: AppState = {
   mode: 'tokenAnalysis',
@@ -105,7 +113,10 @@ export default function App() {
     try {
       switch (state.activeTab) {
         case 'dla': {
-          const result = await searchClient.batchDlaScan(state.prompt);
+          const result = await searchClient.batchDlaScan(
+            state.prompt,
+            defaultBatchDlaAnalysisRequest(),
+          );
           const hotCell = result.hot_cells?.[0];
           setState(s => ({
             ...s,

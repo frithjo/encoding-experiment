@@ -52,12 +52,12 @@ impl ModelWeights {
         let keys_to_remove: Vec<String> = self
             .tensors
             .keys()
-            .filter(|k| ffn_patterns.iter().any(|p| k.contains(p)))
+            .filter(|k: &&String| ffn_patterns.iter().any(|p| k.contains(p)))
             .cloned()
             .collect();
         for key in &keys_to_remove {
             if let Some(arr) = self.tensors.remove(key) {
-                freed += arr.len() * std::mem::size_of::<f32>();
+                freed += arr.len() * std::mem::size_of::<f32>() as usize;
             }
         }
         // Also drop FFN bias vectors

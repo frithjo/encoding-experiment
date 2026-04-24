@@ -102,9 +102,9 @@ ANALYZE INFER "The capital of Freedonia is"
     TOP 5;
 ```
 
-`ANALYZE INFER` uses the shared structured analysis engine in `larql-inference`.
-The server `batch_dla_scan` route is transport only, and UIs should prefer
-executing LQL directly when they can.
+`ANALYZE INFER` uses the structured analysis engine in `larql-inference`.
+The server `/v1/analyze-infer` endpoint is the canonical transport adapter.
+UIs should prefer executing LQL directly when they can.
 
 ### 5. Edit knowledge
 

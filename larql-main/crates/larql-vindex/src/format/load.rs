@@ -92,14 +92,46 @@ impl VectorIndex {
             None
         };
 
-        Ok(VectorIndex::new_mmap(
+        // Load cached residuals if available (Inference level only)
+        let cache_store = if config.extract_level >= crate::config::types::ExtractLevel::Inference {
+            let cache_path = dir.join("cached_residuals.bin");
+            if cache_path.exists() {
+                callbacks.on_file_start(
+                    "cached_residuals",
+                    &cache_path.display().to_string(),
+                );
+                let start = std::time::Instant::now();
+                match crate::cache_residuals::CacheStore::open(&cache_path) {
+                    Ok(store) => {
+                        callbacks.on_file_done(
+                            "cached_residuals",
+                            store.template_count(),
+                            start.elapsed().as_secs_f64() * 1000.0,
+                        );
+                        Some(store)
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: Failed to load cached_residuals.bin: {}", e);
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let mut index = VectorIndex::new_mmap(
             gate_mmap,
             gate_slices,
             config.dtype,
             down_meta_mmap,
             num_layers,
             hidden_size,
-        ))
+        );
+        index.cache_store = cache_store;
+        Ok(index)
     }
 }
 

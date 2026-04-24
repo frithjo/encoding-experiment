@@ -17,6 +17,7 @@ pub struct AnalysisRequest {
     pub prompt: String,
     #[serde(default = "default_top_k")]
     pub top_k: usize,
+    /// Analysis mode: "fact_probe" or "workflow_probe". Empty mode is invalid.
     #[serde(default)]
     pub mode: String,
     #[serde(default)]
@@ -45,7 +46,7 @@ pub enum AnalysisMode {
 impl AnalysisMode {
     pub fn parse(mode: &str) -> Result<Self, String> {
         match mode {
-            "" | "fact_probe" => Ok(Self::FactProbe),
+            "fact_probe" => Ok(Self::FactProbe),
             "workflow_probe" => Ok(Self::WorkflowProbe),
             other => Err(format!(
                 "Unsupported analysis mode '{other}'. Expected 'fact_probe' or 'workflow_probe'"
@@ -208,104 +209,73 @@ pub fn analyze_infer(
     let mut ridge_by_layer_totals: BTreeMap<usize, f64> = BTreeMap::new();
     let mut generated_token_ids = Vec::new();
 
-    let (analysis_enabled, mode, truth_spans, false_spans, coherence_spans, max_steps, dead_zone) =
-        if request.mode.is_empty()
-            && request.truth_spans.is_empty()
-            && request.materially_false_spans.is_empty()
-            && request.coherence_markers.is_empty()
-            && request.max_generated_tokens.is_none()
-            && request.ridge_dead_zone.is_none()
-        {
-            (
-                false,
-                AnalysisMode::FactProbe,
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
-                1,
-                0.05,
-            )
-        } else {
-            let mode = AnalysisMode::parse(&request.mode)?;
-            let truth_spans = encode_spans(tokenizer, &request.truth_spans)?;
-            let false_spans = encode_spans(tokenizer, &request.materially_false_spans)?;
-            let coherence_spans = encode_spans(tokenizer, &request.coherence_markers)?;
-            (
-                true,
-                mode,
-                truth_spans,
-                false_spans,
-                coherence_spans,
-                request.max_generated_tokens.unwrap_or(1).max(1),
-                request.ridge_dead_zone.unwrap_or(0.05) as f64,
-            )
-        };
+    let mode = AnalysisMode::parse(&request.mode)?;
+    let truth_spans = encode_spans(tokenizer, &request.truth_spans)?;
+    let false_spans = encode_spans(tokenizer, &request.materially_false_spans)?;
+    let coherence_spans = encode_spans(tokenizer, &request.coherence_markers)?;
+    let max_steps = request.max_generated_tokens.unwrap_or(1).max(1);
+    let dead_zone = request.ridge_dead_zone.unwrap_or(0.05) as f64;
 
     for position in 0..max_steps {
         let result =
             predict_with_ffn_attention(weights, tokenizer, &current_tokens, request.top_k, &ffn);
 
-        if analysis_enabled {
-            if let Some(step) = analyze_step(
-                mode,
+        if let Some(step) = analyze_step(
+            mode,
+            weights,
+            tokenizer,
+            &result,
+            &truth_spans,
+            &false_spans,
+            &coherence_spans,
+            dead_zone,
+            position,
+            &current_tokens,
+            &generated_token_ids,
+        ) {
+            generated_token_ids.push(step.token.token_id);
+            if first_false_origin.is_none() && step.token.label == "materially_false" {
+                if let Some(origin) = step.token.top_heads.false_content.first() {
+                    first_false_origin = Some(FirstFalseOrigin {
+                        position: step.token.position,
+                        token_id: step.token.token_id,
+                        token: step.token.token.clone(),
+                        layer: origin.layer,
+                        head: origin.head,
+                        source_token: origin.source_token,
+                        contribution: origin.contribution,
+                    });
+                }
+            }
+
+            for (layer, ridge) in layer_ridge_values(
                 weights,
-                tokenizer,
-                &result,
+                &result.head_dla,
                 &truth_spans,
                 &false_spans,
                 &coherence_spans,
                 dead_zone,
-                position,
-                &current_tokens,
-                &generated_token_ids,
             ) {
-                generated_token_ids.push(step.token.token_id);
-                if first_false_origin.is_none() && step.token.label == "materially_false" {
-                    if let Some(origin) = step.token.top_heads.false_content.first() {
-                        first_false_origin = Some(FirstFalseOrigin {
-                            position: step.token.position,
-                            token_id: step.token.token_id,
-                            token: step.token.token.clone(),
-                            layer: origin.layer,
-                            head: origin.head,
-                            source_token: origin.source_token,
-                            contribution: origin.contribution,
-                        });
-                    }
-                }
-
-                for (layer, ridge) in layer_ridge_values(
-                    weights,
-                    &result.head_dla,
-                    &truth_spans,
-                    &false_spans,
-                    &coherence_spans,
-                    dead_zone,
-                ) {
-                    *ridge_by_layer_totals.entry(layer).or_insert(0.0) += ridge;
-                }
-
-                generation_trace.push(GeneratedStep {
-                    position: step.token.position,
-                    token_id: step.token.token_id,
-                    token: step.token.token.clone(),
-                    probability: step.token.probability,
-                });
-                token_analysis.push(step.token.clone());
-
-                if mode == AnalysisMode::FactProbe && (step.resolved_truth || step.resolved_false) {
-                    final_result = Some(result);
-                    break;
-                }
-
-                current_tokens.push(step.token.token_id);
+                *ridge_by_layer_totals.entry(layer).or_insert(0.0) += ridge;
             }
+
+            generation_trace.push(GeneratedStep {
+                position: step.token.position,
+                token_id: step.token.token_id,
+                token: step.token.token.clone(),
+                probability: step.token.probability,
+            });
+            token_analysis.push(step.token.clone());
+
+            if mode == AnalysisMode::FactProbe && (step.resolved_truth || step.resolved_false) {
+                final_result = Some(result);
+                break;
+            }
+
+            current_tokens.push(step.token.token_id);
         }
 
         final_result = Some(result);
-        if !analysis_enabled {
-            break;
-        }
     }
 
     let result = final_result.expect("analyze_infer should produce at least one result");
@@ -338,7 +308,7 @@ pub fn analyze_infer(
         })
         .collect();
 
-    let analysis_summary = if analysis_enabled {
+    let analysis_summary = {
         let mut top_coherence_heads = token_analysis
             .iter()
             .flat_map(|step| step.top_heads.material_coherence.clone())
@@ -363,8 +333,6 @@ pub fn analyze_infer(
                 .iter()
                 .any(|step| step.label == "materially_false"),
         })
-    } else {
-        None
     };
 
     Ok(AnalysisResult {

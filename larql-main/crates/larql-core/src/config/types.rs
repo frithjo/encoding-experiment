@@ -112,7 +112,7 @@ impl PathConfig {
         let path = path.trim();
         
         // Handle ~ expansion
-        if path.starts_with('~/') {
+        if path.starts_with("~/") {
             let mut resolved = self.home_dir();
             resolved.push(&path[2..]);
             return resolved;

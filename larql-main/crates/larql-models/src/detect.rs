@@ -1035,17 +1035,16 @@ mod tests {
             .unwrap_or_else(|_| ".cache/huggingface/hub".to_string());
         let config_path = std::path::PathBuf::from(home)
             .join(format!("{cache_dir}/models--google--gemma-4-31B-it"));
-        let config_path = match config_path {
-            Some(p) if p.exists() => {
-                // Find the snapshot
-                let snapshots = p.join("snapshots");
-                std::fs::read_dir(&snapshots)
-                    .ok()
-                    .and_then(|mut entries| entries.next())
-                    .and_then(|e| e.ok())
-                    .map(|e| e.path().join("config.json"))
-            }
-            _ => None,
+        let config_path = if config_path.exists() {
+            // Find the snapshot
+            let snapshots = config_path.join("snapshots");
+            std::fs::read_dir(&snapshots)
+                .ok()
+                .and_then(|mut entries| entries.next())
+                .and_then(|e| e.ok())
+                .map(|e| e.path().join("config.json"))
+        } else {
+            None
         };
         let config_path = match config_path {
             Some(p) if p.exists() => p,

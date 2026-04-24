@@ -116,11 +116,11 @@ ANALYZE INFER <prompt_string>
 **Clauses:**
 
 - `prompt_string`: The text to analyze
-- `MODE FACT_PROBE`: Exact span resolution, truth/false attribution (default when not specified)
-- `MODE WORKFLOW_PROBE`: Mass-based attribution, coherence tracking
-- `TRUTH_SPANS`: List of ground-truth spans for attribution
-- `FALSE_SPANS`: List of materially false spans for false attribution
-- `COHERENCE_MARKERS`: List of coherence marker spans
+- `MODE FACT_PROBE`: Exact span resolution, truth/false attribution (required)
+- `MODE WORKFLOW_PROBE`: Mass-based attribution, coherence tracking (required)
+- `TRUTH_SPANS`: List of ground-truth spans for attribution (FACT_PROBE requires at least TRUTH_SPANS or FALSE_SPANS)
+- `FALSE_SPANS`: List of materially false spans for false attribution (FACT_PROBE requires at least TRUTH_SPANS or FALSE_SPANS; WORKFLOW_PROBE requires FALSE_SPANS)
+- `COHERENCE_MARKERS`: List of coherence marker spans (optional)
 - `MAX_GENERATED_TOKENS`: Maximum number of tokens to generate (default: 1)
 - `RIDGE_DEAD_ZONE`: Ridge dead zone threshold (default: 0.05)
 - `TOP`: Number of top predictions to return (default: 5)
@@ -168,6 +168,9 @@ This statement delegates to the structured analysis API in `larql-inference` (th
 
 **Error Cases:**
 
+- `ANALYZE INFER requires MODE clause`: MODE clause is mandatory. Remedy: Specify MODE FACT_PROBE or MODE WORKFLOW_PROBE.
+- `MODE FACT_PROBE requires at least TRUTH_SPANS or FALSE_SPANS`: Fact probe needs at least one span list. Remedy: Provide TRUTH_SPANS or FALSE_SPANS.
+- `MODE WORKFLOW_PROBE requires FALSE_SPANS`: Workflow probe requires false spans. Remedy: Provide FALSE_SPANS.
 - `ANALYZE INFER requires model weights`: Vindex was built without `--include-weights` or `WITH INFERENCE`. Remedy: Rebuild vindex with inference-level extraction.
 - `Empty prompt results in no tokens`: Prompt string tokenizes to empty. Remedy: Provide non-empty prompt.
 - `Failed to encode analysis span`: Span text cannot be tokenized. Remedy: Check span text encoding.
@@ -1233,6 +1236,7 @@ pub enum ExtractLevel {
 | DIFF | `larql-core` | Graph comparison |
 | SHOW/STATS | `larql-core` + `larql-models` | Metadata queries |
 | USE | `larql-lql` | Session state |
+| ANALYZE INFER | `larql-inference` | analyze_infer (structured analysis API) |
 
 ### 8.4 Implementation Status
 
@@ -1247,6 +1251,7 @@ pub enum ExtractLevel {
 | WALK / EXPLAIN WALK | ✅ Done — gate KNN, per-layer feature trace |
 | INFER | ✅ Done — full forward pass with walk FFN (requires `--include-weights`) |
 | EXPLAIN INFER | ✅ Done — inference trace with relation labels |
+| ANALYZE INFER | ✅ Done — scientific attribution with truth/coherence annotations |
 | Label loading (feature_labels.json) | ✅ Done — probe-confirmed labels override cluster labels |
 | Cluster-based labels (relation_clusters.json) | ✅ Done — k=512, offset clustering, Wikidata + WordNet + pattern matching |
 | EXTRACT | ✅ Done — full pipeline: gate, embed, down_meta, clustering, split weights |
@@ -1270,6 +1275,9 @@ pub enum ExtractLevel {
 | MXFP4 browse quality | 🟡 Known limitation — gate KNN noisy for 4-bit quantized MoE; INFER works correctly |
 | Gated KNN for MoE | 🔴 Planned — use SiLU(gate)×up instead of raw gate dot product for MXFP4 models |
 | Residual-based DESCRIBE | 🔴 Planned — capture actual residuals for accurate MoE knowledge browse |
+| EXPORT (Turtle, Neo4j, JSON-LD, GraphML) | ✅ Done — full graph export to standard formats |
+| DIFF INTO REPORT | ✅ Done — markdown report generation for model comparison |
+| DESCRIBE STREAM | ✅ Done — progressive layer-by-layer output for large models |
 
 ### 8.5 INSERT Semantics — How Edge Becomes Vector
 
@@ -1524,8 +1532,6 @@ canonical language surface.
   is missing.
 - **`BOUNDARY OPEN <path>` / `BOUNDARY <path> AT <n>`** — open a boundary
   store for querying and read a specific boundary residual.
-- **DESCRIBE STREAM** — progressive layer-by-layer DESCRIBE, particularly
-  useful with `USE REMOTE`.
 - **End-to-end validation of the Rust refine + decoy pipeline on a real
   model.** `COMPILE INTO VINDEX` bakes gate/up/down overlays into a
   standalone vindex (validated 10/10 retrieval, 0/4 bleed on Gemma 3 4B).

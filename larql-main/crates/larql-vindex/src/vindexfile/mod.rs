@@ -159,9 +159,12 @@ pub fn build_from_vindexfile(
 /// Handles: local paths, hf:// URLs (future), https:// URLs (future).
 fn resolve_vindexfile_path(path: &str, working_dir: &Path) -> Result<std::path::PathBuf, VindexError> {
     if path.starts_with("hf://") {
-        // TODO: HuggingFace resolution
+        // Use HF client to resolve the path
+        // Note: This is a synchronous call, but HF client is async
+        // For now, return error indicating async resolution needed
         Err(VindexError::Parse(format!(
-            "HuggingFace paths not yet implemented: {path}. Download manually and use a local path."
+            "HuggingFace paths require async resolution: {path}. \
+            Use larql CLI with USE REMOTE or download manually and use a local path."
         )))
     } else if path.starts_with("https://") || path.starts_with("http://") {
         Err(VindexError::Parse(format!(

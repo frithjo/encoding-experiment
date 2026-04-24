@@ -53,6 +53,48 @@ impl CachedLayerGraph {
         }
     }
 
+    /// Load cached residuals from vindex for a detected template.
+    ///
+    /// `vindex`: The loaded vindex with cache_store
+    /// `template_id`: Index of the template in the cache
+    /// `layer_range`: Range of layers to load (e.g., 0..=12)
+    /// `seq_len`: Sequence length for the residuals
+    ///
+    /// Returns a CachedLayerGraph with the loaded residuals.
+    pub fn from_vindex(
+        vindex: &dyn larql_vindex::GateIndex,
+        template_id: usize,
+        layer_range: std::ops::RangeInclusive<usize>,
+        seq_len: usize,
+    ) -> Result<Self, String> {
+        let cache_store = vindex.cache_store()
+            .ok_or_else(|| "No cache_store available in vindex (extract level < Inference?)".to_string())?;
+
+        let mut cache = std::collections::HashMap::new();
+
+        for layer in layer_range {
+            let residual_vec = cache_store
+                .get_residual_f32(template_id, layer, seq_len)
+                .ok_or_else(|| format!("No residual found for template {} layer {}", template_id, layer))?;
+
+            // Convert to Array2 [seq_len, hidden_size]
+            let hidden_size = residual_vec.len() / seq_len;
+            if residual_vec.len() != seq_len * hidden_size {
+                return Err(format!(
+                    "Residual size mismatch for template {} layer {}: expected {} ({}x{}), got {}",
+                    template_id, layer, seq_len * hidden_size, seq_len, hidden_size, residual_vec.len()
+                ));
+            }
+
+            let residual_array = Array2::from_shape_vec((seq_len, hidden_size), residual_vec)
+                .map_err(|e| format!("Failed to reshape residual: {}", e))?;
+
+            cache.insert(layer, residual_array);
+        }
+
+        Ok(Self { cache })
+    }
+
     pub fn has_layer(&self, layer: usize) -> bool {
         self.cache.contains_key(&layer)
     }

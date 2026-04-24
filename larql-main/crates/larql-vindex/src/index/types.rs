@@ -111,6 +111,12 @@ pub trait GateIndex {
         None
     }
 
+    /// Access the cached residuals store for template-based fast inference.
+    /// Returns None if the vindex doesn't have cached residuals or extract level < Inference.
+    fn cache_store(&self) -> Option<&crate::cache_residuals::CacheStore> {
+        None
+    }
+
     /// Gate KNN via Q4 matvec — scored by a ComputeBackend.
     /// Returns None if Q4 gate data isn't loaded or backend doesn't support Q4.
     fn gate_knn_q4(

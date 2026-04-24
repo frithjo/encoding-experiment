@@ -9,7 +9,7 @@ use crate::config::types::AppConfig;
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error("Failed to load configuration: {0}")]
-    LoadError(#[from] config::Error),
+    LoadError(#[from] config::ConfigError),
     
     #[error("Configuration validation failed: {0}")]
     ValidationError(String),
@@ -59,31 +59,14 @@ pub fn load_config() -> Result<AppConfig, ConfigError> {
 
 /// Validate configuration values.
 fn validate_config(config: &AppConfig) -> Result<(), ConfigError> {
-    // Check that default vindex path is not empty
-    if config.vindex.default_path.is_empty() {
+    // Check that vindex path is not empty
+    if config.vindex.path.is_empty() {
         return Err(ConfigError::ValidationError(
-            "vindex.default_path cannot be empty".to_string()
+            "vindex.path cannot be empty".to_string()
         ));
     }
-    
-    // Check that output directory is not empty
-    if config.vindex.output_dir.is_empty() {
-        return Err(ConfigError::ValidationError(
-            "vindex.output_dir cannot be empty".to_string()
-        ));
-    }
-    
-    Ok(())
-}
 
-/// Get a configuration value or return a default.
-///
-/// This is a convenience function for optional configuration values.
-pub fn get_or_default<T, F>(value: Option<T>, default: F) -> T
-where
-    F: FnOnce() -> T,
-{
-    value.unwrap_or_else(default)
+    Ok(())
 }
 
 #[cfg(test)]

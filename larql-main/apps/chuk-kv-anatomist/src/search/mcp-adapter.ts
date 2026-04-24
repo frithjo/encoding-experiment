@@ -1,4 +1,5 @@
 import type {
+  BatchDlaAnalysisRequest,
   ModelConfig,
   DLAScanResult,
   ContentProjectionResult,
@@ -33,10 +34,22 @@ export class McpSearchAdapter implements SearchClient {
     return (await this.callTool('load_model', { model_id: modelId })) as ModelConfig;
   }
 
-  async batchDlaScan(prompt: string, targetToken?: string): Promise<DLAScanResult> {
-    const args: Record<string, unknown> = { prompt };
-    if (targetToken) args.target_token = targetToken;
-    return (await this.callTool('batch_dla_scan', args)) as DLAScanResult;
+  async batchDlaScan(
+    prompt: string,
+    analysis: BatchDlaAnalysisRequest,
+    _targetToken?: string,
+  ): Promise<DLAScanResult> {
+    const request = {
+      prompt,
+      top_k: 5,
+      mode: analysis.mode,
+      truth_spans: analysis.truth_spans,
+      materially_false_spans: analysis.materially_false_spans,
+      coherence_markers: analysis.coherence_markers,
+      max_generated_tokens: analysis.max_generated_tokens ?? null,
+      ridge_dead_zone: analysis.ridge_dead_zone ?? null,
+    };
+    return (await this.callTool('analyze-infer', request)) as DLAScanResult;
   }
 
   async extractAttentionOutput(

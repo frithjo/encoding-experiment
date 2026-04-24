@@ -84,6 +84,9 @@ enum Commands {
     /// Build a .vindex — the model decompiled to a standalone vector index.
     ExtractIndex(extract_index_cmd::ExtractIndexArgs),
 
+    /// Cache template residuals for fast inference (Inference level only).
+    CacheTemplates(cache_templates_cmd::CacheTemplatesCmd),
+
     /// Build a custom model from a Vindexfile (declarative: FROM + PATCH + INSERT).
     Build(build_cmd::BuildArgs),
 
@@ -253,6 +256,7 @@ fn main() {
         Commands::KgBench(args) => kg_bench_cmd::run(args),
         Commands::FfnThroughput(args) => ffn_throughput_cmd::run(args),
         Commands::ExtractIndex(args) => extract_index_cmd::run(args),
+        Commands::CacheTemplates(args) => cache_templates_cmd::run(args),
         Commands::Build(args) => build_cmd::run(args),
         Commands::Convert(args) => convert_cmd::run(args),
         Commands::Hf(args) => hf_cmd::run(args),

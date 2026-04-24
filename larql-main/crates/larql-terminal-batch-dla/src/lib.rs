@@ -152,32 +152,24 @@ impl ManualTargetDraft {
             .collect()
     }
 
-    fn build_analysis(&self) -> Option<RecipeAnalysis> {
+    fn build_analysis(&self) -> RecipeAnalysis {
         let truth_spans = Self::split_csv(&self.truth_spans);
         let materially_false_spans = Self::split_csv(&self.materially_false_spans);
         let coherence_markers = Self::split_csv(&self.coherence_markers);
         let max_generated_tokens = self.max_generated_tokens.trim().parse::<usize>().ok();
         let ridge_dead_zone = self.ridge_dead_zone.trim().parse::<f32>().ok();
 
-        if self.mode.trim().is_empty()
-            && truth_spans.is_empty()
-            && materially_false_spans.is_empty()
-            && coherence_markers.is_empty()
-        {
-            None
-        } else {
-            Some(RecipeAnalysis {
-                mode: if self.mode.trim().is_empty() {
-                    "fact_probe".to_string()
-                } else {
-                    self.mode.trim().to_string()
-                },
-                truth_spans,
-                materially_false_spans,
-                coherence_markers,
-                max_generated_tokens,
-                ridge_dead_zone,
-            })
+        RecipeAnalysis {
+            mode: if self.mode.trim().is_empty() {
+                "fact_probe".to_string()
+            } else {
+                self.mode.trim().to_string()
+            },
+            truth_spans,
+            materially_false_spans,
+            coherence_markers,
+            max_generated_tokens,
+            ridge_dead_zone,
         }
     }
 
@@ -190,14 +182,7 @@ impl ManualTargetDraft {
                 layer: None,
                 head: selected_head,
             },
-            analysis: self.build_analysis().unwrap_or(RecipeAnalysis {
-                mode: "fact_probe".to_string(),
-                truth_spans: Vec::new(),
-                materially_false_spans: Vec::new(),
-                coherence_markers: Vec::new(),
-                max_generated_tokens: Some(1),
-                ridge_dead_zone: Some(0.05),
-            }),
+            analysis: self.build_analysis(),
         }
     }
 }
@@ -279,25 +264,12 @@ impl ManualField {
     }
 }
 
-pub async fn execute_batch_dla_scan_lql(
+pub async fn execute_analyze_infer_lql(
     session: &mut Session,
     prompt: &str,
-    analysis: Option<&RecipeAnalysis>,
+    analysis: &RecipeAnalysis,
 ) -> Result<BatchDlaResult, String> {
-    let stmt = match analysis {
-        Some(analysis) => build_analyze_infer_ast(prompt, analysis, 5),
-        None => larql_lql::Statement::AnalyzeInfer {
-            prompt: prompt.to_string(),
-            mode: larql_lql::ast::AnalysisMode::FactProbe,
-            truth_spans: Vec::new(),
-            materially_false_spans: Vec::new(),
-            coherence_markers: Vec::new(),
-            max_generated_tokens: None,
-            ridge_dead_zone: None,
-            top: Some(5),
-            format: Some(larql_lql::ast::OutputFormat::Json),
-        },
-    };
+    let stmt = build_analyze_infer_ast(prompt, analysis, 5);
 
     let output = session
         .execute(&stmt)
@@ -664,10 +636,10 @@ impl App {
                         }
                         let analysis = self.manual.build_analysis();
                         let session = self.session.as_mut().unwrap();
-                        match rt.block_on(execute_batch_dla_scan_lql(
+                        match rt.block_on(execute_analyze_infer_lql(
                             session,
                             &self.manual.prompt,
-                            analysis.as_ref(),
+                            &analysis,
                         ))
                         {
                             Ok(result) => {
@@ -1338,5 +1310,72 @@ mod tests {
             lql,
             "ANALYZE INFER \"The capital of Freedonia is\" MODE FACT_PROBE TRUTH_SPANS (\"Markov\") FALSE_SPANS (\"Paris\", \"London\") COHERENCE_MARKERS (\"capital\", \"is\") MAX_GENERATED_TOKENS 1 RIDGE_DEAD_ZONE 0.05 TOP 5 FORMAT JSON;"
         );
+
+        // Assert all clauses are present
+        assert!(lql.contains("MODE FACT_PROBE"));
+        assert!(lql.contains("TRUTH_SPANS"));
+        assert!(lql.contains("FALSE_SPANS"));
+        assert!(lql.contains("COHERENCE_MARKERS"));
+        assert!(lql.contains("MAX_GENERATED_TOKENS"));
+        assert!(lql.contains("RIDGE_DEAD_ZONE"));
+        assert!(lql.contains("TOP"));
+        assert!(lql.contains("FORMAT JSON"));
+    }
+
+    #[test]
+    fn exported_lql_fact_probe_truth_only() {
+        let stmt = build_analyze_infer_ast(
+            "Test",
+            &RecipeAnalysis {
+                mode: "fact_probe".to_string(),
+                truth_spans: vec!["Paris".to_string()],
+                materially_false_spans: vec![],
+                coherence_markers: vec![],
+                max_generated_tokens: None,
+                ridge_dead_zone: None,
+            },
+            5,
+        );
+        let lql = stmt.to_string();
+        assert!(lql.contains("MODE FACT_PROBE"));
+        assert!(lql.contains("TRUTH_SPANS"));
+    }
+
+    #[test]
+    fn exported_lql_fact_probe_false_only() {
+        let stmt = build_analyze_infer_ast(
+            "Test",
+            &RecipeAnalysis {
+                mode: "fact_probe".to_string(),
+                truth_spans: vec![],
+                materially_false_spans: vec!["London".to_string()],
+                coherence_markers: vec![],
+                max_generated_tokens: None,
+                ridge_dead_zone: None,
+            },
+            5,
+        );
+        let lql = stmt.to_string();
+        assert!(lql.contains("MODE FACT_PROBE"));
+        assert!(lql.contains("FALSE_SPANS"));
+    }
+
+    #[test]
+    fn exported_lql_workflow_probe_requires_false_spans() {
+        let stmt = build_analyze_infer_ast(
+            "Test",
+            &RecipeAnalysis {
+                mode: "workflow_probe".to_string(),
+                truth_spans: vec![],
+                materially_false_spans: vec!["hallucination".to_string()],
+                coherence_markers: vec![],
+                max_generated_tokens: None,
+                ridge_dead_zone: None,
+            },
+            5,
+        );
+        let lql = stmt.to_string();
+        assert!(lql.contains("MODE WORKFLOW_PROBE"));
+        assert!(lql.contains("FALSE_SPANS"));
     }
 }

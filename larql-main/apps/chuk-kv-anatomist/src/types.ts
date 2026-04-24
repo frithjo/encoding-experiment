@@ -50,6 +50,28 @@ export interface DLAScanResult {
   summary: Record<string, unknown>;
 }
 
+export type BatchDlaAnalysisMode = 'fact_probe' | 'workflow_probe';
+
+export interface BatchDlaAnalysisRequest {
+  mode: BatchDlaAnalysisMode;
+  truth_spans: string[];
+  materially_false_spans: string[];
+  coherence_markers: string[];
+  max_generated_tokens?: number | null;
+  ridge_dead_zone?: number | null;
+}
+
+export function defaultBatchDlaAnalysisRequest(): BatchDlaAnalysisRequest {
+  return {
+    mode: 'fact_probe',
+    truth_spans: [],
+    materially_false_spans: [],
+    coherence_markers: [],
+    max_generated_tokens: 1,
+    ridge_dead_zone: 0.05,
+  };
+}
+
 // Flat cell for the heatmap rendering (derived from DLAScanResult)
 export interface DLACell {
   layer: number;

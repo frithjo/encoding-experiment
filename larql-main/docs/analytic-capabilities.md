@@ -222,7 +222,7 @@ Track error buildup in residual streams.
 
 ### Batch DLA Scan
 
-**Status:** Implemented through the shared `larql-inference` analysis engine. Exposed as `ANALYZE INFER` in LQL and as the `batch_dla_scan` server adapter.
+**Status:** Implemented through ANALYZE INFER LQL statement and /v1/analyze-infer server endpoint. Scientific analysis semantics live in `larql-inference`.
 
 Direct Logit Attribution analysis across multiple analysis blocks. This capability provides scientific attribution with explicit truth/coherence annotations for experimental analysis.
 
@@ -243,10 +243,10 @@ Direct Logit Attribution analysis across multiple analysis blocks. This capabili
 
 **Canonical Flow:**
 The canonical flow is:
-- `larql-inference`: Exposes structured analysis API
-- `larql-lql`: Parses ANALYZE INFER statement, executes via structured API
-- `larql-server`: batch_dla_scan route becomes transport adapter over same API
-- `larql-terminal-batch-dla`: Should prefer LQL execution directly; server adapter remains transport-compatible for non-LQL clients
+- `larql-inference`: Exposes structured analysis API (analyze_infer function)
+- `larql-lql`: Parses ANALYZE INFER statement, executes via structured analysis API
+- `larql-server`: /v1/analyze-infer endpoint acts as transport adapter over same API
+- `larql-terminal-batch-dla`: Exports full ANALYZE INFER statements, executes via LQL
 
 **LQL Syntax:**
 ```lql
@@ -261,9 +261,9 @@ ANALYZE INFER "The capital of Freedonia is"
 ```
 
 **Current Access:**
-- LQL: `ANALYZE INFER ...`
-- Server HTTP endpoint: `POST /tools/call` with tool name `batch_dla_scan`
-- TUI: `larql-terminal-batch-dla` crate exports full `ANALYZE INFER ...` queries and should migrate toward direct LQL execution
+- LQL: `ANALYZE INFER ...` (strict parser requires MODE and span clauses)
+- Server HTTP endpoint: `POST /v1/analyze-infer` (canonical typed transport)
+- TUI: `larql-terminal-batch-dla` crate exports full `ANALYZE INFER ...` queries and executes via LQL
 
 **Extraction Level Required:** inference
 

@@ -17,6 +17,7 @@ members = [
     "crates/larql-leptos",
     "crates/larql-terminal-batch-dla",
     "crates/larql-terminal-renderer",
+    "crates/larql-tty-io",
 ]
 default-members = [
     "crates/larql-models",
@@ -43,3 +44,6 @@ repository = "https://github.com/chrishayuk/chuk-larql-rs"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
+anyhow = "1"
+ndarray = "0.16"
+larql-core = { path = "crates/larql-core" }

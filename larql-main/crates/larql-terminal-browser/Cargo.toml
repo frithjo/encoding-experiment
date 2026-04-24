@@ -11,7 +11,12 @@ name = "larql-terminal-browser"
 path = "src/main.rs"
 
 [dependencies]
+larql-core = { path = "../larql-core" }
+larql-tty-io = { path = "../larql-tty-io" }
 clap = { version = "4", features = ["derive"] }
+reqwest = { version = "0.12", features = ["json"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+dirs = "5.0"
 
 [package.metadata.product]
 zone = "interface"

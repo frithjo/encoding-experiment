@@ -636,7 +636,7 @@ pub fn load_model_weights(
                 }
             }
         }
-        let data = match mmap_cache.get(&filename) {
+        let data: &[u8] = match mmap_cache.get(&filename) {
             Some(m) => m.as_ref(),
             None => continue,
         };

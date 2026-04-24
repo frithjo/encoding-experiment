@@ -86,7 +86,7 @@ pub fn load_model_dir(path: impl AsRef<Path>) -> Result<ModelWeights, ModelError
         let file = std::fs::File::open(st_path)?;
         let mmap = unsafe { Mmap::map(&file)? };
         let st =
-            SafeTensorsFile::deserialize(&mmap).map_err(|e| ModelError::Parse(e.to_string()))?;
+            SafeTensorsFile::deserialize(&mmap).map_err(|e: String| ModelError::Parse(e))?;
 
         // Check for MXFP4 packed expert tensors (GPT-OSS format)
         let tensor_names: Vec<String> = st.names().iter().map(|n| n.to_string()).collect();
@@ -109,7 +109,7 @@ pub fn load_model_dir(path: impl AsRef<Path>) -> Result<ModelWeights, ModelError
                 match shape.len() {
                     2 => {
                         let arr = Array2::from_shape_vec((shape[0], shape[1]), data)
-                            .map_err(|e| ModelError::Parse(e.to_string()))?;
+                            .map_err(|e: ndarray::ShapeError| ModelError::Parse(e.to_string()))?;
                         tensors.insert(key, arr.into_shared());
                     }
                     1 => {
@@ -130,7 +130,7 @@ pub fn load_model_dir(path: impl AsRef<Path>) -> Result<ModelWeights, ModelError
                 match shape.len() {
                     2 => {
                         let arr = Array2::from_shape_vec((shape[0], shape[1]), data)
-                            .map_err(|e| ModelError::Parse(e.to_string()))?;
+                            .map_err(|e: ndarray::ShapeError| ModelError::Parse(e.to_string()))?;
                         tensors.insert(key, arr.into_shared());
                     }
                     1 => {
@@ -190,8 +190,8 @@ pub fn resolve_model_path(model: &str) -> Result<PathBuf, ModelError> {
 
     // Try HuggingFace cache
     let cache_name = format!("models--{}", model.replace('/', "--"));
-    let home = std::env::var("LARQL_PATHS__HOME_DIR")
-        .map_err(|_| anyhow::anyhow!("LARQL_PATHS__HOME_DIR not set. Set it via config/local.toml, .env, or environment variable."))?
+    let home: PathBuf = std::env::var("LARQL_PATHS__HOME_DIR")
+        .map_err(|e| ModelError::Parse(format!("LARQL_PATHS__HOME_DIR not set: {e}")))?
         .into();
     let cache_dir = std::env::var("LARQL_HUGGINGFACE__CACHE_DIR")
         .unwrap_or_else(|_| ".cache/huggingface/hub".to_string());
@@ -312,13 +312,13 @@ fn dequantize_mxfp4_experts(
             tensors.insert(
                 gate_key,
                 Array2::from_shape_vec((half, in_features), gate_data)
-                    .map_err(|e| ModelError::Parse(e.to_string()))?
+                    .map_err(|e: ndarray::ShapeError| ModelError::Parse(e.to_string()))?
                     .into_shared(),
             );
             tensors.insert(
                 up_key,
                 Array2::from_shape_vec((half, in_features), up_data)
-                    .map_err(|e| ModelError::Parse(e.to_string()))?
+                    .map_err(|e: ndarray::ShapeError| ModelError::Parse(e.to_string()))?
                     .into_shared(),
             );
         }
@@ -344,7 +344,7 @@ fn dequantize_mxfp4_experts(
                     tensors.insert(
                         down_key,
                         Array2::from_shape_vec((down_out, down_in), data.clone())
-                            .map_err(|e| ModelError::Parse(e.to_string()))?
+                            .map_err(|e: ndarray::ShapeError| ModelError::Parse(e.to_string()))?
                             .into_shared(),
                     );
                 }
@@ -361,7 +361,7 @@ fn dequantize_mxfp4_experts(
                     tensors.insert(
                         router_key,
                         Array2::from_shape_vec((s[0], s[1]), data)
-                            .map_err(|e| ModelError::Parse(e.to_string()))?
+                            .map_err(|e: ndarray::ShapeError| ModelError::Parse(e.to_string()))?
                             .into_shared(),
                     );
                 }
