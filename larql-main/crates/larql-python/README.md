@@ -60,7 +60,7 @@ Installs SDK plus the workbench UI (starlette, jinja2, uvicorn, python-multipart
 
 ## Workbench UI
 
-The workbench under `larql_ui.ui` is **only** specified for a **browser running in the terminal** via the first-party client **`larql-terminal-browser`** (`crates/larql-terminal-browser`)—**resizable** display port (compact to generous), high-resolution rendering (**GPU acceleration** when available; **CPU fallback** otherwise), monospace-friendly typography, keyboard-first. Images, video, and streaming are supported at the client (see `plan.md`). It is **not** a desktop dashboard with a narrow mode; the terminal-embedded viewport is the sole normative target. Third-party terminal browsers are optional for development only.
+The workbench under `larql_ui.ui` is **only** specified for a **browser running in the terminal** via the first-party client **`larql-terminal-browser`** (`crates/larql-terminal-browser`)—**resizable** display port (compact to generous), high-resolution rendering (**GPU acceleration** when available; **CPU fallback** otherwise), monospace-friendly typography, keyboard-first. Images, video, and streaming are supported at the client (see `docs/ui/terminal-browser-spec.md`). It is **not** a desktop dashboard with a narrow mode; the terminal-embedded viewport is the sole normative target. Third-party terminal browsers are optional for development only.
 
 Engine-adjacent workbench logic (workspace inspection, execution) should live in **Rust** via PyO3 (`larql._native`); the Python package keeps HTTP, persistence, and templates thin. See `AGENTS.md` (Rust-first workbench logic).
 

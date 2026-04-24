@@ -1,4 +1,4 @@
-"""JSON /api/* routes from plan.md — complement page forms and enable fetch-based clients."""
+"""JSON /api/* routes from docs/ui/terminal-browser-spec.md — complement page forms and enable fetch-based clients."""
 
 from __future__ import annotations
 

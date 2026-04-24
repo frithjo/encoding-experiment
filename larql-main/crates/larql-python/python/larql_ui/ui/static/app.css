@@ -28,7 +28,7 @@ html.terminal-workbench {
 
 body {
   margin: 0 auto;
-  /* Narrow terminals remain comfortable; wide panes can use more line length (plan.md). */
+  /* Narrow terminals remain comfortable; wide panes can use more line length (docs/ui/terminal-browser-spec.md). */
   max-width: min(140ch, calc(100vw - 1.5rem));
   padding: 1rem;
   background: var(--tty-bg);
@@ -116,7 +116,7 @@ pre {
   margin-top: 0;
 }
 
-/* Lead copy under panel title — label-above-field rhythm (plan.md) */
+/* Lead copy under panel title — label-above-field rhythm (docs/ui/terminal-browser-spec.md) */
 .panel-lead {
   margin: 0 0 1rem;
   color: var(--tty-muted);
@@ -341,7 +341,7 @@ pre {
   gap: 0.75rem;
 }
 
-/* Label-above-control (plan.md): explicit labels, not placeholder-only */
+/* Label-above-control (docs/ui/terminal-browser-spec.md): explicit labels, not placeholder-only */
 .stack-form > label:not(.checkbox-row),
 .stack-form fieldset.stack-fieldset > label {
   font-weight: 600;
@@ -567,7 +567,7 @@ button:focus:not(:focus-visible) {
   font-weight: 600;
 }
 
-/* Runs list: table on wide viewports, stacked cards when narrow (plan.md) */
+/* Runs list: table on wide viewports, stacked cards when narrow (docs/ui/terminal-browser-spec.md) */
 .runs-cards {
   display: none;
   list-style: none;
