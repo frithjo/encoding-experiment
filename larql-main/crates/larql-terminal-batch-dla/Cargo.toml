@@ -20,3 +20,8 @@ larql-terminal-renderer = { path = "../larql-terminal-renderer" }
 
 [features]
 default = ["ratatui", "crossterm"]
+head-isolation = []
+token-decode = []
+layer-diff = []
+logit-lens = []
+circuit-detect = []
