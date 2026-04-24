@@ -371,3 +371,32 @@ Video: external tool boundary
 ```
 
 That gives you control without turning the project into a codec implementation exercise.
+
+## TTY-IO split
+
+The LARQL project separates TTY concerns into two crates:
+
+- **`larql-terminal-renderer`**: Output-side rendering (Sixel, Kitty, iTerm2, ANSI backends)
+- **`larql-tty-io`**: Input-side decoding and mode management (CSI/SS3/kitty/mouse/paste/focus, TTY guard)
+
+This split allows the rendering crate to remain focused on pixel-to-escape-sequence transformation, while the TTY-IO crate handles engine-independent terminal primitives that are useful across different rendering engines (Carbonyl, Servo, custom renderers, Leptos-in-TTY).
+
+### larql-tty-io
+
+Provides:
+
+- **Input decoding**: Streaming decoder for CSI/SS3 sequences, kitty keyboard protocol, mouse SGR, bracketed paste, focus events
+- **Mode management**: RAII `TtyGuard` for alt-screen, cursor hide, raw mode, SIGWINCH
+- **Capability probe**: Non-destructive `is_tty()` check
+
+The crate is designed to be reusable and minimal, with no dependencies beyond `libc`. It does not depend on any rendering engine and can be used independently for any terminal-embedded UI.
+
+### Integration with larql-terminal-browser
+
+The terminal browser uses `larql-tty-io` minimally:
+
+- Pre-launch: `is_tty()` probe in first-run wizard to report terminal capabilities
+- The Carbonyl child process owns the TTY during normal operation
+- `TtyGuard` is available for future non-Carbonyl paths (Servo, custom renderers)
+
+This minimal integration ensures the crate is ready for future engine swaps without interfering with Carbonyl's current TTY ownership.

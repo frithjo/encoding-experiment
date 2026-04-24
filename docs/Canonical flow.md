@@ -270,3 +270,7 @@
     adapter after the cutover
   - Use a new statement, not hidden behavior inside
     existing EXPLAIN INFER
+
+---
+
+**Status (2026-04-24):** Hard-Cut Plan completed. ANALYZE INFER statement implemented in LQL with full parser, executor, and AST support. Scientific analysis semantics centralized in `larql-inference::analyze_infer`. Server `/v1/analyze-infer` endpoint acts as thin transport adapter. TUI exports full executable ANALYZE INFER statements. All success criteria met.
