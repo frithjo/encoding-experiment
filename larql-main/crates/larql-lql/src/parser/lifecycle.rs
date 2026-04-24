@@ -145,6 +145,8 @@ impl Parser {
         let mut layer = None;
         let mut relation = None;
         let mut limit = None;
+        let mut into_patch = None;
+        let mut into_report = None;
 
         loop {
             match self.peek() {
@@ -163,17 +165,22 @@ impl Parser {
                 }
                 crate::lexer::Token::Keyword(Keyword::Into) => {
                     self.advance();
-                    self.expect_keyword(Keyword::Patch)?;
-                    let path = self.expect_string()?;
-                    self.eat_semicolon();
-                    return Ok(Statement::Diff {
-                        a,
-                        b,
-                        layer,
-                        relation,
-                        limit,
-                        into_patch: Some(path),
-                    });
+                    match self.peek() {
+                        crate::lexer::Token::Keyword(Keyword::Patch) => {
+                            self.advance();
+                            let path = self.expect_string()?;
+                            into_patch = Some(path);
+                        }
+                        crate::lexer::Token::Keyword(Keyword::Report) => {
+                            self.advance();
+                            let path = self.expect_string()?;
+                            into_report = Some(path);
+                        }
+                        t => return Err(ParseError(format!(
+                            "expected PATCH or REPORT after INTO, got {:?}",
+                            t
+                        ))),
+                    }
                 }
                 _ => break,
             }
@@ -186,8 +193,49 @@ impl Parser {
             layer,
             relation,
             limit,
-            into_patch: None,
+            into_patch,
+            into_report,
         })
+    }
+
+    pub(crate) fn parse_export(&mut self) -> Result<Statement, ParseError> {
+        self.expect_keyword(Keyword::Export)?;
+        let vindex = self.parse_vindex_ref()?;
+        self.expect_keyword(Keyword::Into)?;
+        let output = self.expect_string()?;
+        self.expect_keyword(Keyword::Format)?;
+        let format = self.parse_graph_export_format()?;
+        self.eat_semicolon();
+        Ok(Statement::Export {
+            vindex,
+            output,
+            format,
+        })
+    }
+
+    fn parse_graph_export_format(&mut self) -> Result<GraphExportFormat, ParseError> {
+        match self.peek() {
+            crate::lexer::Token::Keyword(Keyword::Turtle) => {
+                self.advance();
+                Ok(GraphExportFormat::Turtle)
+            }
+            crate::lexer::Token::Keyword(Keyword::Neo4j) => {
+                self.advance();
+                Ok(GraphExportFormat::Neo4j)
+            }
+            crate::lexer::Token::Keyword(Keyword::JsonLd) => {
+                self.advance();
+                Ok(GraphExportFormat::JsonLd)
+            }
+            crate::lexer::Token::Keyword(Keyword::Graphml) => {
+                self.advance();
+                Ok(GraphExportFormat::Graphml)
+            }
+            t => Err(ParseError(format!(
+                "expected TURTLE, NEO4J, JSON-LD, or GRAPHML, got {:?}",
+                t
+            ))),
+        }
     }
 
     pub(crate) fn parse_use(&mut self) -> Result<Statement, ParseError> {

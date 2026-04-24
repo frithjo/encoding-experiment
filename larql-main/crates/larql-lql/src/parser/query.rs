@@ -162,6 +162,7 @@ impl Parser {
         let mut layer = None;
         let mut relations_only = false;
         let mut mode = DescribeMode::default();
+        let mut stream = false;
 
         loop {
             match self.peek() {
@@ -187,6 +188,10 @@ impl Parser {
                     self.advance();
                     mode = DescribeMode::Raw;
                 }
+                Token::Keyword(Keyword::Stream) => {
+                    self.advance();
+                    stream = true;
+                }
                 _ => {
                     if let Some(b) = self.try_parse_layer_band() {
                         band = Some(b);
@@ -204,6 +209,7 @@ impl Parser {
             layer,
             relations_only,
             mode,
+            stream,
         })
     }
 
@@ -281,6 +287,7 @@ impl Parser {
         let prompt = self.expect_string()?;
 
         let mut mode = AnalysisMode::FactProbe;
+        let mut mode_seen = false;
         let mut truth_spans = Vec::new();
         let mut materially_false_spans = Vec::new();
         let mut coherence_markers = Vec::new();
@@ -302,6 +309,7 @@ impl Parser {
                     } else {
                         return Err(ParseError("expected FACT_PROBE or WORKFLOW_PROBE".to_string()));
                     };
+                    mode_seen = true;
                 }
                 Token::Keyword(Keyword::TruthSpans) => {
                     self.advance();
@@ -330,7 +338,13 @@ impl Parser {
                 Token::Keyword(Keyword::Format) => {
                     self.advance();
                     if self.check_keyword(Keyword::Csv) {
-                        return Err(ParseError("CSV format is not yet implemented for ANALYZE INFER. Use FORMAT JSON or omit the FORMAT clause.".to_string()));
+                        return Err(ParseError("CSV format is not supported for ANALYZE INFER. Use FORMAT JSON or omit the FORMAT clause.".to_string()));
+                    }
+                    if self.check_keyword(Keyword::Safetensors) {
+                        return Err(ParseError("SAFETENSORS format is not supported for ANALYZE INFER. Use FORMAT JSON or omit the FORMAT clause.".to_string()));
+                    }
+                    if self.check_keyword(Keyword::Gguf) {
+                        return Err(ParseError("GGUF format is not supported for ANALYZE INFER. Use FORMAT JSON or omit the FORMAT clause.".to_string()));
                     }
                     if self.check_keyword(Keyword::Json) {
                         self.advance();
@@ -340,6 +354,28 @@ impl Parser {
                     }
                 }
                 _ => break,
+            }
+        }
+
+        // Validate required clauses for strict scientific contract
+        if !mode_seen {
+            return Err(ParseError("ANALYZE INFER requires MODE clause. Example: MODE FACT_PROBE".to_string()));
+        }
+
+        match mode {
+            AnalysisMode::FactProbe => {
+                if truth_spans.is_empty() && materially_false_spans.is_empty() {
+                    return Err(ParseError(
+                        "MODE FACT_PROBE requires at least TRUTH_SPANS or FALSE_SPANS".to_string()
+                    ));
+                }
+            }
+            AnalysisMode::WorkflowProbe => {
+                if materially_false_spans.is_empty() {
+                    return Err(ParseError(
+                        "MODE WORKFLOW_PROBE requires FALSE_SPANS".to_string()
+                    ));
+                }
             }
         }
 

@@ -358,7 +358,10 @@ impl Session {
             let result = larql_inference::analyze_infer(weights, tokenizer.as_ref(), num_layers, &request)
                 .map_err(|e| LqlError::Execution(format!("analysis failed: {}", e)))?;
 
-            return self.format_analysis_result(&result);
+            match format {
+                Some(crate::ast::OutputFormat::Json) => return self.format_analysis_result_json(&result),
+                _ => return self.format_analysis_result(&result),
+            }
         }
 
         // Vindex backend: load weights and analyze
@@ -517,8 +520,14 @@ impl Session {
         layer: Option<u32>,
         relations_only: bool,
         mode: crate::ast::DescribeMode,
+        stream: bool,
     ) -> Result<Vec<String>, LqlError> {
         let verbose = mode != crate::ast::DescribeMode::Brief;
+
+        // STREAM mode: output results progressively
+        if stream {
+            return self.exec_describe_stream(entity, band, layer, relations_only, mode);
+        }
 
         // MoE router-based DESCRIBE if available
         if let Some(router_result) = self.try_moe_describe(entity, band, layer, verbose)? {
@@ -1799,6 +1808,103 @@ impl Session {
     }
 
     // ── MoE Router-guided DESCRIBE ──
+
+    /// STREAM mode: output results progressively for large models
+    fn exec_describe_stream(
+        &self,
+        entity: &str,
+        band: Option<crate::ast::LayerBand>,
+        layer: Option<u32>,
+        relations_only: bool,
+        mode: crate::ast::DescribeMode,
+    ) -> Result<Vec<String>, LqlError> {
+        let verbose = mode != crate::ast::DescribeMode::Brief;
+
+        // MoE router-based DESCRIBE if available
+        if let Some(router_result) = self.try_moe_describe(entity, band, layer, verbose)? {
+            return Ok(router_result);
+        }
+
+        // ── Phase 1: load embeddings + tokenizer, build query vector ──
+        let (path, config, patched) = self.require_vindex()?;
+        let query = describe_build_query(entity, path)?;
+
+        if query.is_none() {
+            return Ok(vec![format!("{entity}\n  (not found)")]);
+        }
+        let query = query.unwrap();
+
+        // ── Phase 2: pick scan layers from band/layer filter ──
+        let bands = describe_resolve_bands(config);
+        let scan_layers = describe_scan_layers(&bands, &patched.loaded_layers(), band, layer);
+
+        // ── Phase 3: walk + collect edges in batches for streaming output
+        let trace = patched.walk(&query, &scan_layers, 100); // Higher limit for streaming
+        let mut edges = describe_collect_edges(&trace, entity);
+
+        // ── Phase 3b: append KNN store entries for this entity
+        let knn_hits = patched.knn_store.entries_for_entity(entity);
+        for (knn_layer, entry) in knn_hits {
+            edges.push(DescribeEdge {
+                gate: entry.confidence * 10.0,
+                layers: vec![knn_layer],
+                count: 1,
+                original: entry.target_token.clone(),
+                also: vec![format!("[knn:{}]", entry.relation)],
+                best_layer: knn_layer,
+                best_feature: 0,
+            });
+        }
+
+        // STREAM mode: output in batches
+        let batch_size = 50;
+        let mut out = Vec::new();
+        let total_edges = edges.len();
+
+        out.push(format!("{} ({} edges - streaming mode)", entity, total_edges));
+
+        if relations_only {
+            out.push("  Relations:".to_string());
+        } else {
+            out.push("  Edges:".to_string());
+        }
+
+        for (i, batch) in edges.chunks(batch_size).enumerate() {
+            out.push(format!("  Batch {} (edges {}-{})", i + 1, i * batch_size + 1, (i + 1) * batch_size.min(total_edges)));
+            
+            for edge in batch {
+                if relations_only {
+                    let rel = edge.also.first().cloned().unwrap_or_else(|| edge.original.clone());
+                    out.push(format!("    {}", rel));
+                } else {
+                    let gate_str = if verbose {
+                        format!("gate={:.2}", edge.gate)
+                    } else {
+                        String::new()
+                    };
+                    let layer_str = if verbose {
+                        format!("L{}", edge.best_layer)
+                    } else {
+                        String::new()
+                    };
+                    let also_str = if !edge.also.is_empty() {
+                        format!(" ({})", edge.also.join(", "))
+                    } else {
+                        String::new()
+                    };
+                    out.push(format!(
+                        "    {} {} {}{}",
+                        edge.original,
+                        gate_str,
+                        layer_str,
+                        also_str
+                    ));
+                }
+            }
+        }
+
+        Ok(out)
+    }
 
     /// For MoE models: use the router to select experts, then gate KNN within
     /// only the selected experts' features. Same output format as dense DESCRIBE.

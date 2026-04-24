@@ -146,6 +146,12 @@ pub enum Keyword {
     RidgeDeadZone,
     FactProbe,
     WorkflowProbe,
+    Report,
+    Stream,
+    Turtle,
+    Neo4j,
+    JsonLd,
+    Graphml,
 }
 
 impl Keyword {
@@ -379,6 +385,13 @@ impl Keyword {
             "RIDGE_DEAD_ZONE" => Some(Self::RidgeDeadZone),
             "FACT_PROBE" => Some(Self::FactProbe),
             "WORKFLOW_PROBE" => Some(Self::WorkflowProbe),
+            "REPORT" => Some(Self::Report),
+            "STREAM" => Some(Self::Stream),
+            "TURTLE" => Some(Self::Turtle),
+            "NEO4J" => Some(Self::Neo4j),
+            "JSON-LD" => Some(Self::JsonLd),
+            "JSONLD" => Some(Self::JsonLd),
+            "GRAPHML" => Some(Self::Graphml),
             _ => None,
         }
     }

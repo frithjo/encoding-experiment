@@ -29,6 +29,12 @@ pub enum Statement {
         relation: Option<String>,
         limit: Option<u32>,
         into_patch: Option<String>,
+        into_report: Option<String>,
+    },
+    Export {
+        vindex: VindexRef,
+        output: String,
+        format: GraphExportFormat,
     },
     Use {
         target: UseTarget,
@@ -74,6 +80,7 @@ pub enum Statement {
         layer: Option<u32>,
         relations_only: bool,
         mode: DescribeMode,
+        stream: bool,
     },
     Explain {
         prompt: String,
@@ -344,6 +351,7 @@ impl std::fmt::Display for Statement {
                 layer,
                 relations_only,
                 mode,
+                stream,
             } => {
                 write!(f, "DESCRIBE {}", quote_string(entity))?;
                 if let Some(b) = band {
@@ -356,6 +364,9 @@ impl std::fmt::Display for Statement {
                     write!(f, " RELATIONS_ONLY")?;
                 }
                 write!(f, " MODE {:?}", mode)?;
+                if *stream {
+                    write!(f, " STREAM")?;
+                }
                 write!(f, ";")
             }
             Statement::Explain {
@@ -465,6 +476,42 @@ impl std::fmt::Display for Statement {
                 if let Some(s) = save {
                     write!(f, " SAVE {}", quote_string(s))?;
                 }
+                write!(f, ";")
+            }
+            Statement::Diff {
+                a,
+                b,
+                layer,
+                relation,
+                limit,
+                into_patch,
+                into_report,
+            } => {
+                write!(f, "DIFF {:?} {:?}", a, b)?;
+                if let Some(l) = layer {
+                    write!(f, " LAYER {}", l)?;
+                }
+                if let Some(rel) = relation {
+                    write!(f, " RELATION {}", quote_string(rel))?;
+                }
+                if let Some(lim) = limit {
+                    write!(f, " LIMIT {}", lim)?;
+                }
+                if let Some(patch) = into_patch {
+                    write!(f, " INTO PATCH {}", quote_string(patch))?;
+                }
+                if let Some(report) = into_report {
+                    write!(f, " INTO REPORT {}", quote_string(report))?;
+                }
+                write!(f, ";")
+            }
+            Statement::Export {
+                vindex,
+                output,
+                format,
+            } => {
+                write!(f, "EXPORT {:?} INTO {}", vindex, quote_string(output))?;
+                write!(f, " FORMAT {:?}", format)?;
                 write!(f, ";")
             }
             _ => write!(f, "{:?}", self),
@@ -719,6 +766,15 @@ pub enum TokenSortBy {
 pub enum ExportFormat {
     Csv,
     Json,
+}
+
+/// Graph export formats for EXPORT statement
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GraphExportFormat {
+    Turtle,
+    Neo4j,
+    JsonLd,
+    Graphml,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

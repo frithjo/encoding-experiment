@@ -425,7 +425,7 @@ impl Session {
                 output,
                 on_conflict.unwrap_or(CompileConflict::LastWins),
             ),
-            CompileTarget::Model => self.exec_compile_into_model(&vindex_path, output),
+            CompileTarget::Model => self.exec_compile_into_model(&vindex_path, output, format),
         }
     }
 
@@ -433,6 +433,7 @@ impl Session {
         &self,
         vindex_path: &std::path::Path,
         output: &str,
+        format: Option<OutputFormat>,
     ) -> Result<Vec<String>, LqlError> {
         let config = larql_vindex::load_vindex_config(vindex_path)
             .map_err(|e| LqlError::exec("failed to load vindex config", e))?;
@@ -510,6 +511,24 @@ impl Session {
                         larql_inference::ndarray::ArcArray::from(updated.into_shared()),
                     );
                 }
+            }
+        }
+
+        // Handle output format
+        match format {
+            Some(OutputFormat::Gguf) => {
+                return Err(LqlError::Execution(
+                    "GGUF output format is not yet implemented. Use FORMAT SAFETENSORS for now. \
+                    GGUF writer implementation is the next step in Gap 2 of the implementation plan.".to_string()
+                ));
+            }
+            Some(OutputFormat::Safetensors) | None => {
+                // Default to safetensors
+            }
+            Some(OutputFormat::Json) | Some(OutputFormat::Csv) => {
+                return Err(LqlError::Execution(
+                    format!("Unsupported output format for COMPILE INTO MODEL: {:?}", format)
+                ));
             }
         }
 
@@ -792,6 +811,7 @@ impl Session {
         _relation: Option<&str>,
         limit: Option<u32>,
         into_patch: Option<&str>,
+        into_report: Option<&str>,
     ) -> Result<Vec<String>, LqlError> {
         let path_a = self.resolve_vindex_ref(a)?;
         let path_b = self.resolve_vindex_ref(b)?;
@@ -951,14 +971,14 @@ impl Session {
                 version: 1,
                 base_model: model_name,
                 base_checksum: None,
-                created_at: String::new(),
-                description: Some(format!(
-                    "Diff: {} vs {}",
-                    path_a.display(),
-                    path_b.display()
-                )),
+                created_at: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+                    .to_string(),
+                description: Some(format!("Diff from {} to {}", path_a.display(), path_b.display())),
                 author: None,
-                tags: vec![],
+                tags: Vec::new(),
                 operations,
             };
 
@@ -976,7 +996,407 @@ impl Session {
             ));
         }
 
+        // If INTO REPORT specified, generate a markdown report
+        if let Some(report_path) = into_report {
+            let mut report_lines = Vec::new();
+            report_lines.push(format!("# Diff Report: {} vs {}", path_a.display(), path_b.display()));
+            report_lines.push(String::new());
+            report_lines.push(format!("Generated: {}", std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()));
+            report_lines.push(String::new());
+
+            // Summary statistics
+            let mut added_count = 0;
+            let mut removed_count = 0;
+            let mut modified_count = 0;
+
+            for layer in &layers_a {
+                if let Some(l) = layer_filter {
+                    if *layer != l as usize {
+                        continue;
+                    }
+                }
+                let metas_a = index_a.down_meta_at(*layer);
+                let metas_b = index_b.down_meta_at(*layer);
+                let len_a = metas_a.map(|m| m.len()).unwrap_or(0);
+                let len_b = metas_b.map(|m| m.len()).unwrap_or(0);
+
+                for feat in 0..len_a.max(len_b) {
+                    let ma = metas_a.and_then(|m| m.get(feat)).and_then(|m| m.as_ref());
+                    let mb = metas_b.and_then(|m| m.get(feat)).and_then(|m| m.as_ref());
+
+                    match (ma, mb) {
+                        (Some(_a), Some(b))
+                            if _a.top_token != b.top_token
+                                || (_a.c_score - b.c_score).abs() > 0.01 =>
+                        {
+                            modified_count += 1;
+                        }
+                        (Some(_), None) => {
+                            removed_count += 1;
+                        }
+                        (None, Some(_)) => {
+                            added_count += 1;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            report_lines.push("## Summary".to_string());
+            report_lines.push(String::new());
+            report_lines.push(format!("- Added: {}", added_count));
+            report_lines.push(format!("- Removed: {}", removed_count));
+            report_lines.push(format!("- Modified: {}", modified_count));
+            report_lines.push(format!("- Total changes: {}", added_count + removed_count + modified_count));
+            report_lines.push(String::new());
+
+            // Detailed changes by layer
+            report_lines.push("## Detailed Changes by Layer".to_string());
+            report_lines.push(String::new());
+
+            for layer in &layers_a {
+                if let Some(l) = layer_filter {
+                    if *layer != l as usize {
+                        continue;
+                    }
+                }
+                let metas_a = index_a.down_meta_at(*layer);
+                let metas_b = index_b.down_meta_at(*layer);
+                let len_a = metas_a.map(|m| m.len()).unwrap_or(0);
+                let len_b = metas_b.map(|m| m.len()).unwrap_or(0);
+
+                let mut layer_changes = Vec::new();
+
+                for feat in 0..len_a.max(len_b) {
+                    let ma = metas_a.and_then(|m| m.get(feat)).and_then(|m| m.as_ref());
+                    let mb = metas_b.and_then(|m| m.get(feat)).and_then(|m| m.as_ref());
+
+                    match (ma, mb) {
+                        (Some(a), Some(b))
+                            if a.top_token != b.top_token
+                                || (a.c_score - b.c_score).abs() > 0.01 =>
+                        {
+                            layer_changes.push(format!(
+                                "  - Modified L{}F{}: '{}' → '{}' (confidence: {:.2} → {:.2})",
+                                layer,
+                                feat,
+                                a.top_token,
+                                b.top_token,
+                                a.c_score,
+                                b.c_score
+                            ));
+                        }
+                        (Some(a), None) => {
+                            layer_changes.push(format!(
+                                "  - Removed L{}F{}: '{}' (confidence: {:.2})",
+                                layer,
+                                feat,
+                                a.top_token,
+                                a.c_score
+                            ));
+                        }
+                        (None, Some(b)) => {
+                            layer_changes.push(format!(
+                                "  - Added L{}F{}: '{}' (confidence: {:.2})",
+                                layer,
+                                feat,
+                                b.top_token,
+                                b.c_score
+                            ));
+                        }
+                        _ => {}
+                    }
+                }
+
+                if !layer_changes.is_empty() {
+                    report_lines.push(format!("### Layer {}", layer));
+                    report_lines.push(String::new());
+                    for change in layer_changes {
+                        report_lines.push(change);
+                    }
+                    report_lines.push(String::new());
+                }
+            }
+
+            // Write report to file
+            std::fs::write(report_path, report_lines.join("\n"))
+                .map_err(|e| LqlError::exec("failed to write report", e))?;
+            out.push(format!("Report saved: {}", report_path));
+        }
+
         Ok(out)
+    }
+
+    // ── EXPORT ──
+
+    pub(crate) fn exec_export(
+        &self,
+        vindex: &VindexRef,
+        output: &str,
+        format: GraphExportFormat,
+    ) -> Result<Vec<String>, LqlError> {
+        let vindex_path = self.resolve_vindex_ref(vindex)?;
+        let config = larql_vindex::load_vindex_config(&vindex_path)
+            .map_err(|e| LqlError::exec("failed to load vindex config", e))?;
+
+        let mut cb = larql_vindex::SilentLoadCallbacks;
+        let index = larql_vindex::VectorIndex::load_vindex(&vindex_path, &mut cb)
+            .map_err(|e| LqlError::exec("failed to load vindex", e))?;
+
+        let relation_classifier = RelationClassifier::from_vindex(&vindex_path);
+
+        let mut out = Vec::new();
+        out.push(format!("Exporting {} to {}...", vindex_path.display(), output));
+
+        // Collect all edges from the knowledge graph
+        let mut edges = Vec::new();
+        let layers = index.loaded_layers();
+
+        for layer in &layers {
+            let metas = index.down_meta_at(*layer);
+            if let Some(metas) = metas {
+                for (feat, meta) in metas.iter().enumerate() {
+                    if let Some(meta) = meta {
+                        // Get relation label if available
+                        let relation = if let Some(rc) = &relation_classifier {
+                            rc.label_for_feature(*layer, feat)
+                                .unwrap_or("unknown")
+                        } else {
+                            "unknown"
+                        };
+
+                        edges.push((
+                            meta.top_token.clone(),
+                            relation.to_string(),
+                            meta.c_score,
+                            *layer,
+                        ));
+                    }
+                }
+            }
+        }
+
+        out.push(format!("Exported {} edges", edges.len()));
+
+        match format {
+            GraphExportFormat::Turtle => {
+                self.export_turtle(&edges, output, &config)?;
+                out.push(format!("Saved: {} (Turtle RDF format)", output));
+            }
+            GraphExportFormat::Neo4j => {
+                self.export_neo4j(&edges, output)?;
+                out.push(format!("Saved: {} (Neo4j CSV format)", output));
+            }
+            GraphExportFormat::JsonLd => {
+                self.export_jsonld(&edges, output, &config)?;
+                out.push(format!("Saved: {} (JSON-LD format)", output));
+            }
+            GraphExportFormat::Graphml => {
+                self.export_graphml(&edges, output, &config)?;
+                out.push(format!("Saved: {} (GraphML format)", output));
+            }
+        }
+
+        Ok(out)
+    }
+
+    fn export_turtle(
+        &self,
+        edges: &[(String, String, f32, usize)],
+        output: &str,
+        config: &larql_vindex::VindexConfig,
+    ) -> Result<(), LqlError> {
+        use std::io::Write;
+
+        let mut file = std::fs::File::create(output)
+            .map_err(|e| LqlError::exec("failed to create output file", e))?;
+
+        writeln!(file, "# Turtle RDF export from LARQL")
+            .map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(file, "# Model: {}", config.model)
+            .map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(file).map_err(|e| LqlError::exec("failed to write", e))?;
+
+        for (entity, relation, _confidence, _layer) in edges {
+            // RDF triple: <entity> <relation> <target> .
+            // For now, use entity as both subject and object since we only have entity->target edges
+            writeln!(
+                file,
+                "<http://example.org/entity/{}> <http://example.org/relation/{}> <http://example.org/entity/{}> .",
+                entity.replace(' ', "_"),
+                relation.replace(' ', "_"),
+                entity.replace(' ', "_")
+            )
+            .map_err(|e| LqlError::exec("failed to write", e))?;
+        }
+
+        Ok(())
+    }
+
+    fn export_neo4j(
+        &self,
+        edges: &[(String, String, f32, usize)],
+        output: &str,
+    ) -> Result<(), LqlError> {
+        use std::io::Write;
+
+        let output_path = std::path::Path::new(output);
+        let nodes_path = output_path.with_file_name("nodes.csv");
+        let relationships_path = output_path.with_file_name("relationships.csv");
+
+        let mut nodes_file = std::fs::File::create(&nodes_path)
+            .map_err(|e| LqlError::exec("failed to create nodes.csv", e))?;
+        let mut rels_file = std::fs::File::create(&relationships_path)
+            .map_err(|e| LqlError::exec("failed to create relationships.csv", e))?;
+
+        // Neo4j CSV headers
+        writeln!(nodes_file, "id:ID,name")
+            .map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(
+            rels_file,
+            ":START_ID,relationship,:END_ID,confidence"
+        )
+        .map_err(|e| LqlError::exec("failed to write", e))?;
+
+        // Collect unique entities
+        let mut entities: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for (entity, _, _, _) in edges {
+            entities.insert(entity.clone());
+        }
+
+        // Write nodes
+        for (i, entity) in entities.iter().enumerate() {
+            writeln!(nodes_file, "{},{}", i, entity)
+                .map_err(|e| LqlError::exec("failed to write", e))?;
+        }
+
+        // Write relationships
+        for (entity, relation, confidence, _layer) in edges {
+            // For now, use entity as both source and target
+            writeln!(
+                rels_file,
+                "{},{},{},{}",
+                entity.replace(' ', "_"),
+                relation,
+                entity.replace(' ', "_"),
+                confidence
+            )
+            .map_err(|e| LqlError::exec("failed to write", e))?;
+        }
+
+        Ok(())
+    }
+
+    fn export_jsonld(
+        &self,
+        edges: &[(String, String, f32, usize)],
+        output: &str,
+        _config: &larql_vindex::VindexConfig,
+    ) -> Result<(), LqlError> {
+        use std::io::Write;
+
+        let mut file = std::fs::File::create(output)
+            .map_err(|e| LqlError::exec("failed to create output file", e))?;
+
+        writeln!(file, "{{").map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(file, "  \"@context\": {{").map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(file, "    \"@vocab\": \"http://example.org/\"")
+            .map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(file, "  }},").map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(file, "  \"@graph\": [").map_err(|e| LqlError::exec("failed to write", e))?;
+
+        for (i, (entity, relation, confidence, _layer)) in edges.iter().enumerate() {
+            if i > 0 {
+                writeln!(file, ",").map_err(|e| LqlError::exec("failed to write", e))?;
+            }
+            writeln!(file, "    {{").map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(file, "      \"@id\": \"entity/{}\",", entity.replace(' ', "_"))
+                .map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(file, "      \"{}\": {{", relation)
+                .map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(file, "        \"@value\": \"{}\",", entity)
+                .map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(file, "        \"@type\": \"http://www.w3.org/2001/XMLSchema#string\"")
+                .map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(file, "      }},").map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(file, "      \"confidence\": {}", confidence)
+                .map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(file, "    }}").map_err(|e| LqlError::exec("failed to write", e))?;
+        }
+
+        writeln!(file, "  ]").map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(file, "}}").map_err(|e| LqlError::exec("failed to write", e))?;
+
+        Ok(())
+    }
+
+    fn export_graphml(
+        &self,
+        edges: &[(String, String, f32, usize)],
+        output: &str,
+        config: &larql_vindex::VindexConfig,
+    ) -> Result<(), LqlError> {
+        use std::io::Write;
+
+        let mut file = std::fs::File::create(output)
+            .map_err(|e| LqlError::exec("failed to create output file", e))?;
+
+        writeln!(file, r#"<?xml version="1.0" encoding="UTF-8"?>"#)
+            .map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(file, r#"<graphml xmlns="http://graphml.graphdrawing.org/xmlns""#)
+            .map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(file, r#"  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance""#)
+            .map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(
+            file,
+            r#"  xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">"#
+        )
+        .map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(file, r#"  <graph id="G" edgedefault="directed">"#)
+            .map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(file, r#"    <data key="name">{}</data>"#, config.model)
+            .map_err(|e| LqlError::exec("failed to write", e))?;
+
+        // Collect unique entities as nodes
+        let mut entities: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for (entity, _, _, _) in edges {
+            entities.insert(entity.clone());
+        }
+
+        // Write nodes
+        for (i, entity) in entities.iter().enumerate() {
+            writeln!(file, r#"    <node id="n{}">"#, i)
+                .map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(file, r#"      <data key="name">{}</data>"#, entity)
+                .map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(file, r#"    </node>"#)
+                .map_err(|e| LqlError::exec("failed to write", e))?;
+        }
+
+        // Write edges
+        for (entity, relation, confidence, _layer) in edges {
+            writeln!(
+                file,
+                r#"    <edge source="{}" target="{}">"#,
+                entity.replace(' ', "_"),
+                entity.replace(' ', "_")
+            )
+            .map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(file, r#"      <data key="relation">{}</data>"#, relation)
+                .map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(file, r#"      <data key="confidence">{}</data>"#, confidence)
+                .map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(file, r#"    </edge>"#)
+                .map_err(|e| LqlError::exec("failed to write", e))?;
+        }
+
+        writeln!(file, r#"  </graph>"#).map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(file, r#"</graphml>"#).map_err(|e| LqlError::exec("failed to write", e))?;
+
+        Ok(())
     }
 
     /// Resolve a VindexRef to a concrete path.

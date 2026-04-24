@@ -8,32 +8,11 @@ use crate::ast::*;
 // ── ANALYZE INFER ──
 
 #[test]
-fn parse_analyze_infer_minimal() {
-    let stmt = parse(r#"ANALYZE INFER "The capital of France is Paris.";"#).unwrap();
-    match stmt {
-        Statement::AnalyzeInfer {
-            prompt,
-            mode,
-            truth_spans,
-            materially_false_spans,
-            coherence_markers,
-            max_generated_tokens,
-            ridge_dead_zone,
-            top,
-            format,
-        } => {
-            assert_eq!(prompt, "The capital of France is Paris.");
-            assert_eq!(mode, AnalysisMode::FactProbe);
-            assert!(truth_spans.is_empty());
-            assert!(materially_false_spans.is_empty());
-            assert!(coherence_markers.is_empty());
-            assert!(max_generated_tokens.is_none());
-            assert!(ridge_dead_zone.is_none());
-            assert!(top.is_none());
-            assert!(format.is_none());
-        }
-        _ => panic!("expected AnalyzeInfer"),
-    }
+fn parse_analyze_infer_minimal_rejected() {
+    let result = parse(r#"ANALYZE INFER "The capital of France is Paris.";"#);
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(err.contains("MODE clause"), "error should mention MODE clause requirement");
 }
 
 #[test]
@@ -78,14 +57,61 @@ fn parse_analyze_infer_with_clauses() {
 #[test]
 fn parse_analyze_infer_workflow_probe() {
     let stmt = parse(
-        r#"ANALYZE INFER "Test prompt" MODE WORKFLOW_PROBE;"#
+        r#"ANALYZE INFER "Test prompt" MODE WORKFLOW_PROBE FALSE_SPANS ("hallucination");"#
     ).unwrap();
     match stmt {
-        Statement::AnalyzeInfer { mode, .. } => {
+        Statement::AnalyzeInfer { mode, materially_false_spans, .. } => {
             assert_eq!(mode, AnalysisMode::WorkflowProbe);
+            assert_eq!(materially_false_spans, vec!["hallucination"]);
         }
         _ => panic!("expected AnalyzeInfer"),
     }
+}
+
+#[test]
+fn parse_analyze_infer_fact_probe_truth_only() {
+    let stmt = parse(
+        r#"ANALYZE INFER "Test prompt" MODE FACT_PROBE TRUTH_SPANS ("Paris");"#
+    ).unwrap();
+    match stmt {
+        Statement::AnalyzeInfer { mode, truth_spans, materially_false_spans, .. } => {
+            assert_eq!(mode, AnalysisMode::FactProbe);
+            assert_eq!(truth_spans, vec!["Paris"]);
+            assert!(materially_false_spans.is_empty());
+        }
+        _ => panic!("expected AnalyzeInfer"),
+    }
+}
+
+#[test]
+fn parse_analyze_infer_fact_probe_false_only() {
+    let stmt = parse(
+        r#"ANALYZE INFER "Test prompt" MODE FACT_PROBE FALSE_SPANS ("London");"#
+    ).unwrap();
+    match stmt {
+        Statement::AnalyzeInfer { mode, truth_spans, materially_false_spans, .. } => {
+            assert_eq!(mode, AnalysisMode::FactProbe);
+            assert!(truth_spans.is_empty());
+            assert_eq!(materially_false_spans, vec!["London"]);
+        }
+        _ => panic!("expected AnalyzeInfer"),
+    }
+}
+
+#[test]
+fn parse_analyze_infer_fact_probe_no_spans_rejected() {
+    let result = parse(r#"ANALYZE INFER "Test prompt" MODE FACT_PROBE;"#);
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(err.contains("TRUTH_SPANS") || err.contains("FALSE_SPANS"), "error should mention span requirement");
+}
+
+#[test]
+fn parse_analyze_infer_workflow_probe_no_spans_rejected() {
+    let result = parse(r#"ANALYZE INFER "Test prompt" MODE WORKFLOW_PROBE;"#);
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(err.contains("FALSE_SPANS"), "error should mention FALSE_SPANS requirement");
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -621,6 +647,7 @@ fn parse_describe_minimal() {
             layer,
             relations_only,
             mode,
+            stream: _,
         } => {
             assert_eq!(entity, "France");
             assert!(band.is_none());
@@ -666,6 +693,7 @@ fn parse_describe_layer_and_relations_only() {
         Statement::Describe {
             layer,
             relations_only,
+            stream: _,
             ..
         } => {
             assert_eq!(layer, Some(26));
@@ -679,7 +707,7 @@ fn parse_describe_layer_and_relations_only() {
 fn parse_describe_syntax() {
     let stmt = parse(r#"DESCRIBE "def" SYNTAX;"#).unwrap();
     match stmt {
-        Statement::Describe { entity, band, .. } => {
+        Statement::Describe { entity, band, stream: _, .. } => {
             assert_eq!(entity, "def");
             assert_eq!(band, Some(LayerBand::Syntax));
         }
@@ -691,7 +719,7 @@ fn parse_describe_syntax() {
 fn parse_describe_knowledge() {
     let stmt = parse(r#"DESCRIBE "France" KNOWLEDGE;"#).unwrap();
     match stmt {
-        Statement::Describe { band, .. } => {
+        Statement::Describe { band, stream: _, .. } => {
             assert_eq!(band, Some(LayerBand::Knowledge));
         }
         _ => panic!("expected Describe"),
@@ -702,7 +730,7 @@ fn parse_describe_knowledge() {
 fn parse_describe_output() {
     let stmt = parse(r#"DESCRIBE "France" OUTPUT;"#).unwrap();
     match stmt {
-        Statement::Describe { band, .. } => {
+        Statement::Describe { band, stream: _, .. } => {
             assert_eq!(band, Some(LayerBand::Output));
         }
         _ => panic!("expected Describe"),
@@ -713,7 +741,7 @@ fn parse_describe_output() {
 fn parse_describe_all_layers() {
     let stmt = parse(r#"DESCRIBE "France" ALL LAYERS;"#).unwrap();
     match stmt {
-        Statement::Describe { band, .. } => {
+        Statement::Describe { band, stream: _, .. } => {
             assert_eq!(band, Some(LayerBand::All));
         }
         _ => panic!("expected Describe"),
@@ -727,6 +755,7 @@ fn parse_describe_band_with_relations_only() {
         Statement::Describe {
             band,
             relations_only,
+            stream: _,
             ..
         } => {
             assert_eq!(band, Some(LayerBand::Knowledge));

@@ -164,7 +164,8 @@ impl Session {
                 layer,
                 relations_only,
                 mode,
-            } => self.exec_describe(entity, *band, *layer, *relations_only, *mode),
+                stream,
+            } => self.exec_describe(entity, *band, *layer, *relations_only, *mode, *stream),
             Statement::Select {
                 source,
                 fields,
@@ -252,6 +253,7 @@ impl Session {
                 relation,
                 limit,
                 into_patch,
+                into_report,
             } => self.exec_diff(
                 a,
                 b,
@@ -259,7 +261,13 @@ impl Session {
                 relation.as_deref(),
                 *limit,
                 into_patch.as_deref(),
+                into_report.as_deref(),
             ),
+            Statement::Export {
+                vindex,
+                output,
+                format,
+            } => self.exec_export(vindex, output, *format),
             Statement::Insert {
                 entity,
                 relation,
@@ -355,7 +363,8 @@ impl Session {
                 layer,
                 relations_only,
                 mode,
-            } => self.remote_describe(entity, *band, *layer, *relations_only, *mode),
+                stream,
+            } => self.remote_describe(entity, *band, *layer, *relations_only, *mode, *stream),
             Statement::Walk {
                 prompt,
                 top,

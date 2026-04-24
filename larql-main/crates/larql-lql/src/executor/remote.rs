@@ -337,6 +337,7 @@ impl Session {
         layer: Option<u32>,
         relations_only: bool,
         mode: crate::ast::DescribeMode,
+        _stream: bool,
     ) -> Result<Vec<String>, LqlError> {
         let verbose = mode == crate::ast::DescribeMode::Verbose;
         let show_also = matches!(
@@ -723,34 +724,23 @@ impl Session {
             AnalysisMode::WorkflowProbe => "workflow_probe",
         };
 
-        let analysis_args = if truth_spans.is_empty() && materially_false_spans.is_empty()
-            && coherence_markers.is_empty() && max_generated_tokens.is_none()
-            && ridge_dead_zone.is_none()
-        {
-            None
-        } else {
-            Some(serde_json::json!({
-                "mode": mode_str,
-                "truth_spans": truth_spans,
-                "materially_false_spans": materially_false_spans,
-                "coherence_markers": coherence_markers,
-                "max_generated_tokens": max_generated_tokens.map(|v| v as usize),
-                "ridge_dead_zone": ridge_dead_zone,
-                "top_k": top.unwrap_or(5),
-            }))
+        // Build typed AnalysisRequest directly for /v1/analyze-infer
+        let request = larql_inference::AnalysisRequest {
+            prompt: prompt.to_string(),
+            top_k: top.unwrap_or(5) as usize,
+            mode: mode_str.to_string(),
+            truth_spans: truth_spans.to_vec(),
+            materially_false_spans: materially_false_spans.to_vec(),
+            coherence_markers: coherence_markers.to_vec(),
+            max_generated_tokens: max_generated_tokens.map(|v| v as usize),
+            ridge_dead_zone,
         };
 
-        let tool_request = serde_json::json!({
-            "name": "batch_dla_scan",
-            "arguments": {
-                "prompt": prompt,
-                "analysis": analysis_args,
-            }
-        });
-
-        let result = self.remote_post_json("/tools/call", &tool_request, false)?;
-        let result = result["result"].clone();
-        let result: larql_inference::AnalysisResult = serde_json::from_value(result)
+        let request_json = serde_json::to_value(&request)
+            .map_err(|e| LqlError::Execution(format!("failed to serialize request: {e}")))?;
+        let result_json = self.remote_post_json("/v1/analyze-infer", &request_json, false)
+            .map_err(|e| LqlError::Execution(format!("remote analysis failed: {e}")))?;
+        let result: larql_inference::AnalysisResult = serde_json::from_value(result_json)
             .map_err(|e| LqlError::Execution(format!("invalid remote analysis result: {e}")))?;
 
         match format {

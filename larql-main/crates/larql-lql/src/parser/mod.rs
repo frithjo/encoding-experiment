@@ -54,6 +54,7 @@ impl Parser {
             Token::Keyword(Keyword::Extract) => self.parse_extract(),
             Token::Keyword(Keyword::Compile) => self.parse_compile(),
             Token::Keyword(Keyword::Diff) => self.parse_diff(),
+            Token::Keyword(Keyword::Export) => self.parse_export(),
             Token::Keyword(Keyword::Use) => self.parse_use(),
             Token::Keyword(Keyword::Walk) => self.parse_walk(),
             Token::Keyword(Keyword::Analyze) => self.parse_analyze_infer(),
