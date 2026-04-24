@@ -1,0 +1,21 @@
+# Default LARQL configuration
+# This file contains default values for all configuration options.
+# Override with config/local.toml or environment variables (LARQL__ prefix)
+
+[vindex]
+# Vindex path for loading vector index
+path = "data/bitnet_b1_58-large/vindex"
+
+[models]
+# Model path (HuggingFace model ID or local path)
+path = "google/gemma-3-4b-it"
+
+[huggingface]
+# HuggingFace API token (required for private models)
+# token = ""
+# HuggingFace cache directory (relative to home directory)
+cache_dir = ".cache/huggingface/hub"
+
+[paths]
+# Home directory (auto-detected if not set)
+# home_dir = ""

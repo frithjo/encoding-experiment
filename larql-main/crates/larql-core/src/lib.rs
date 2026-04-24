@@ -1,4 +1,5 @@
 pub mod algo;
+pub mod config;
 pub mod core;
 pub mod engine;
 pub mod io;

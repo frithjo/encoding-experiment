@@ -13,6 +13,9 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 libc = "0.2"
+config = "0.14"
+dotenvy = "0.15"
+dirs = "5.0"
 
 # HTTP provider — optional so pure graph usage has zero network deps
 reqwest = { version = "0.12", features = ["blocking", "json"], optional = true }
