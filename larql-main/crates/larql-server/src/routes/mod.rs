@@ -1,5 +1,6 @@
 //! Router setup — maps URL paths to handlers.
 
+pub mod analyze;
 pub mod describe;
 pub mod explain;
 pub mod health;
@@ -32,6 +33,7 @@ pub fn single_model_router(state: Arc<AppState>) -> Router {
         .route("/v1/relations", get(relations::handle_relations))
         .route("/v1/stats", get(stats::handle_stats))
         .route("/v1/infer", post(infer::handle_infer))
+        .route("/v1/analyze-infer", post(analyze::handle_analyze))
         .route("/v1/patches/apply", post(patches::handle_apply_patch))
         .route("/v1/patches", get(patches::handle_list_patches))
         .route("/v1/patches/{name}", delete(patches::handle_remove_patch))
@@ -64,6 +66,10 @@ pub fn multi_model_router(state: Arc<AppState>) -> Router {
         )
         .route("/v1/{model_id}/stats", get(stats::handle_stats_multi))
         .route("/v1/{model_id}/infer", post(infer::handle_infer_multi))
+        .route(
+            "/v1/{model_id}/analyze-infer",
+            post(analyze::handle_analyze_multi),
+        )
         .route(
             "/v1/{model_id}/patches/apply",
             post(patches::handle_apply_patch_multi),

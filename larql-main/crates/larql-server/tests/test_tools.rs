@@ -123,6 +123,17 @@ async fn post_tools_call(client: &Client, request: Value) -> reqwest::Response {
         .expect("Failed to send request")
 }
 
+async fn post_analyze_infer(client: &Client, request: Value) -> reqwest::Response {
+    let req = client
+        .post(format!("http://localhost:{}/v1/analyze-infer", TEST_PORT))
+        .json(&request)
+        .build()
+        .unwrap();
+    send_with_retry(client, req)
+        .await
+        .expect("Failed to send request")
+}
+
 #[tokio::test]
 async fn test_batch_dla_scan_attention_layer_count_matches_config() {
     let _guard = lock_test_server();
@@ -663,6 +674,46 @@ async fn test_batch_dla_scan_workflow_probe_accumulates_ridge_across_full_trace(
             entry["layer"].as_u64().is_some() && entry["ridge"].as_f64().unwrap_or(-1.0) >= 0.0
         }),
         "ridge_by_layer entries should be layer/ridge pairs with non-negative totals"
+    );
+
+    stop_test_server(server);
+}
+
+#[tokio::test]
+async fn test_analyze_infer_endpoint_returns_structured_analysis_payload() {
+    let _guard = lock_test_server();
+    let server = start_test_server(FIXTURE_VINDEX).await;
+    let client = Client::new();
+
+    let response = post_analyze_infer(
+        &client,
+        serde_json::json!({
+            "prompt": "Step-by-step guide to becoming the president of Freedonia",
+            "top_k": 5,
+            "mode": "workflow_probe",
+            "truth_spans": ["Albrecht"],
+            "materially_false_spans": ["Freedonia", "president of Freedonia"],
+            "coherence_markers": ["step", "guide", "campaign", "election", "office", "becoming"],
+            "max_generated_tokens": 2,
+            "ridge_dead_zone": 0.0
+        }),
+    )
+    .await;
+
+    assert!(response.status().is_success());
+    let result: Value = response.json().await.expect("Failed to parse response");
+
+    assert!(
+        result["generation_trace"].as_array().is_some(),
+        "generation_trace should be present on /v1/analyze-infer"
+    );
+    assert!(
+        result["ridge_by_layer"].as_array().is_some(),
+        "ridge_by_layer should be present on /v1/analyze-infer"
+    );
+    assert!(
+        result["analysis_summary"].is_object(),
+        "analysis_summary should be present on /v1/analyze-infer"
     );
 
     stop_test_server(server);
