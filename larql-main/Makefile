@@ -1,4 +1,4 @@
-.PHONY: build release test check clean fmt lint demos product-metadata-check product-role-check dependency-direction-check validation-disclosure-check structure-check
+.PHONY: build release test check clean fmt lint demos product-metadata-check product-role-check dependency-direction-check validation-disclosure-check source-file-policy-check structure-check
 
 # Build
 build:
@@ -37,7 +37,10 @@ dependency-direction-check:
 validation-disclosure-check:
 	python3 scripts/check_validation_disclosure.py
 
-structure-check: product-metadata-check product-role-check dependency-direction-check validation-disclosure-check
+source-file-policy-check:
+	./scripts/verify-source-file-policy.sh
+
+structure-check: product-metadata-check product-role-check dependency-direction-check validation-disclosure-check source-file-policy-check
 
 # All quality checks
 ci: fmt-check structure-check lint test

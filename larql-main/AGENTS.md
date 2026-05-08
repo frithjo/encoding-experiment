@@ -108,8 +108,12 @@ Installs SDK plus workbench UI (starlette, jinja2, uvicorn, python-multipart). R
   checks, and receipt capsules before admission.
 - **Encapsulation is a runtime invariant.** Production-facing runtime code should
   keep emitters and callsites structured around expected records/capsules. Avoid
-  loose prose in runtime records, and split production files before they exceed
-  999 lines.
+  loose prose in runtime records. Governance and machine authority source files
+  should split before they exceed 999 lines. The rules engine, registries, and
+  ledgers are explicit exceptions: their audit value comes from staying
+  co-located as governed authority surfaces, so the source-file policy gate
+  exempts `rules_engine*.rs`, `*registry*.rs`, `*ledger*.rs`, and Rust files
+  under registry/ledger directories.
 - **Base vindexes are immutable.** All mutation flows through `PatchedVindex` (overlay) — see [crates/larql-vindex/src/patch/core.rs](crates/larql-vindex/src/patch/core.rs). `INSERT/DELETE/UPDATE` auto-start a patch; `SAVE PATCH` persists it as `.vlp` JSON. Never write through to base files.
 - **`COMPILE CURRENT INTO VINDEX`** bakes patches into a new standalone vindex by hardlinking base weight files (APFS fast path) and rewriting only `down_weights.bin` column-wise. No sidecar at load time.
 - **Storage is mmap-first.** Gate vectors, embeddings, down weights are zero-copy `mmap`'d. f16 is the default dtype (`--f16` halves size with negligible accuracy loss). Don't load entire tensors into RAM unless an operation requires it.
