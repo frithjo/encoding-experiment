@@ -30,7 +30,8 @@ fn max_diff(a: &[f32], b: &[f32]) -> f32 {
 }
 
 fn get_metal() -> larql_compute::metal::MetalBackend {
-    larql_compute::metal::MetalBackend::new_default().expect("Metal device required for these tests")
+    larql_compute::metal::MetalBackend::new_default()
+        .expect("Metal device required for these tests")
 }
 
 // ── Shader compilation ──

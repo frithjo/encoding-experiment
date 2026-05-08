@@ -60,12 +60,7 @@ pub struct KVCache {
 }
 
 impl KVCache {
-    pub fn new(
-        num_layers: usize,
-        max_seq: usize,
-        num_kv_heads: usize,
-        head_dim: usize,
-    ) -> Self {
+    pub fn new(num_layers: usize, max_seq: usize, num_kv_heads: usize, head_dim: usize) -> Self {
         let layers = (0..num_layers)
             .map(|_| LayerKVCache::new(max_seq, num_kv_heads, head_dim))
             .collect();

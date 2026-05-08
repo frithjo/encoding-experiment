@@ -3,7 +3,7 @@
 //! Basic operations (rms_norm, rope_at_pos) for forward pass.
 //! Cholesky operations for MEMIT (experimental).
 
-use ndarray::{ArrayView2, Array1, Array2, DenseMatrix};
+use ndarray::{Array1, Array2, ArrayView2, DenseMatrix};
 
 /// Apply RMS Norm to a vector.
 pub fn rms_norm(x: &[f32], weight: &[f32], eps: f32, offset: f32) -> Vec<f32> {
@@ -57,7 +57,11 @@ pub fn rope_at_pos(x: &mut [f32], head_dim: usize, base: f32, pos: usize) {
 pub fn cholesky(a: &Array2<f64>, ridge: f64) -> Result<Array2<f64>, String> {
     let n = a.shape()[0];
     if a.shape()[1] != n {
-        return Err(format!("cholesky: matrix must be square, got {}×{}", n, a.shape()[1]));
+        return Err(format!(
+            "cholesky: matrix must be square, got {}×{}",
+            n,
+            a.shape()[1]
+        ));
     }
 
     // Apply ridge to diagonal
@@ -68,12 +72,10 @@ pub fn cholesky(a: &Array2<f64>, ridge: f64) -> Result<Array2<f64>, String> {
 
     // Convert to DenseMatrix facade
     let data = a_with_ridge.as_slice().unwrap().to_vec();
-    let dm = DenseMatrix::from_raw(data, n, n)
-        .map_err(|e| format!("cholesky: {}", e))?;
+    let dm = DenseMatrix::from_raw(data, n, n).map_err(|e| format!("cholesky: {}", e))?;
 
     // Use facade cholesky
-    let l_dm = dm.cholesky()
-        .map_err(|e| format!("cholesky: {}", e))?;
+    let l_dm = dm.cholesky().map_err(|e| format!("cholesky: {}", e))?;
 
     Ok(l_dm.inner().clone())
 }

@@ -142,7 +142,7 @@ impl ComputeBackend for CpuBackend {
 
         let lc = &mut kv.layers[layer];
         let total = seq_len * num_kv_heads * head_dim;
-        
+
         // Grow if prefill exceeds max_seq
         if seq_len > lc.max_seq {
             lc.grow(seq_len.next_power_of_two());
@@ -187,7 +187,7 @@ impl ComputeBackend for CpuBackend {
             ));
         }
         let kv = cache_guard.as_mut().unwrap();
-        
+
         // Ensure KV cache is large enough
         if kv.current_len() >= kv.layers[0].max_seq {
             kv.grow(kv.layers[0].max_seq * 2);
@@ -201,18 +201,34 @@ impl ComputeBackend for CpuBackend {
             let h_norm = ops::linalg::rms_norm(&h, layer.input_norm, layer.eps, layer.norm_offset);
 
             // 2. QKV Projections (using optimized matvecs)
-            let q = self.q4k_matvec(layer.wq.data, &h_norm, q_dim, hidden).unwrap();
-            let k = self.q4k_matvec(layer.wk.data, &h_norm, kv_dim, hidden).unwrap();
-            let v = self.q4k_matvec(layer.wv.data, &h_norm, kv_dim, hidden).unwrap();
+            let q = self
+                .q4k_matvec(layer.wq.data, &h_norm, q_dim, hidden)
+                .unwrap();
+            let k = self
+                .q4k_matvec(layer.wk.data, &h_norm, kv_dim, hidden)
+                .unwrap();
+            let v = self
+                .q4k_matvec(layer.wv.data, &h_norm, kv_dim, hidden)
+                .unwrap();
 
             // 3. RoPE (in-place)
             let mut q = q;
             let mut k = k;
             for hi in 0..num_q_heads {
-                ops::linalg::rope_at_pos(&mut q[hi * head_dim..(hi + 1) * head_dim], head_dim, rope_base, pos);
+                ops::linalg::rope_at_pos(
+                    &mut q[hi * head_dim..(hi + 1) * head_dim],
+                    head_dim,
+                    rope_base,
+                    pos,
+                );
             }
             for hi in 0..num_kv_heads {
-                ops::linalg::rope_at_pos(&mut k[hi * head_dim..(hi + 1) * head_dim], head_dim, rope_base, pos);
+                ops::linalg::rope_at_pos(
+                    &mut k[hi * head_dim..(hi + 1) * head_dim],
+                    head_dim,
+                    rope_base,
+                    pos,
+                );
             }
 
             // 4. KV Append
@@ -224,13 +240,13 @@ impl ComputeBackend for CpuBackend {
             // 5. Attention
             let mut attn_out = vec![0.0; q_dim];
             let scale = 1.0 / (head_dim as f32).sqrt();
-            
+
             // GQA/MQA aware attention
             let n_groups = num_q_heads / num_kv_heads;
             for hi in 0..num_q_heads {
                 let kv_hi = hi / n_groups;
                 let head_q = &q[hi * head_dim..(hi + 1) * head_dim];
-                
+
                 // Extract K/V for this head from cache
                 let mut head_k = Vec::with_capacity((pos + 1) * head_dim);
                 let mut head_v = Vec::with_capacity((pos + 1) * head_dim);
@@ -240,34 +256,44 @@ impl ComputeBackend for CpuBackend {
                     head_v.extend_from_slice(&kv_layer.v_cache[p_off..p_off + head_dim]);
                 }
 
-                let head_out = ops::attention::causal_attention(head_q, &head_k, &head_v, 1, head_dim, scale);
+                let head_out =
+                    ops::attention::causal_attention(head_q, &head_k, &head_v, 1, head_dim, scale);
                 attn_out[hi * head_dim..(hi + 1) * head_dim].copy_from_slice(&head_out);
             }
 
             // 6. O Projection
-            let o_out = self.q4k_matvec(layer.wo.data, &attn_out, hidden, q_dim).unwrap();
+            let o_out = self
+                .q4k_matvec(layer.wo.data, &attn_out, hidden, q_dim)
+                .unwrap();
 
             // 7. Residual + FFN Norm
             for i in 0..hidden {
                 h[i] += o_out[i];
             }
-            let h_ffn_norm = ops::linalg::rms_norm(&h, layer.post_attn_norm, layer.eps, layer.norm_offset);
+            let h_ffn_norm =
+                ops::linalg::rms_norm(&h, layer.post_attn_norm, layer.eps, layer.norm_offset);
 
             // 8. FFN (Gate + Up -> GEGLU -> Down)
-            let gate = self.q4k_matvec(layer.gate.data, &h_ffn_norm, inter, hidden).unwrap();
-            let up = self.q4k_matvec(layer.up.data, &h_ffn_norm, inter, hidden).unwrap();
-            
+            let gate = self
+                .q4k_matvec(layer.gate.data, &h_ffn_norm, inter, hidden)
+                .unwrap();
+            let up = self
+                .q4k_matvec(layer.up.data, &h_ffn_norm, inter, hidden)
+                .unwrap();
+
             let mut act = vec![0.0; inter];
             ops::geglu::geglu_silu(&gate, &up, &mut act);
 
-            let down = self.q6k_matvec(layer.down.data, &act, hidden, inter).unwrap();
+            let down = self
+                .q6k_matvec(layer.down.data, &act, hidden, inter)
+                .unwrap();
 
             // 9. Final Residual
             for i in 0..hidden {
                 h[i] += down[i];
             }
         }
-        
+
         for layer in &mut kv.layers {
             layer.current_len += 1;
         }
@@ -301,7 +327,7 @@ impl ComputeBackend for CpuBackend {
             ));
         }
         let kv = cache_guard.as_mut().unwrap();
-        
+
         if seq_len > kv.layers[0].max_seq {
             kv.grow(seq_len.next_power_of_two());
         }
@@ -310,7 +336,8 @@ impl ComputeBackend for CpuBackend {
 
         for (l, layer) in layers.iter().enumerate() {
             // 1. RMS Norm
-            let h_norm = ops::linalg::rms_norm_2d(h.view(), layer.input_norm, layer.eps, layer.norm_offset);
+            let h_norm =
+                ops::linalg::rms_norm_2d(h.view(), layer.input_norm, layer.eps, layer.norm_offset);
 
             // 2. QKV Projections (per position)
             let mut q_full = Array2::zeros((seq_len, q_dim));
@@ -320,16 +347,30 @@ impl ComputeBackend for CpuBackend {
             for s in 0..seq_len {
                 let row = h_norm.row(s).to_vec();
                 let q = self.q4k_matvec(layer.wq.data, &row, q_dim, hidden).unwrap();
-                let k = self.q4k_matvec(layer.wk.data, &row, kv_dim, hidden).unwrap();
-                let v = self.q4k_matvec(layer.wv.data, &row, kv_dim, hidden).unwrap();
-                
+                let k = self
+                    .q4k_matvec(layer.wk.data, &row, kv_dim, hidden)
+                    .unwrap();
+                let v = self
+                    .q4k_matvec(layer.wv.data, &row, kv_dim, hidden)
+                    .unwrap();
+
                 let mut q = q;
                 let mut k = k;
                 for hi in 0..num_q_heads {
-                    ops::linalg::rope_at_pos(&mut q[hi * head_dim..(hi + 1) * head_dim], head_dim, rope_base, s);
+                    ops::linalg::rope_at_pos(
+                        &mut q[hi * head_dim..(hi + 1) * head_dim],
+                        head_dim,
+                        rope_base,
+                        s,
+                    );
                 }
                 for hi in 0..num_kv_heads {
-                    ops::linalg::rope_at_pos(&mut k[hi * head_dim..(hi + 1) * head_dim], head_dim, rope_base, s);
+                    ops::linalg::rope_at_pos(
+                        &mut k[hi * head_dim..(hi + 1) * head_dim],
+                        head_dim,
+                        rope_base,
+                        s,
+                    );
                 }
 
                 q_full.row_mut(s).assign(&ndarray::Array1::from(q).view());
@@ -352,8 +393,11 @@ impl ComputeBackend for CpuBackend {
             for s in 0..seq_len {
                 for hi in 0..num_q_heads {
                     let kv_hi = hi / n_groups;
-                    let head_q = q_full.row(s).slice(ndarray::s![hi * head_dim..(hi + 1) * head_dim]).to_vec();
-                    
+                    let head_q = q_full
+                        .row(s)
+                        .slice(ndarray::s![hi * head_dim..(hi + 1) * head_dim])
+                        .to_vec();
+
                     let mut head_k = Vec::with_capacity((s + 1) * head_dim);
                     let mut head_v = Vec::with_capacity((s + 1) * head_dim);
                     for p in 0..=s {
@@ -362,8 +406,13 @@ impl ComputeBackend for CpuBackend {
                         head_v.extend_from_slice(&kv_layer.v_cache[p_off..p_off + head_dim]);
                     }
 
-                    let head_out = ops::attention::causal_attention(&head_q, &head_k, &head_v, 1, head_dim, scale);
-                    attn_out.row_mut(s).slice_mut(ndarray::s![hi * head_dim..(hi + 1) * head_dim]).assign(&ndarray::Array1::from(head_out).view());
+                    let head_out = ops::attention::causal_attention(
+                        &head_q, &head_k, &head_v, 1, head_dim, scale,
+                    );
+                    attn_out
+                        .row_mut(s)
+                        .slice_mut(ndarray::s![hi * head_dim..(hi + 1) * head_dim])
+                        .assign(&ndarray::Array1::from(head_out).view());
                 }
             }
 
@@ -377,20 +426,31 @@ impl ComputeBackend for CpuBackend {
 
             // 6. Residual + FFN Norm
             h += &o_full;
-            let h_ffn_norm = ops::linalg::rms_norm_2d(h.view(), layer.post_attn_norm, layer.eps, layer.norm_offset);
+            let h_ffn_norm = ops::linalg::rms_norm_2d(
+                h.view(),
+                layer.post_attn_norm,
+                layer.eps,
+                layer.norm_offset,
+            );
 
             // 7. FFN
             let mut down_full = Array2::zeros((seq_len, hidden));
             for s in 0..seq_len {
                 let row = h_ffn_norm.row(s).to_vec();
-                let gate = self.q4k_matvec(layer.gate.data, &row, inter, hidden).unwrap();
+                let gate = self
+                    .q4k_matvec(layer.gate.data, &row, inter, hidden)
+                    .unwrap();
                 let up = self.q4k_matvec(layer.up.data, &row, inter, hidden).unwrap();
-                
+
                 let mut act = vec![0.0; inter];
                 ops::geglu::geglu_silu(&gate, &up, &mut act);
 
-                let down = self.q6k_matvec(layer.down.data, &act, hidden, inter).unwrap();
-                down_full.row_mut(s).assign(&ndarray::Array1::from(down).view());
+                let down = self
+                    .q6k_matvec(layer.down.data, &act, hidden, inter)
+                    .unwrap();
+                down_full
+                    .row_mut(s)
+                    .assign(&ndarray::Array1::from(down).view());
             }
 
             // 8. Final Residual
