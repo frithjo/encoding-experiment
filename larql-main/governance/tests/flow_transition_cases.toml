@@ -1,0 +1,36 @@
+[[case]]
+name = "allow_machine_creation_next_flow_step"
+action = "create_machine"
+current_flow_step = "need_assessment"
+requested_flow_step = "overlap_check"
+
+[case.facts]
+machine_proposal_present = true
+
+[case.evidence]
+existing_machine_overlap_check = true
+machine_responsibility_boundary = true
+machine_accepts_valid_input_test = true
+machine_rejects_malformed_input_test = true
+
+[case.expect]
+decision = "allow"
+
+[[case]]
+name = "deny_machine_creation_skipped_flow_step"
+action = "create_machine"
+current_flow_step = "need_assessment"
+requested_flow_step = "policy_review"
+
+[case.facts]
+machine_proposal_present = true
+
+[case.evidence]
+existing_machine_overlap_check = true
+machine_responsibility_boundary = true
+machine_accepts_valid_input_test = true
+machine_rejects_malformed_input_test = true
+
+[case.expect]
+decision = "deny"
+rule_id = "policy.flow_transition.allowed_next"

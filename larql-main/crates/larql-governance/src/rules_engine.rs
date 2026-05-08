@@ -357,6 +357,10 @@ pub struct PolicyInput {
     pub state_hash: String,
     pub actor: String,
     pub action: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_flow_step: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_flow_step: Option<String>,
     #[serde(default)]
     pub target_paths: Vec<String>,
     #[serde(default)]
@@ -407,6 +411,8 @@ pub struct PolicyEngineDecision {
     pub resolved_profile: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolved_flow: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flow_transition: Option<PolicyFlowTransition>,
     pub decision: DecisionKind,
     #[serde(default)]
     pub matched_rules: Vec<String>,
@@ -416,6 +422,16 @@ pub struct PolicyEngineDecision {
     pub evidence: Vec<String>,
     #[serde(default)]
     pub findings: Vec<PolicyEvaluationFinding>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PolicyFlowTransition {
+    pub flow_id: String,
+    pub current_step: String,
+    pub requested_step: String,
+    #[serde(default)]
+    pub allowed_next_steps: Vec<String>,
+    pub allowed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -626,6 +642,14 @@ pub struct PolicyTestSuite {
 pub struct PolicyTestCase {
     pub name: String,
     pub action: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_flow_step: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_flow_step: Option<String>,
+    #[serde(default)]
+    pub target_paths: Vec<String>,
+    #[serde(default)]
+    pub risk: u64,
     #[serde(default)]
     pub facts: BTreeMap<String, FactValue>,
     #[serde(default)]
@@ -1920,6 +1944,9 @@ impl PolicyEngine {
         let facts = fact_map(&input.facts);
         let resolved_profile = self.resolve_profile_id(input).map(str::to_string);
         let resolved_flow = self.resolve_flow_id(input).map(str::to_string);
+        let flow_transition = resolved_flow
+            .as_deref()
+            .and_then(|flow_id| self.evaluate_flow_transition(flow_id, input));
         let mut decision = DecisionKind::Allow;
         let mut matched_rules = Vec::new();
         let mut required_actions = BTreeSet::new();
@@ -1982,6 +2009,29 @@ impl PolicyEngine {
             }
         }
 
+        if let Some(transition) = &flow_transition {
+            if !transition.allowed {
+                matched_rules.push("policy.flow_transition.allowed_next".to_string());
+                decision = most_restrictive(decision, DecisionKind::Deny);
+                required_actions.insert(format!(
+                    "advance {} through one of: {}",
+                    transition.flow_id,
+                    transition.allowed_next_steps.join(", ")
+                ));
+                findings.push(PolicyEvaluationFinding {
+                    rule_id: "policy.flow_transition.allowed_next".to_string(),
+                    severity: PolicySeverity::Deny,
+                    decision: DecisionKind::Deny,
+                    message: format!(
+                        "Flow {} does not allow transition from '{}' to '{}'.",
+                        transition.flow_id, transition.current_step, transition.requested_step
+                    ),
+                    missing_facts: Vec::new(),
+                    missing_evidence: Vec::new(),
+                });
+            }
+        }
+
         PolicyEngineDecision {
             schema_version: "larql.governance.policy_decision.v1".to_string(),
             active_policy_set: format!(
@@ -1993,12 +2043,35 @@ impl PolicyEngine {
             input_state_hash: input.state_hash.clone(),
             resolved_profile,
             resolved_flow,
+            flow_transition,
             decision,
             matched_rules,
             required_actions: required_actions.into_iter().collect(),
             evidence: evidence.into_iter().collect(),
             findings,
         }
+    }
+
+    fn evaluate_flow_transition(
+        &self,
+        flow_id: &str,
+        input: &PolicyInput,
+    ) -> Option<PolicyFlowTransition> {
+        let current_step = input.current_flow_step.as_ref()?;
+        let requested_step = input.requested_flow_step.as_ref()?;
+        let allowed_next_steps = self
+            .compiled
+            .allowed_next_steps(flow_id, current_step)
+            .map(|steps| steps.to_vec())
+            .unwrap_or_default();
+        let allowed = allowed_next_steps.iter().any(|step| step == requested_step);
+        Some(PolicyFlowTransition {
+            flow_id: flow_id.to_string(),
+            current_step: current_step.clone(),
+            requested_step: requested_step.clone(),
+            allowed_next_steps,
+            allowed,
+        })
     }
 
     fn evaluate_rule_at_index(
@@ -2439,6 +2512,19 @@ pub fn validate_policy_apply_request(
     request: &PolicyApplyRequest,
 ) -> Result<(), PolicyLoadError> {
     validate_rule_proposal(&request.proposal)?;
+    let conflict_analysis =
+        PolicyEngine::new(registry.clone())?.conflict_analysis(&request.proposal)?;
+    if conflict_analysis.recommendation == ConflictRecommendation::Block {
+        return Err(PolicyLoadError::Invalid(format!(
+            "policy proposal is blocked by conflict analysis: {}",
+            conflict_analysis
+                .conflicts
+                .iter()
+                .map(|conflict| conflict.kind.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )));
+    }
     if request.approval.schema_version != "larql.governance.policy_approval.v1" {
         return Err(PolicyLoadError::Invalid(
             "unsupported policy approval schema".to_string(),
@@ -2611,6 +2697,18 @@ pub fn mint_policy_update_capability(
     expires_at: impl Into<String>,
 ) -> Result<PolicyCapability, PolicyLoadError> {
     validate_rule_proposal(proposal)?;
+    let conflict_analysis = PolicyEngine::new(registry.clone())?.conflict_analysis(proposal)?;
+    if conflict_analysis.recommendation == ConflictRecommendation::Block {
+        return Err(PolicyLoadError::Invalid(format!(
+            "policy proposal is blocked by conflict analysis: {}",
+            conflict_analysis
+                .conflicts
+                .iter()
+                .map(|conflict| conflict.kind.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )));
+    }
     if matches!(
         proposal.policy_update_type,
         PolicyUpdateType::RuleRelaxation
@@ -2902,11 +3000,7 @@ fn validate_flow(flow: &PolicyFlow) -> Result<(), PolicyLoadError> {
 fn validate_rule_ids(rules: &[PolicyRule]) -> Result<(), PolicyLoadError> {
     let mut ids = BTreeSet::new();
     for rule in rules {
-        if rule.id.trim().is_empty() {
-            return Err(PolicyLoadError::Invalid(
-                "policy rule requires id".to_string(),
-            ));
-        }
+        validate_policy_rule(rule)?;
         if !ids.insert(rule.id.clone()) {
             return Err(PolicyLoadError::Invalid(format!(
                 "duplicate policy rule id: {}",
@@ -2917,14 +3011,57 @@ fn validate_rule_ids(rules: &[PolicyRule]) -> Result<(), PolicyLoadError> {
     Ok(())
 }
 
+fn validate_policy_rule(rule: &PolicyRule) -> Result<(), PolicyLoadError> {
+    if rule.id.trim().is_empty() {
+        return Err(PolicyLoadError::Invalid(
+            "policy rule requires id".to_string(),
+        ));
+    }
+    if rule.description.trim().is_empty() {
+        return Err(PolicyLoadError::Invalid(format!(
+            "policy rule {} requires description",
+            rule.id
+        )));
+    }
+    if rule.decision.message.trim().is_empty() {
+        return Err(PolicyLoadError::Invalid(format!(
+            "policy rule {} requires decision message",
+            rule.id
+        )));
+    }
+    if rule.when.all.is_empty() && rule.when.any.is_empty() && rule.when.not_conditions.is_empty() {
+        return Err(PolicyLoadError::Invalid(format!(
+            "policy rule {} requires a formal when block",
+            rule.id
+        )));
+    }
+    Ok(())
+}
+
 fn validate_rule_proposal(proposal: &RuleProposal) -> Result<(), PolicyLoadError> {
     if proposal.schema_version != "larql.governance.rule_proposal.v1" {
         return Err(PolicyLoadError::Invalid(
             "unsupported rule proposal schema".to_string(),
         ));
     }
+    validate_policy_rule(&proposal.proposed_rule)?;
+    if proposal.proposer.trim().is_empty() {
+        return Err(PolicyLoadError::Invalid(
+            "rule proposal requires proposer".to_string(),
+        ));
+    }
+    if proposal.rationale.trim().is_empty() {
+        return Err(PolicyLoadError::Invalid(
+            "rule proposal requires rationale".to_string(),
+        ));
+    }
     let mut kinds = BTreeSet::new();
     for example in &proposal.examples {
+        if example.description.trim().is_empty() {
+            return Err(PolicyLoadError::Invalid(
+                "rule proposal examples require descriptions".to_string(),
+            ));
+        }
         kinds.insert(example.kind.clone());
     }
     for required in [
@@ -2990,13 +3127,15 @@ fn policy_input_from_test_case(case: &PolicyTestCase) -> PolicyInput {
         state_hash: crate::hash::hash_text(&case.name),
         actor: "policy-test".to_string(),
         action: case.action.clone(),
-        target_paths: Vec::new(),
+        current_flow_step: case.current_flow_step.clone(),
+        requested_flow_step: case.requested_flow_step.clone(),
+        target_paths: case.target_paths.clone(),
         evidence: case
             .evidence
             .iter()
             .filter_map(|(key, present)| present.then_some(key.clone()))
             .collect(),
-        risk: 0,
+        risk: case.risk,
         facts: case
             .facts
             .iter()
@@ -3520,6 +3659,66 @@ mod tests {
     }
 
     #[test]
+    fn policy_engine_allows_lawful_flow_transition() {
+        let engine = flow_engine();
+        let input = PolicyInput {
+            schema_version: "larql.governance.policy_input.v1".to_string(),
+            state_hash: crate::hash::hash_text("lawful-flow"),
+            actor: "human:test".to_string(),
+            action: "create_machine".to_string(),
+            current_flow_step: Some("submitted".to_string()),
+            requested_flow_step: Some("overlap_checked".to_string()),
+            target_paths: Vec::new(),
+            evidence: vec!["existing_machine_overlap_check".to_string()],
+            risk: 0,
+            facts: Vec::new(),
+        };
+
+        let decision = engine.evaluate(&input);
+
+        assert_eq!(decision.decision, DecisionKind::Allow);
+        assert_eq!(
+            decision
+                .flow_transition
+                .as_ref()
+                .map(|transition| transition.allowed),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn policy_engine_denies_illegal_flow_transition() {
+        let engine = flow_engine();
+        let input = PolicyInput {
+            schema_version: "larql.governance.policy_input.v1".to_string(),
+            state_hash: crate::hash::hash_text("illegal-flow"),
+            actor: "human:test".to_string(),
+            action: "create_machine".to_string(),
+            current_flow_step: Some("submitted".to_string()),
+            requested_flow_step: Some("approved".to_string()),
+            target_paths: Vec::new(),
+            evidence: vec!["existing_machine_overlap_check".to_string()],
+            risk: 0,
+            facts: Vec::new(),
+        };
+
+        let decision = engine.evaluate(&input);
+
+        assert_eq!(decision.decision, DecisionKind::Deny);
+        assert_eq!(
+            decision
+                .flow_transition
+                .as_ref()
+                .map(|transition| transition.allowed),
+            Some(false)
+        );
+        assert!(decision
+            .findings
+            .iter()
+            .any(|finding| finding.rule_id == "policy.flow_transition.allowed_next"));
+    }
+
+    #[test]
     fn decision_receipt_records_generation_profile_and_flow() {
         let engine = flow_engine();
         let input = PolicyInput {
@@ -3527,6 +3726,8 @@ mod tests {
             state_hash: crate::hash::hash_text("input"),
             actor: "human:test".to_string(),
             action: "create_machine".to_string(),
+            current_flow_step: None,
+            requested_flow_step: None,
             target_paths: Vec::new(),
             evidence: Vec::new(),
             risk: 0,
@@ -3549,6 +3750,8 @@ mod tests {
             state_hash: crate::hash::hash_text("active-input"),
             actor: "human:test".to_string(),
             action: "create_machine".to_string(),
+            current_flow_step: None,
+            requested_flow_step: None,
             target_paths: Vec::new(),
             evidence: vec!["existing_machine_overlap_check".to_string()],
             risk: 0,
@@ -3570,7 +3773,13 @@ mod tests {
             class: PolicyClass::ArtifactPolicy,
             severity: PolicySeverity::Deny,
             description: "a".to_string(),
-            when: ConditionBlock::default(),
+            when: ConditionBlock {
+                all: vec![Condition {
+                    action: Some("a_action".to_string()),
+                    ..Condition::default()
+                }],
+                ..ConditionBlock::default()
+            },
             require: ConditionBlock::default(),
             decision: RuleDecision {
                 on_missing: DecisionKind::Deny,
@@ -3583,7 +3792,13 @@ mod tests {
             class: PolicyClass::ArtifactPolicy,
             severity: PolicySeverity::Deny,
             description: "b".to_string(),
-            when: ConditionBlock::default(),
+            when: ConditionBlock {
+                all: vec![Condition {
+                    action: Some("b_action".to_string()),
+                    ..Condition::default()
+                }],
+                ..ConditionBlock::default()
+            },
             require: ConditionBlock::default(),
             decision: RuleDecision {
                 on_missing: DecisionKind::Deny,
@@ -3736,6 +3951,19 @@ mod tests {
         }
     }
 
+    #[test]
+    fn rule_proposal_requires_formal_when_and_described_examples() {
+        let mut missing_when = proposal();
+        missing_when.proposed_rule.when = ConditionBlock::default();
+        let err = validate_rule_proposal(&missing_when).unwrap_err();
+        assert!(err.to_string().contains("formal when block"));
+
+        let mut empty_example = proposal();
+        empty_example.examples[0].description = "  ".to_string();
+        let err = validate_rule_proposal(&empty_example).unwrap_err();
+        assert!(err.to_string().contains("examples require descriptions"));
+    }
+
     fn unique_temp_policy_root() -> PathBuf {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -3810,6 +4038,8 @@ conflict_resolution = "most_restrictive"
             state_hash: crate::hash::hash_text("state"),
             actor: "test".to_string(),
             action: "create_machine".to_string(),
+            current_flow_step: None,
+            requested_flow_step: None,
             target_paths: Vec::new(),
             evidence: Vec::new(),
             risk: 0,
@@ -3829,6 +4059,8 @@ conflict_resolution = "most_restrictive"
             state_hash: crate::hash::hash_text("state"),
             actor: "test".to_string(),
             action: "create_machine".to_string(),
+            current_flow_step: None,
+            requested_flow_step: None,
             target_paths: Vec::new(),
             evidence: vec!["existing_machine_overlap_check".to_string()],
             risk: 0,
@@ -3844,6 +4076,8 @@ conflict_resolution = "most_restrictive"
             state_hash: crate::hash::hash_text("state"),
             actor: "test".to_string(),
             action: "unknown_governed_action".to_string(),
+            current_flow_step: None,
+            requested_flow_step: None,
             target_paths: Vec::new(),
             evidence: Vec::new(),
             risk: 0,
@@ -3932,6 +4166,20 @@ conflict_resolution = "most_restrictive"
     }
 
     #[test]
+    fn policy_apply_request_rejects_conflict_block() {
+        let engine = engine();
+        let mut request = apply_request_for(engine.registry());
+        request.proposal.proposed_rule.id = "machine_creation.requires_overlap_check".to_string();
+        request.approval.approved_rule_id = request.proposal.proposed_rule.id.clone();
+        request.capability.allowed_rule_ids = vec![request.proposal.proposed_rule.id.clone()];
+
+        let err = engine.verify_policy_apply_request(&request).unwrap_err();
+
+        assert!(err.to_string().contains("conflict analysis"));
+        assert!(err.to_string().contains("duplicate_rule_id"));
+    }
+
+    #[test]
     fn policy_apply_runtime_appends_active_rule_and_advances_hash() {
         let root = unique_temp_policy_root();
         let index_path = write_minimal_policy_index(&root);
@@ -3959,6 +4207,10 @@ conflict_resolution = "most_restrictive"
             case: vec![PolicyTestCase {
                 name: "accepted_machine_creation_without_boundary".to_string(),
                 action: "create_machine".to_string(),
+                current_flow_step: None,
+                requested_flow_step: None,
+                target_paths: Vec::new(),
+                risk: 0,
                 facts: BTreeMap::new(),
                 evidence: BTreeMap::from([("existing_machine_overlap_check".to_string(), true)]),
                 expect: PolicyTestExpectation {
@@ -4236,6 +4488,8 @@ conflict_resolution = "most_restrictive"
             state_hash: crate::hash::hash_text("dup-map"),
             actor: "test".into(),
             action: "noop".into(),
+            current_flow_step: None,
+            requested_flow_step: None,
             target_paths: Vec::new(),
             evidence: Vec::new(),
             risk: 0,
@@ -4308,6 +4562,8 @@ conflict_resolution = "most_restrictive"
                 state_hash: crate::hash::hash_text("s1"),
                 actor: "test".into(),
                 action: "create_machine".into(),
+                current_flow_step: None,
+                requested_flow_step: None,
                 target_paths: Vec::new(),
                 evidence: Vec::new(),
                 risk: 0,
@@ -4318,6 +4574,8 @@ conflict_resolution = "most_restrictive"
                 state_hash: crate::hash::hash_text("s2"),
                 actor: "test".into(),
                 action: "create_machine".into(),
+                current_flow_step: None,
+                requested_flow_step: None,
                 target_paths: Vec::new(),
                 evidence: vec!["existing_machine_overlap_check".into()],
                 risk: 0,
@@ -4328,6 +4586,8 @@ conflict_resolution = "most_restrictive"
                 state_hash: crate::hash::hash_text("s3"),
                 actor: "test".into(),
                 action: "unknown_governed_action".into(),
+                current_flow_step: None,
+                requested_flow_step: None,
                 target_paths: Vec::new(),
                 evidence: Vec::new(),
                 risk: 0,
@@ -4411,6 +4671,8 @@ conflict_resolution = "most_restrictive"
                         )),
                         actor: "soundness".into(),
                         action: action.clone(),
+                        current_flow_step: None,
+                        requested_flow_step: None,
                         target_paths: vec!["pkg/src/lib.rs".into()],
                         evidence: Vec::new(),
                         risk,
@@ -4451,6 +4713,8 @@ conflict_resolution = "most_restrictive"
                 state_hash: crate::hash::hash_text("repo-sample-1"),
                 actor: "test".into(),
                 action: "ci_governance_check".into(),
+                current_flow_step: None,
+                requested_flow_step: None,
                 target_paths: Vec::new(),
                 evidence: vec![
                     "invariant_registry_verified".into(),
@@ -4464,6 +4728,8 @@ conflict_resolution = "most_restrictive"
                 state_hash: crate::hash::hash_text("repo-sample-2"),
                 actor: "test".into(),
                 action: "verify_governance_rule_profile".into(),
+                current_flow_step: None,
+                requested_flow_step: None,
                 target_paths: Vec::new(),
                 evidence: vec!["profile_forbidden_authority_review".into()],
                 risk: 0,
@@ -4738,6 +5004,8 @@ conflict_resolution = "most_restrictive"
             state_hash: crate::hash::hash_text("llm-test"),
             actor: "test".into(),
             action: "create_machine".into(),
+            current_flow_step: None,
+            requested_flow_step: None,
             target_paths: Vec::new(),
             evidence: vec!["existing_machine_overlap_check".into()],
             risk: 0,
@@ -4819,6 +5087,8 @@ kind = "proposal_recipe"
             state_hash: crate::hash::hash_text("smuggle-test"),
             actor: "test".into(),
             action: "merge_pull_request".into(),
+            current_flow_step: None,
+            requested_flow_step: None,
             target_paths: Vec::new(),
             evidence: Vec::new(),
             risk: 0,
