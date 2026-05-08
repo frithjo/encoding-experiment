@@ -1,6 +1,15 @@
 schema_version = "larql.governance.policy_pack.v1"
 
 [[rule]]
+id = "profile.default.allow"
+class = "runtime_policy"
+severity = "info"
+description = "Default governance rule profiles are covered by active policy; forbidden authority flags are denied by stricter rules."
+when = { all = [{ action = "verify_governance_rule_profile" }] }
+require = {}
+decision = { on_missing = "allow", message = "Governance rule profile is covered by active policy.", required_actions = [] }
+
+[[rule]]
 id = "profile.machine_arbitrary_file_edit.forbidden"
 class = "runtime_policy"
 severity = "deny"

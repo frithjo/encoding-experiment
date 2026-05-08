@@ -1,0 +1,54 @@
+{
+  "schema_version": "larql.governance.rule_proposal.v1",
+  "policy_update_type": "new_rule",
+  "proposer": "human:arty",
+  "rationale": "SME direction: prose policy can initiate only a governed rule proposal with examples, conflict check, shadow evaluation, approval, capability-scoped apply, and replay.",
+  "approval_capability": null,
+  "examples": [
+    {
+      "kind": "deny",
+      "description": "LLM proposes error_decomposer_machine but provides no comparison against existing error machines."
+    },
+    {
+      "kind": "allow",
+      "description": "Proposal includes overlap analysis showing no current machine decomposes nested runtime errors."
+    },
+    {
+      "kind": "review_required",
+      "description": "Existing machine partially overlaps but adding new machine may reduce responsibility ambiguity."
+    }
+  ],
+  "proposed_rule": {
+    "id": "machine_creation.requires_overlap_check",
+    "class": "ceremony_policy",
+    "severity": "deny",
+    "description": "New machine proposals require evidence that existing machines cannot already satisfy the responsibility.",
+    "when": {
+      "all": [
+        {
+          "action": "create_machine"
+        }
+      ]
+    },
+    "require": {
+      "all": [
+        {
+          "evidence": "existing_machine_overlap_check",
+          "present": true
+        },
+        {
+          "evidence": "machine_responsibility_boundary",
+          "present": true
+        }
+      ]
+    },
+    "decision": {
+      "on_missing": "deny",
+      "message": "Machine creation requires overlap analysis and responsibility-boundary evidence.",
+      "required_actions": [
+        "attach existing machine overlap check",
+        "attach machine responsibility boundary"
+      ]
+    }
+  }
+}

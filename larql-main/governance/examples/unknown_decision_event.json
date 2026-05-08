@@ -1,0 +1,11 @@
+{
+  "event_type": "UnknownDecisionEncountered",
+  "decision_question": "Should this error-decomposition machine modify the existing error enum or create a new struct?",
+  "context": "MachineCreationCeremony",
+  "proposed_options": [
+    "extend existing enum",
+    "add new decomposition struct",
+    "create separate machine output type"
+  ],
+  "recommended_next_step": "record decision surface item"
+}

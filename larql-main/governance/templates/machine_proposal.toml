@@ -1,0 +1,21 @@
+schema_version = "larql.governance.machine_proposal_template.v1"
+
+[machine]
+name = ""
+purpose = ""
+responsibility_boundary = ""
+input_schema = ""
+output_schema = ""
+
+[evidence]
+existing_machine_overlap_check = ""
+why_existing_machines_are_insufficient = ""
+tests_required = []
+policy_impact = []
+rollback_plan = ""
+
+[integration]
+target_file = ""
+registration_file = ""
+expected_public_api_change = false
+

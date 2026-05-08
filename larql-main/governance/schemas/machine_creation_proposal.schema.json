@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "larql.governance.machine_creation_proposal.schema.v1",
+  "type": "object",
+  "required": [
+    "proposal_type",
+    "machine_name",
+    "responsibility_boundary",
+    "overlap_analysis",
+    "required_tests",
+    "risk",
+    "requested_capability"
+  ],
+  "properties": {
+    "proposal_type": { "const": "MachineCreationProposal" },
+    "machine_name": { "type": "string", "minLength": 1 },
+    "responsibility_boundary": { "type": "string", "minLength": 1 },
+    "overlap_analysis": { "type": "string", "minLength": 1 },
+    "required_tests": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    },
+    "risk": { "enum": ["low", "medium", "high", "critical"] },
+    "requested_capability": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": false
+}
+

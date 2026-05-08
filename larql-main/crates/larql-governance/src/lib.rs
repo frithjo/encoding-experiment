@@ -1,13 +1,19 @@
+pub mod artifact;
 pub mod binding;
 pub mod ceremony;
 pub mod decision_surface;
 pub mod hash;
+pub mod invariant_registry;
 pub mod patch_pipeline;
 pub mod policy;
-pub mod rules_engine;
 pub mod receipt;
+pub mod rules_engine;
 pub mod struct_minter;
 
+pub use artifact::{
+    validate_authority_operation, validate_governance_artifact_definition, AuthorityOperation,
+    GovernanceArtifactDefinition, GovernanceArtifactRole, NonMachineArtifactKind,
+};
 pub use binding::{derive_struct_bindings, RustStructBinding};
 pub use ceremony::{
     CapabilityScope, CeremonyEvent, CeremonyReceipt, MachineCapability, MachineChannel,
@@ -21,6 +27,12 @@ pub use decision_surface::{
     PromotionPath, UnknownDecisionEncountered,
 };
 pub use hash::{hash_bytes, hash_json, hash_text, HashRef};
+pub use invariant_registry::{
+    validate_ci_gate, validate_governance_rule_profile, validate_invariant_admission,
+    validate_invariant_registry, validate_invariant_registry_with_profile, GovernanceInvariant,
+    GovernanceInvariantRegistry, GovernanceRuleProfile, GovernanceRulesEngine, InvariantCiGate,
+    InvariantStatus, InvariantSubject,
+};
 pub use patch_pipeline::{
     plan_governed_patch, Confidence, GateAnswer, ImpactLevel, IntentKind, PatchAnswerToken,
     PatchEnvelope, PatchEnvelopeStatus, PatchIntentSpec, PatchPipelineError, PatchStage,
@@ -29,6 +41,13 @@ pub use patch_pipeline::{
 pub use policy::{
     validate_machine_profile, MachinePolicyEngine, MachineRuleProfile, PolicyDecision, PolicyError,
     StructClassifications,
+};
+pub use receipt::{
+    make_denial_capsule, make_mint_receipt_capsule, make_patch_envelope_capsule,
+    make_policy_receipt_capsule, MachineDenial, MintReceipt, PatchEnvelopeReceipt, PolicyReceipt,
+    ReceiptError, DENIAL_CAPSULE_KIND, DENIAL_CAPTURE_KIND, MINT_RECEIPT_CAPSULE_KIND,
+    MINT_RECEIPT_CAPTURE_KIND, PATCH_ENVELOPE_CAPSULE_KIND, PATCH_ENVELOPE_CAPTURE_KIND,
+    POLICY_RECEIPT_CAPSULE_KIND, POLICY_RECEIPT_CAPTURE_KIND,
 };
 pub use rules_engine::{
     draft_rule_proposal_from_intent, load_policy_registry, load_policy_registry_from_material,
@@ -41,15 +60,8 @@ pub use rules_engine::{
     PolicyRegistry, PolicyRule, PolicyRuleExample, PolicyRuleExampleKind, PolicySeverity,
     PolicyTestCase, PolicyTestExpectation, PolicyTestReport, PolicyTestSuite,
     PolicyUpdateCeremonyEvent, PolicyUpdateCeremonyReport, PolicyUpdateCeremonyTrace,
-    PolicyUpdateType, PolicyWeakeningEvidence, ProsePolicyConcern, RuleProposal,
-    ShadowEvalResult, UnknownFactMode, UnknownRuleMode,
-};
-pub use receipt::{
-    make_denial_capsule, make_mint_receipt_capsule, make_patch_envelope_capsule,
-    make_policy_receipt_capsule, MachineDenial, MintReceipt, PatchEnvelopeReceipt, PolicyReceipt,
-    ReceiptError, DENIAL_CAPSULE_KIND, DENIAL_CAPTURE_KIND, MINT_RECEIPT_CAPSULE_KIND,
-    MINT_RECEIPT_CAPTURE_KIND, PATCH_ENVELOPE_CAPSULE_KIND, PATCH_ENVELOPE_CAPTURE_KIND,
-    POLICY_RECEIPT_CAPSULE_KIND, POLICY_RECEIPT_CAPTURE_KIND,
+    PolicyUpdateType, PolicyWeakeningEvidence, ProsePolicyConcern, RuleProposal, ShadowEvalResult,
+    UnknownFactMode, UnknownRuleMode,
 };
 pub use struct_minter::{
     mint_struct, mint_struct_with_profile, verify_struct_spec, verify_struct_spec_with_profile,

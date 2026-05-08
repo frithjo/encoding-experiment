@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, thiserror::Error)]
@@ -471,8 +473,119 @@ struct PolicyPackFile {
     pub rule: Vec<PolicyRule>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) enum RuleDispatchClass {
+    Global,
+    ActionBucket(String),
+}
+
+/// Conservative eligibility classifier for [`PolicyEngine`] (exact `when.all` conjunct semantics).
+///
+/// Bucketing is **sound only if** [`Condition::action`] is enforced with **`==`** against
+/// [`PolicyInput::action`] (exact string equality). Wildcards/prefix/aliases would require widening
+/// or rebuilding dispatch.
+///
+/// OR/NOT, zero or multiple distinct action literals → global bucket.
+pub(crate) fn compile_rule_dispatch_class(when: &ConditionBlock) -> RuleDispatchClass {
+    if !when.any.is_empty() || !when.not_conditions.is_empty() {
+        return RuleDispatchClass::Global;
+    }
+
+    let mut actions = BTreeSet::new();
+    for condition in &when.all {
+        if let Some(action) = condition.action.clone() {
+            actions.insert(action);
+        }
+    }
+
+    match actions.len() {
+        1 => {
+            RuleDispatchClass::ActionBucket(actions.iter().next().expect("length checked").clone())
+        }
+        _ => RuleDispatchClass::Global,
+    }
+}
+
+/// Compiled **action eligibility** over rules (derived cache — not serialized governance state).
+#[derive(Debug, Clone)]
+struct CompiledActionDispatch {
+    global_indices: Vec<usize>,
+    by_action: HashMap<String, Vec<usize>>,
+}
+
+impl CompiledActionDispatch {
+    fn compile(rules: &[PolicyRule]) -> Self {
+        let mut global_indices = Vec::new();
+        let mut by_action: HashMap<String, Vec<usize>> = HashMap::new();
+
+        for (idx, rule) in rules.iter().enumerate() {
+            match compile_rule_dispatch_class(&rule.when) {
+                RuleDispatchClass::Global => global_indices.push(idx),
+                RuleDispatchClass::ActionBucket(action) => {
+                    by_action.entry(action).or_default().push(idx)
+                }
+            }
+        }
+
+        global_indices.sort_unstable();
+        for indices in by_action.values_mut() {
+            indices.sort_unstable();
+            indices.dedup();
+        }
+
+        Self {
+            global_indices,
+            by_action,
+        }
+    }
+
+    fn merged_eligible_index_list(&self, input_action: &str) -> Vec<usize> {
+        let bucket = self
+            .by_action
+            .get(input_action)
+            .map(|indices| indices.as_slice())
+            .unwrap_or(&[]);
+        merge_sorted_unique(&self.global_indices, bucket)
+    }
+}
+
+/// Merge two ascending, dedupe-stable slices without scanning full rule cardinality.
+pub(crate) fn merge_sorted_unique(lhs: &[usize], rhs: &[usize]) -> Vec<usize> {
+    let mut out = Vec::with_capacity(lhs.len() + rhs.len());
+    let mut i = 0usize;
+    let mut j = 0usize;
+    while i < lhs.len() && j < rhs.len() {
+        match lhs[i].cmp(&rhs[j]) {
+            Ordering::Less => {
+                out.push(lhs[i]);
+                i += 1;
+            }
+            Ordering::Greater => {
+                out.push(rhs[j]);
+                j += 1;
+            }
+            Ordering::Equal => {
+                out.push(lhs[i]);
+                i += 1;
+                j += 1;
+            }
+        }
+    }
+    out.extend_from_slice(&lhs[i..]);
+    out.extend_from_slice(&rhs[j..]);
+    out
+}
+
+enum EligibilityPlan<'a> {
+    Merged(&'a [usize]),
+    // Only constructed from `evaluate_full_scan_for_test`; unused in production lib builds.
+    #[allow(dead_code)]
+    FullScan,
+}
+
 pub struct PolicyEngine {
     registry: PolicyRegistry,
+    dispatch: CompiledActionDispatch,
 }
 
 pub fn load_policy_registry(index_path: &Path) -> Result<PolicyRegistry, PolicyLoadError> {
@@ -549,6 +662,39 @@ fn validate_policy_include_segment(include: &str) -> Result<(), PolicyLoadError>
     Ok(())
 }
 
+fn target_policy_file_is_active_include(registry: &PolicyRegistry, target: &str) -> bool {
+    let Some(target) = normalize_policy_logical_path(target) else {
+        return false;
+    };
+    registry.active_policy_set.includes.iter().any(|include| {
+        normalize_policy_logical_path(include).is_some_and(|normalized| {
+            target == normalized || target == format!("governance/policies/{normalized}")
+        })
+    })
+}
+
+fn normalize_policy_logical_path(path: &str) -> Option<String> {
+    let path = path.trim();
+    if path.is_empty() || Path::new(path).is_absolute() {
+        return None;
+    }
+    let mut components = Vec::new();
+    for component in Path::new(path).components() {
+        match component {
+            std::path::Component::Normal(value) => components.push(value.to_str()?),
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir
+            | std::path::Component::RootDir
+            | std::path::Component::Prefix(_) => return None,
+        }
+    }
+    if components.is_empty() {
+        None
+    } else {
+        Some(components.join("/"))
+    }
+}
+
 /// Load a policy registry from in-memory index and pack contents. Keys in `packs` must be the
 /// **exact** `active_policy_set.includes` strings from the index (same as on disk under the index
 /// parent directory), not basenames alone — so `packs/security/ci.toml` and `ci.toml` do not
@@ -587,10 +733,11 @@ pub fn load_policy_registry_from_material(
             ))
         })?;
         let pack_log_path = format!("{index_logical_path}::{include}");
-        let pack: PolicyPackFile = toml::from_str(text).map_err(|source| PolicyLoadError::Toml {
-            path: pack_log_path,
-            source,
-        })?;
+        let pack: PolicyPackFile =
+            toml::from_str(text).map_err(|source| PolicyLoadError::Toml {
+                path: pack_log_path,
+                source,
+            })?;
         if pack.schema_version != "larql.governance.policy_pack.v1" {
             return Err(PolicyLoadError::Invalid(format!(
                 "unsupported policy pack schema for include {include}"
@@ -615,7 +762,8 @@ pub fn load_policy_registry_from_material(
 impl PolicyEngine {
     pub fn new(registry: PolicyRegistry) -> Result<Self, PolicyLoadError> {
         validate_rule_ids(&registry.rules)?;
-        Ok(Self { registry })
+        let dispatch = CompiledActionDispatch::compile(&registry.rules);
+        Ok(Self { registry, dispatch })
     }
 
     pub fn registry(&self) -> &PolicyRegistry {
@@ -623,6 +771,25 @@ impl PolicyEngine {
     }
 
     pub fn evaluate(&self, input: &PolicyInput) -> PolicyEngineDecision {
+        let eligible = self.dispatch.merged_eligible_index_list(&input.action);
+        self.evaluate_inner(input, EligibilityPlan::Merged(&eligible))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn evaluate_full_scan_for_test(&self, input: &PolicyInput) -> PolicyEngineDecision {
+        self.evaluate_inner(input, EligibilityPlan::FullScan)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn merged_eligible_indices_for_action(&self, input_action: &str) -> Vec<usize> {
+        self.dispatch.merged_eligible_index_list(input_action)
+    }
+
+    fn evaluate_inner(
+        &self,
+        input: &PolicyInput,
+        plan: EligibilityPlan<'_>,
+    ) -> PolicyEngineDecision {
         let facts = fact_map(&input.facts);
         let mut decision = DecisionKind::Allow;
         let mut matched_rules = Vec::new();
@@ -630,38 +797,60 @@ impl PolicyEngine {
         let mut evidence = BTreeSet::new();
         let mut findings = Vec::new();
 
-        for rule in &self.registry.rules {
-            let when = evaluate_block(&rule.when, input, &facts);
-            if !when.matched {
-                continue;
-            }
-            matched_rules.push(rule.id.clone());
-            let require = evaluate_block(&rule.require, input, &facts);
-            if require.matched {
-                if rule.severity == PolicySeverity::Warn {
-                    decision = most_restrictive(decision, DecisionKind::AllowWithWarnings);
+        match plan {
+            EligibilityPlan::FullScan => {
+                for rule in &self.registry.rules {
+                    Self::evaluate_rule_at_index(
+                        rule,
+                        input,
+                        &facts,
+                        &mut decision,
+                        &mut matched_rules,
+                        &mut required_actions,
+                        &mut evidence,
+                        &mut findings,
+                    );
                 }
-                for item in require.evidence {
-                    evidence.insert(item);
-                }
-                continue;
             }
+            EligibilityPlan::Merged(indices) => {
+                for &idx in indices {
+                    let Some(rule) = self.registry.rules.get(idx) else {
+                        continue;
+                    };
+                    Self::evaluate_rule_at_index(
+                        rule,
+                        input,
+                        &facts,
+                        &mut decision,
+                        &mut matched_rules,
+                        &mut required_actions,
+                        &mut evidence,
+                        &mut findings,
+                    );
+                }
+            }
+        }
 
-            decision = most_restrictive(decision, rule.decision.on_missing.clone());
-            for action in &rule.decision.required_actions {
-                required_actions.insert(action.clone());
+        if matched_rules.is_empty() {
+            match self.registry.mode.unknown_rule {
+                UnknownRuleMode::Deny => {
+                    decision = DecisionKind::Deny;
+                    let required_action =
+                        format!("add active policy rule covering {}", input.action);
+                    required_actions.insert(required_action);
+                    findings.push(PolicyEvaluationFinding {
+                        rule_id: "policy.unknown_action.deny".to_string(),
+                        severity: PolicySeverity::Deny,
+                        decision: DecisionKind::Deny,
+                        message: format!(
+                            "No active policy rule matched action '{}'.",
+                            input.action
+                        ),
+                        missing_facts: Vec::new(),
+                        missing_evidence: Vec::new(),
+                    });
+                }
             }
-            for item in when.evidence.into_iter().chain(require.evidence) {
-                evidence.insert(item);
-            }
-            findings.push(PolicyEvaluationFinding {
-                rule_id: rule.id.clone(),
-                severity: rule.severity.clone(),
-                decision: rule.decision.on_missing.clone(),
-                message: rule.decision.message.clone(),
-                missing_facts: require.missing_facts,
-                missing_evidence: require.missing_evidence,
-            });
         }
 
         PolicyEngineDecision {
@@ -678,6 +867,49 @@ impl PolicyEngine {
             evidence: evidence.into_iter().collect(),
             findings,
         }
+    }
+
+    fn evaluate_rule_at_index(
+        rule: &PolicyRule,
+        input: &PolicyInput,
+        facts: &HashMap<String, &PolicyFact>,
+        decision: &mut DecisionKind,
+        matched_rules: &mut Vec<String>,
+        required_actions: &mut BTreeSet<String>,
+        evidence: &mut BTreeSet<String>,
+        findings: &mut Vec<PolicyEvaluationFinding>,
+    ) {
+        let when = evaluate_block(&rule.when, input, facts);
+        if !when.matched {
+            return;
+        }
+        matched_rules.push(rule.id.clone());
+        let require = evaluate_block(&rule.require, input, facts);
+        if require.matched {
+            if rule.severity == PolicySeverity::Warn {
+                *decision = most_restrictive(decision.clone(), DecisionKind::AllowWithWarnings);
+            }
+            for item in require.evidence {
+                evidence.insert(item);
+            }
+            return;
+        }
+
+        *decision = most_restrictive(decision.clone(), rule.decision.on_missing.clone());
+        for action in &rule.decision.required_actions {
+            required_actions.insert(action.clone());
+        }
+        for item in when.evidence.into_iter().chain(require.evidence) {
+            evidence.insert(item);
+        }
+        findings.push(PolicyEvaluationFinding {
+            rule_id: rule.id.clone(),
+            severity: rule.severity.clone(),
+            decision: rule.decision.on_missing.clone(),
+            message: rule.decision.message.clone(),
+            missing_facts: require.missing_facts,
+            missing_evidence: require.missing_evidence,
+        });
     }
 
     pub fn shadow_eval(
@@ -968,6 +1200,11 @@ pub fn validate_policy_apply_request(
             "approval and capability prior state hashes differ".to_string(),
         ));
     }
+    if !target_policy_file_is_active_include(registry, &request.target_policy_file) {
+        return Err(PolicyLoadError::Invalid(
+            "target policy file is not included by active policy set".to_string(),
+        ));
+    }
     if !request
         .capability
         .allowed_rule_ids
@@ -1062,10 +1299,16 @@ pub fn mint_policy_update_capability(
             "approval lacks completed policy-update checks".to_string(),
         ));
     }
+    let target_policy_file = target_policy_file.into();
+    if !target_policy_file_is_active_include(registry, &target_policy_file) {
+        return Err(PolicyLoadError::Invalid(
+            "target policy file is not included by active policy set".to_string(),
+        ));
+    }
 
     Ok(PolicyCapability {
         capability_type: "PolicyUpdate".to_string(),
-        allowed_policy_files: vec![target_policy_file.into()],
+        allowed_policy_files: vec![target_policy_file],
         allowed_rule_ids: vec![proposal.proposed_rule.id.clone()],
         prior_policy_hash: registry.policy_hash.clone(),
         prior_state_hash: approval.prior_state_hash.clone(),
@@ -1303,24 +1546,25 @@ fn normalize_policy_include(root: &Path, include: &str) -> Result<PathBuf, Polic
 }
 
 #[derive(Debug, Default)]
-struct ConditionOutcome {
+pub(crate) struct ConditionOutcome {
     matched: bool,
     missing_facts: Vec<String>,
     missing_evidence: Vec<String>,
     evidence: Vec<String>,
 }
 
-fn fact_map(facts: &[PolicyFact]) -> BTreeMap<String, &PolicyFact> {
-    facts
-        .iter()
-        .map(|fact| (fact.fact_type.clone(), fact))
-        .collect()
+pub(crate) fn fact_map(facts: &[PolicyFact]) -> HashMap<String, &PolicyFact> {
+    let mut map = HashMap::new();
+    for fact in facts {
+        map.insert(fact.fact_type.clone(), fact);
+    }
+    map
 }
 
-fn evaluate_block(
+pub(crate) fn evaluate_block(
     block: &ConditionBlock,
     input: &PolicyInput,
-    facts: &BTreeMap<String, &PolicyFact>,
+    facts: &HashMap<String, &PolicyFact>,
 ) -> ConditionOutcome {
     let mut outcome = ConditionOutcome {
         matched: true,
@@ -1355,7 +1599,7 @@ fn evaluate_block(
 fn evaluate_condition(
     condition: &Condition,
     input: &PolicyInput,
-    facts: &BTreeMap<String, &PolicyFact>,
+    facts: &HashMap<String, &PolicyFact>,
 ) -> ConditionOutcome {
     let mut matched = true;
     let mut missing_facts = Vec::new();
@@ -1460,7 +1704,7 @@ mod tests {
             active_policy_set: PolicySet {
                 id: "test".to_string(),
                 version: "1".to_string(),
-                includes: Vec::new(),
+                includes: vec!["machine-runtime.toml".to_string()],
             },
             policy_hash: crate::hash::hash_text("test-policy"),
             mode: PolicyMode {
@@ -1514,12 +1758,8 @@ mod tests {
             let pack_path = root.join(include);
             packs.insert(include.clone(), fs::read_to_string(&pack_path).unwrap());
         }
-        let from_material = load_policy_registry_from_material(
-            "repo_index.toml",
-            &index_text,
-            &packs,
-        )
-        .unwrap();
+        let from_material =
+            load_policy_registry_from_material("repo_index.toml", &index_text, &packs).unwrap();
         assert_eq!(disk.policy_hash, from_material.policy_hash);
         assert_eq!(disk.rules.len(), from_material.rules.len());
         assert_eq!(disk.active_policy_set, from_material.active_policy_set);
@@ -1611,6 +1851,23 @@ mod tests {
     }
 
     #[test]
+    fn policy_engine_denies_unknown_action_in_deny_mode() {
+        let decision = engine().evaluate(&PolicyInput {
+            schema_version: "larql.governance.policy_input.v1".to_string(),
+            state_hash: crate::hash::hash_text("state"),
+            actor: "test".to_string(),
+            action: "unknown_governed_action".to_string(),
+            target_paths: Vec::new(),
+            evidence: Vec::new(),
+            risk: 0,
+            facts: Vec::new(),
+        });
+        assert_eq!(decision.decision, DecisionKind::Deny);
+        assert!(decision.matched_rules.is_empty());
+        assert_eq!(decision.findings[0].rule_id, "policy.unknown_action.deny");
+    }
+
+    #[test]
     fn policy_apply_request_requires_capability_scope() {
         let proposal = proposal();
         let engine = engine();
@@ -1646,6 +1903,45 @@ mod tests {
             target_policy_file: "governance/policies/machine-runtime.toml".to_string(),
         };
         assert!(engine.verify_policy_apply_request(&request).is_ok());
+    }
+
+    #[test]
+    fn policy_apply_request_rejects_inactive_policy_file() {
+        let proposal = proposal();
+        let engine = engine();
+        let hash = engine.registry().policy_hash.clone();
+        let request = PolicyApplyRequest {
+            proposal,
+            approval: PolicyApproval {
+                schema_version: "larql.governance.policy_approval.v1".to_string(),
+                event_type: "PolicyChangeApproved".to_string(),
+                ceremony_id: "policy_update_test".to_string(),
+                approver: "human:test".to_string(),
+                approved_rule_id: "machine_creation.requires_boundary".to_string(),
+                prior_policy_hash: hash.clone(),
+                prior_state_hash: crate::hash::hash_text("state").to_string(),
+                conflict_analysis_passed: true,
+                shadow_evaluation_completed: true,
+                policy_tests_passed: true,
+                replay_verified: true,
+            },
+            capability: PolicyCapability {
+                capability_type: "PolicyUpdate".to_string(),
+                allowed_policy_files: vec!["governance/policies/inactive.toml".to_string()],
+                allowed_rule_ids: vec!["machine_creation.requires_boundary".to_string()],
+                prior_policy_hash: hash,
+                prior_state_hash: crate::hash::hash_text("state").to_string(),
+                expires_at: "2026-05-09T00:00:00Z".to_string(),
+                required_checks: vec![
+                    "governor policy test".to_string(),
+                    "governor policy shadow-eval".to_string(),
+                    "governor replay".to_string(),
+                ],
+            },
+            target_policy_file: "governance/policies/inactive.toml".to_string(),
+        };
+        let err = engine.verify_policy_apply_request(&request).unwrap_err();
+        assert!(err.to_string().contains("active policy set"));
     }
 
     #[test]
@@ -1713,6 +2009,34 @@ mod tests {
     }
 
     #[test]
+    fn policy_update_capability_rejects_inactive_policy_file() {
+        let engine = engine();
+        let proposal = proposal();
+        let approval = PolicyApproval {
+            schema_version: "larql.governance.policy_approval.v1".to_string(),
+            event_type: "PolicyChangeApproved".to_string(),
+            ceremony_id: "policy_update_test".to_string(),
+            approver: "human:test".to_string(),
+            approved_rule_id: proposal.proposed_rule.id.clone(),
+            prior_policy_hash: engine.registry().policy_hash.clone(),
+            prior_state_hash: crate::hash::hash_text("state"),
+            conflict_analysis_passed: true,
+            shadow_evaluation_completed: true,
+            policy_tests_passed: true,
+            replay_verified: true,
+        };
+        let err = mint_policy_update_capability(
+            engine.registry(),
+            &proposal,
+            &approval,
+            "governance/policies/inactive.toml",
+            "2026-05-09T00:00:00Z",
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("active policy set"));
+    }
+
+    #[test]
     fn policy_weakening_requires_hash_backed_evidence() {
         let evidence = PolicyWeakeningEvidence {
             schema_version: "larql.governance.policy_weakening_evidence.v1".to_string(),
@@ -1725,5 +2049,408 @@ mod tests {
             human_approval_hash: crate::hash::hash_text("approval"),
         };
         assert!(validate_policy_weakening_evidence(&evidence).is_ok());
+    }
+
+    #[test]
+    fn merge_sorted_unique_merges_and_dedupes() {
+        assert_eq!(
+            merge_sorted_unique(&[1, 3, 5], &[2, 3, 6]),
+            vec![1, 2, 3, 5, 6]
+        );
+        assert_eq!(merge_sorted_unique(&[], &[1, 2]), vec![1, 2]);
+        assert_eq!(merge_sorted_unique(&[1, 2], &[]), vec![1, 2]);
+    }
+
+    #[test]
+    fn dispatch_classifier_empty_when_is_global() {
+        let when = ConditionBlock::default();
+        assert!(matches!(
+            compile_rule_dispatch_class(&when),
+            RuleDispatchClass::Global
+        ));
+    }
+
+    #[test]
+    fn dispatch_classifier_single_action_bucket() {
+        let when = ConditionBlock {
+            all: vec![Condition {
+                action: Some("a".into()),
+                ..Condition::default()
+            }],
+            ..ConditionBlock::default()
+        };
+        assert!(matches!(
+            compile_rule_dispatch_class(&when),
+            RuleDispatchClass::ActionBucket(action) if action == "a"
+        ));
+    }
+
+    #[test]
+    fn dispatch_classifier_action_and_fact_still_one_action_bucket() {
+        let when = ConditionBlock {
+            all: vec![
+                Condition {
+                    action: Some("verify_governance_rule_profile".into()),
+                    ..Condition::default()
+                },
+                Condition {
+                    fact: Some("profile.x".into()),
+                    equals: Some(FactValue::Bool(true)),
+                    ..Condition::default()
+                },
+            ],
+            ..ConditionBlock::default()
+        };
+        assert!(matches!(
+            compile_rule_dispatch_class(&when),
+            RuleDispatchClass::ActionBucket(action) if action == "verify_governance_rule_profile"
+        ));
+    }
+
+    #[test]
+    fn dispatch_classifier_fact_only_is_global() {
+        let when = ConditionBlock {
+            all: vec![Condition {
+                fact: Some("public_api_changed".into()),
+                equals: Some(FactValue::Bool(true)),
+                ..Condition::default()
+            }],
+            ..ConditionBlock::default()
+        };
+        assert!(matches!(
+            compile_rule_dispatch_class(&when),
+            RuleDispatchClass::Global
+        ));
+    }
+
+    #[test]
+    fn dispatch_classifier_any_forces_global() {
+        let when = ConditionBlock {
+            any: vec![Condition {
+                action: Some("a".into()),
+                ..Condition::default()
+            }],
+            ..ConditionBlock::default()
+        };
+        assert!(matches!(
+            compile_rule_dispatch_class(&when),
+            RuleDispatchClass::Global
+        ));
+    }
+
+    #[test]
+    fn dispatch_classifier_not_forces_global() {
+        let when = ConditionBlock {
+            not_conditions: vec![Condition {
+                action: Some("a".into()),
+                ..Condition::default()
+            }],
+            ..ConditionBlock::default()
+        };
+        assert!(matches!(
+            compile_rule_dispatch_class(&when),
+            RuleDispatchClass::Global
+        ));
+    }
+
+    #[test]
+    fn dispatch_classifier_duplicate_action_literals_bucket() {
+        let when = ConditionBlock {
+            all: vec![
+                Condition {
+                    action: Some("create_machine".into()),
+                    ..Condition::default()
+                },
+                Condition {
+                    action: Some("create_machine".into()),
+                    ..Condition::default()
+                },
+            ],
+            ..ConditionBlock::default()
+        };
+        assert!(matches!(
+            compile_rule_dispatch_class(&when),
+            RuleDispatchClass::ActionBucket(action) if action == "create_machine"
+        ));
+    }
+
+    #[test]
+    fn dispatch_classifier_two_distinct_actions_is_global() {
+        let when = ConditionBlock {
+            all: vec![
+                Condition {
+                    action: Some("a".into()),
+                    ..Condition::default()
+                },
+                Condition {
+                    action: Some("b".into()),
+                    ..Condition::default()
+                },
+            ],
+            ..ConditionBlock::default()
+        };
+        assert!(matches!(
+            compile_rule_dispatch_class(&when),
+            RuleDispatchClass::Global
+        ));
+    }
+
+    #[test]
+    fn fact_map_last_duplicate_wins() {
+        let input = PolicyInput {
+            schema_version: "larql.governance.policy_input.v1".to_string(),
+            state_hash: crate::hash::hash_text("dup-map"),
+            actor: "test".into(),
+            action: "noop".into(),
+            target_paths: Vec::new(),
+            evidence: Vec::new(),
+            risk: 0,
+            facts: Vec::new(),
+        };
+
+        let when = ConditionBlock {
+            all: vec![Condition {
+                fact: Some("x".into()),
+                equals: Some(FactValue::Integer(2)),
+                ..Condition::default()
+            }],
+            ..ConditionBlock::default()
+        };
+
+        let facts_ordered = vec![
+            PolicyFact {
+                fact_type: "x".into(),
+                value: FactValue::Integer(1),
+                subject: None,
+                evidence: Vec::new(),
+                source: None,
+                state_hash: None,
+            },
+            PolicyFact {
+                fact_type: "x".into(),
+                value: FactValue::Integer(2),
+                subject: None,
+                evidence: Vec::new(),
+                source: None,
+                state_hash: None,
+            },
+        ];
+        let map_last_wins = fact_map(&facts_ordered);
+        assert!(
+            evaluate_block(&when, &input, &map_last_wins).matched,
+            "last duplicate wins for lookups"
+        );
+
+        let facts_both_old = vec![
+            PolicyFact {
+                fact_type: "x".into(),
+                value: FactValue::Integer(1),
+                subject: None,
+                evidence: Vec::new(),
+                source: None,
+                state_hash: None,
+            },
+            PolicyFact {
+                fact_type: "x".into(),
+                value: FactValue::Integer(1),
+                subject: None,
+                evidence: Vec::new(),
+                source: None,
+                state_hash: None,
+            },
+        ];
+        assert!(
+            !evaluate_block(&when, &input, &fact_map(&facts_both_old)).matched,
+            "when last duplicate mismatches expectation, guard should fail"
+        );
+    }
+
+    #[test]
+    fn compiled_eval_parity_matches_full_scan_for_engine_fixture() {
+        let engine = engine();
+        let inputs = vec![
+            PolicyInput {
+                schema_version: "larql.governance.policy_input.v1".to_string(),
+                state_hash: crate::hash::hash_text("s1"),
+                actor: "test".into(),
+                action: "create_machine".into(),
+                target_paths: Vec::new(),
+                evidence: Vec::new(),
+                risk: 0,
+                facts: Vec::new(),
+            },
+            PolicyInput {
+                schema_version: "larql.governance.policy_input.v1".to_string(),
+                state_hash: crate::hash::hash_text("s2"),
+                actor: "test".into(),
+                action: "create_machine".into(),
+                target_paths: Vec::new(),
+                evidence: vec!["existing_machine_overlap_check".into()],
+                risk: 0,
+                facts: Vec::new(),
+            },
+            PolicyInput {
+                schema_version: "larql.governance.policy_input.v1".to_string(),
+                state_hash: crate::hash::hash_text("s3"),
+                actor: "test".into(),
+                action: "unknown_governed_action".into(),
+                target_paths: Vec::new(),
+                evidence: Vec::new(),
+                risk: 0,
+                facts: Vec::new(),
+            },
+        ];
+
+        for input in inputs {
+            let merged = engine.evaluate(&input);
+            let full = engine.evaluate_full_scan_for_test(&input);
+            assert_eq!(
+                serde_json::to_value(&merged).unwrap(),
+                serde_json::to_value(&full).unwrap(),
+                "parity failure for action {}",
+                input.action
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_action_eligible_paths_are_globals_only_when_bucket_missing() {
+        let engine = engine();
+        let globals = engine.merged_eligible_indices_for_action("__not_a_real_action__");
+        assert!(
+            globals.is_empty(),
+            "fixture engine has only bucketed rules; unknown actions evaluate nothing beyond unknown_rule handling"
+        );
+    }
+
+    fn try_repo_policy_engine() -> Option<PolicyEngine> {
+        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let index_path = manifest.join("../../governance/policies/index.toml");
+        if !index_path.exists() {
+            return None;
+        }
+        let index_path = fs::canonicalize(index_path).ok()?;
+        let registry = load_policy_registry(&index_path).ok()?;
+        PolicyEngine::new(registry).ok()
+    }
+
+    #[test]
+    fn repo_dispatch_soundness_skip_implies_when_unmatched() {
+        let Some(engine) = try_repo_policy_engine() else {
+            return;
+        };
+
+        let rules = &engine.registry().rules;
+
+        let mut actions: BTreeSet<String> = BTreeSet::new();
+        actions.insert("__synthetic_unknown__".into());
+        actions.insert(String::new());
+        for rule in rules {
+            for condition in rule.when.all.iter() {
+                if let Some(action) = &condition.action {
+                    actions.insert(action.clone());
+                }
+            }
+        }
+
+        for action in actions {
+            for risk in [0u64, 9] {
+                for with_fact in [false, true] {
+                    let facts = if with_fact {
+                        vec![PolicyFact {
+                            fact_type: "public_api_changed".into(),
+                            value: FactValue::Bool(true),
+                            subject: None,
+                            evidence: Vec::new(),
+                            source: Some("soundness-grid".into()),
+                            state_hash: None,
+                        }]
+                    } else {
+                        Vec::new()
+                    };
+
+                    let input = PolicyInput {
+                        schema_version: "larql.governance.policy_input.v1".to_string(),
+                        state_hash: crate::hash::hash_text(&format!(
+                            "{}|{risk}|{with_fact}",
+                            action.len()
+                        )),
+                        actor: "soundness".into(),
+                        action: action.clone(),
+                        target_paths: vec!["pkg/src/lib.rs".into()],
+                        evidence: Vec::new(),
+                        risk,
+                        facts,
+                    };
+
+                    let eligible: BTreeSet<usize> = engine
+                        .merged_eligible_indices_for_action(&input.action)
+                        .into_iter()
+                        .collect();
+                    let fact_map_input = fact_map(&input.facts);
+
+                    for idx in 0..rules.len() {
+                        if !eligible.contains(&idx) {
+                            let when_outcome =
+                                evaluate_block(&rules[idx].when, &input, &fact_map_input);
+                            assert!(
+                                !when_outcome.matched,
+                                "soundness violated for rule {} on action `{}` idx {idx}",
+                                rules[idx].id, action
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn repo_policy_eval_parity_matches_full_scan_samples() {
+        let Some(engine) = try_repo_policy_engine() else {
+            return;
+        };
+
+        let samples = vec![
+            PolicyInput {
+                schema_version: "larql.governance.policy_input.v1".to_string(),
+                state_hash: crate::hash::hash_text("repo-sample-1"),
+                actor: "test".into(),
+                action: "ci_governance_check".into(),
+                target_paths: Vec::new(),
+                evidence: vec![
+                    "invariant_registry_verified".into(),
+                    "decision_surface_validated".into(),
+                ],
+                risk: 0,
+                facts: Vec::new(),
+            },
+            PolicyInput {
+                schema_version: "larql.governance.policy_input.v1".to_string(),
+                state_hash: crate::hash::hash_text("repo-sample-2"),
+                actor: "test".into(),
+                action: "verify_governance_rule_profile".into(),
+                target_paths: Vec::new(),
+                evidence: vec!["profile_forbidden_authority_review".into()],
+                risk: 0,
+                facts: vec![PolicyFact {
+                    fact_type: "profile.allow_machine_edit_arbitrary_files_freely".into(),
+                    value: FactValue::Bool(true),
+                    subject: None,
+                    evidence: Vec::new(),
+                    source: None,
+                    state_hash: None,
+                }],
+            },
+        ];
+
+        for input in samples {
+            let merged_path = engine.evaluate(&input);
+            let full_scan = engine.evaluate_full_scan_for_test(&input);
+            assert_eq!(
+                serde_json::to_value(&merged_path).unwrap(),
+                serde_json::to_value(&full_scan).unwrap(),
+            );
+        }
     }
 }

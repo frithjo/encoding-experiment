@@ -1,0 +1,32 @@
+schema_version = "larql.governance.policy_proposal_template.v1"
+
+[concern]
+exact_prose = ""
+target_area = ""
+policy_update_type = ""
+
+[intent]
+policy_class = ""
+action = ""
+required_evidence = []
+default_decision = ""
+uncertainties = []
+
+[[examples]]
+kind = "deny"
+description = ""
+
+[[examples]]
+kind = "allow"
+description = ""
+
+[[examples]]
+kind = "review_required"
+description = ""
+
+[checks]
+conflict_analysis_required = true
+shadow_evaluation_required = true
+human_approval_required = true
+replay_required = true
+
