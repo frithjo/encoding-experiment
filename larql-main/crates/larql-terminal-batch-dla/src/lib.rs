@@ -23,16 +23,9 @@ pub struct Cli {
 
 // Re-export from larql-inference for type compatibility
 pub use larql_inference::analysis::{
-    AttentionLayer as AttentionData,
-    LogitLensLayer as LogitLensData,
-    HeadDlaLayer,
-    HeadContribution,
-    StepTopHeadSummary,
-    TokenAnalysis,
-    FirstFalseOrigin,
-    AnalysisSummary,
-    GeneratedStep,
-    LayerRidge as RidgeByLayer,
+    AnalysisSummary, AttentionLayer as AttentionData, FirstFalseOrigin, GeneratedStep,
+    HeadContribution, HeadDlaLayer, LayerRidge as RidgeByLayer, LogitLensLayer as LogitLensData,
+    StepTopHeadSummary, TokenAnalysis,
 };
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -43,7 +36,6 @@ pub struct CircuitHighlight {
     pub to_token: usize,
     pub color_rgb: (u8, u8, u8),
 }
-
 
 // BatchDlaResult: TUI's result type, aligned with larql-inference's AnalysisResult
 // for single-pass JSON deserialization. Adds TUI-specific 'circuits' field.
@@ -187,7 +179,6 @@ impl ManualTargetDraft {
     }
 }
 
-
 fn build_analyze_infer_ast(
     prompt: &str,
     analysis: &RecipeAnalysis,
@@ -212,22 +203,18 @@ fn build_analyze_infer_ast(
 }
 
 /// Execute a generic LQL statement remotely and return the output
-pub async fn execute_lql_remote(
-    server: &str,
-    lql_statement: &str,
-) -> Result<Vec<String>, String> {
+pub async fn execute_lql_remote(server: &str, lql_statement: &str) -> Result<Vec<String>, String> {
     let mut session = Session::new();
     session
         .connect_remote(server)
         .map_err(|e| format!("Failed to connect remote LQL session: {e}"))?;
 
-    let stmt = parse_lql(lql_statement)
-        .map_err(|e| format!("Failed to parse LQL statement: {e}"))?;
+    let stmt =
+        parse_lql(lql_statement).map_err(|e| format!("Failed to parse LQL statement: {e}"))?;
     session
         .execute(&stmt)
         .map_err(|e| format!("Remote LQL execution failed: {e}"))
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ManualField {
@@ -282,8 +269,7 @@ pub async fn execute_analyze_infer_lql(
         .ok_or_else(|| "Remote LQL execution returned no output".to_string())?;
 
     // Single-pass deserialization directly to BatchDlaResult
-    serde_json::from_str(&json_str)
-        .map_err(|e| format!("Failed to parse analysis JSON: {e}"))
+    serde_json::from_str(&json_str).map_err(|e| format!("Failed to parse analysis JSON: {e}"))
 }
 
 pub fn attention_to_image(
@@ -301,7 +287,10 @@ pub fn attention_to_image(
 
     #[cfg(feature = "head-isolation")]
     let row_heads: Vec<&[f32]> = if let Some(head) = selected_head {
-        heads.get(head).map(|h| vec![h.as_slice()]).unwrap_or_default()
+        heads
+            .get(head)
+            .map(|h| vec![h.as_slice()])
+            .unwrap_or_default()
     } else {
         heads.iter().map(Vec::as_slice).collect()
     };
@@ -331,14 +320,21 @@ pub fn attention_to_image(
             let mut value = head.get(col).copied().unwrap_or(0.0);
             #[cfg(feature = "layer-diff")]
             if diff_mode {
-                value -= prev.and_then(|layer| layer.get(col)).copied().unwrap_or(0.0);
+                value -= prev
+                    .and_then(|layer| layer.get(col))
+                    .copied()
+                    .unwrap_or(0.0);
             }
 
             let intensity = (value.abs() * 255.0 * 5.0).min(255.0) as u8;
             let color = if value < 0.0 {
                 Rgb::new(0, (intensity as f32 * 0.45) as u8, intensity)
             } else {
-                Rgb::new(intensity, (intensity as f32 * 0.45) as u8, 255u8.saturating_sub(intensity))
+                Rgb::new(
+                    intensity,
+                    (intensity as f32 * 0.45) as u8,
+                    255u8.saturating_sub(intensity),
+                )
             };
             img.set(col, row_idx, color);
         }
@@ -546,7 +542,9 @@ impl App {
                 .iter()
                 .enumerate()
                 .map(|(idx, layer)| {
-                    let prev = idx.checked_sub(1).and_then(|prev_idx| res.attention.get(prev_idx));
+                    let prev = idx
+                        .checked_sub(1)
+                        .and_then(|prev_idx| res.attention.get(prev_idx));
                     #[cfg(feature = "head-isolation")]
                     let selected_head = self.selected_head;
                     #[cfg(not(feature = "head-isolation"))]
@@ -570,12 +568,14 @@ impl App {
                 .collect();
             self.heatmaps = heatmaps;
             self.clamp_layer_selection();
-            self.cursor_x = self
-                .cursor_x
-                .min(seq_len.saturating_sub(1));
-            self.cursor_y = self
-                .cursor_y
-                .min(self.heatmaps.first().map(|img| img.height).unwrap_or(1).saturating_sub(1));
+            self.cursor_x = self.cursor_x.min(seq_len.saturating_sub(1));
+            self.cursor_y = self.cursor_y.min(
+                self.heatmaps
+                    .first()
+                    .map(|img| img.height)
+                    .unwrap_or(1)
+                    .saturating_sub(1),
+            );
         }
     }
 
@@ -640,8 +640,7 @@ impl App {
                             session,
                             &self.manual.prompt,
                             &analysis,
-                        ))
-                        {
+                        )) {
                             Ok(result) => {
                                 self.result = Some(result);
                                 self.regenerate_heatmaps();
@@ -688,10 +687,7 @@ impl App {
                     KeyCode::Char('c') | KeyCode::Char('C') => {
                         if let Some(recipe) = self.selected_recipe() {
                             let stmt = build_analyze_infer_ast(&recipe.prompt, &recipe.analysis, 5);
-                            self.last_export = Some(format!(
-                                "Exported LQL: {}",
-                                stmt.to_string()
-                            ));
+                            self.last_export = Some(format!("Exported LQL: {}", stmt.to_string()));
                         }
                     }
                     KeyCode::Char('x') => {
@@ -723,15 +719,24 @@ impl App {
                     _ => {}
                 },
                 Focus::Image => match key.code {
-                    KeyCode::Char('w') => self.offset_y = (self.offset_y - 0.1 / self.zoom).max(0.0),
-                    KeyCode::Char('s') => self.offset_y = (self.offset_y + 0.1 / self.zoom).min(1.0),
-                    KeyCode::Char('a') => self.offset_x = (self.offset_x - 0.1 / self.zoom).max(0.0),
-                    KeyCode::Char('d') => self.offset_x = (self.offset_x + 0.1 / self.zoom).min(1.0),
+                    KeyCode::Char('w') => {
+                        self.offset_y = (self.offset_y - 0.1 / self.zoom).max(0.0)
+                    }
+                    KeyCode::Char('s') => {
+                        self.offset_y = (self.offset_y + 0.1 / self.zoom).min(1.0)
+                    }
+                    KeyCode::Char('a') => {
+                        self.offset_x = (self.offset_x - 0.1 / self.zoom).max(0.0)
+                    }
+                    KeyCode::Char('d') => {
+                        self.offset_x = (self.offset_x + 0.1 / self.zoom).min(1.0)
+                    }
                     KeyCode::Up => self.cursor_y = self.cursor_y.saturating_sub(1),
                     KeyCode::Down => {
                         if let Some(selected) = self.list_state.selected() {
                             if let Some(img) = self.heatmaps.get(selected) {
-                                self.cursor_y = (self.cursor_y + 1).min(img.height.saturating_sub(1));
+                                self.cursor_y =
+                                    (self.cursor_y + 1).min(img.height.saturating_sub(1));
                             }
                         }
                     }
@@ -739,7 +744,8 @@ impl App {
                     KeyCode::Right => {
                         if let Some(selected) = self.list_state.selected() {
                             if let Some(img) = self.heatmaps.get(selected) {
-                                self.cursor_x = (self.cursor_x + 1).min(img.width.saturating_sub(1));
+                                self.cursor_x =
+                                    (self.cursor_x + 1).min(img.width.saturating_sub(1));
                             }
                         }
                     }
@@ -757,7 +763,9 @@ impl App {
                     KeyCode::Char('l') => self.z_index = if self.z_index == 1 { -1 } else { 1 },
                     #[cfg(feature = "head-isolation")]
                     KeyCode::Char('h') => {
-                        if let Some(layer) = self.result.as_ref().and_then(|res| res.attention.first()) {
+                        if let Some(layer) =
+                            self.result.as_ref().and_then(|res| res.attention.first())
+                        {
                             let count = layer.heads.len();
                             self.selected_head = match self.selected_head {
                                 None if count > 0 => Some(0),
@@ -809,7 +817,10 @@ fn manual_lines(app: &App) -> Vec<Line<'static>> {
                 Style::default()
             };
             Line::from(vec![
-                Span::styled(format!("{:<12}", field.title()), style.add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    format!("{:<12}", field.title()),
+                    style.add_modifier(Modifier::BOLD),
+                ),
                 Span::raw(": "),
                 Span::raw(value.to_string()),
             ])
@@ -882,7 +893,10 @@ fn analysis_lines(res: &BatchDlaResult) -> Vec<Line<'static>> {
 
 fn current_dla_value(app: &App, res: &BatchDlaResult) -> Option<f32> {
     let selected_layer = app.list_state.selected()?;
-    let layer = res.head_dla.iter().find(|layer| layer.layer == selected_layer)?;
+    let layer = res
+        .head_dla
+        .iter()
+        .find(|layer| layer.layer == selected_layer)?;
     #[cfg(feature = "head-isolation")]
     let row = app.selected_head.unwrap_or(app.cursor_y);
     #[cfg(not(feature = "head-isolation"))]
@@ -926,7 +940,8 @@ pub fn ui(frame: &mut Frame, app: &App, graphics_layer: &mut GraphicsLayer) {
 
     if let Some(err) = &app.error {
         frame.render_widget(
-            Paragraph::new(err.as_str()).block(Block::default().borders(Borders::ALL).title("Error")),
+            Paragraph::new(err.as_str())
+                .block(Block::default().borders(Borders::ALL).title("Error")),
             chunks[2],
         );
     } else if let Some(res) = &app.result {
@@ -1058,7 +1073,9 @@ pub fn ui(frame: &mut Frame, app: &App, graphics_layer: &mut GraphicsLayer) {
 
     let footer = match app.focus {
         Focus::Prompt => "Tab next | [ ] field | Enter scan | R save recipe | Q quit".to_string(),
-        Focus::RecipeList => "Tab next | j/k nav | Enter load | C export LQL | x delete | Q quit".to_string(),
+        Focus::RecipeList => {
+            "Tab next | j/k nav | Enter load | C export LQL | x delete | Q quit".to_string()
+        }
         Focus::Results => "Tab next | Q quit".to_string(),
         Focus::LayerList => "Tab next | j/k select layer | Q quit".to_string(),
         Focus::Image => {
@@ -1077,7 +1094,11 @@ pub fn ui(frame: &mut Frame, app: &App, graphics_layer: &mut GraphicsLayer) {
             }
             #[cfg(feature = "layer-diff")]
             {
-                text.push_str(if app.diff_mode { " | f diff on" } else { " | f diff off" });
+                text.push_str(if app.diff_mode {
+                    " | f diff on"
+                } else {
+                    " | f diff off"
+                });
             }
             text
         }
@@ -1131,7 +1152,10 @@ fn stats_summary_text(res: &BatchDlaResult) -> String {
         .iter()
         .max_by(|a, b| a.ridge.partial_cmp(&b.ridge).unwrap())
     {
-        text.push_str(&format!(" | Ridge Max: L{} {:.4}", max_ridge.layer, max_ridge.ridge));
+        text.push_str(&format!(
+            " | Ridge Max: L{} {:.4}",
+            max_ridge.layer, max_ridge.ridge
+        ));
     }
     text
 }
@@ -1139,10 +1163,10 @@ fn stats_summary_text(res: &BatchDlaResult) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        attention_to_image, build_analyze_infer_ast, stats_summary_text,
-        AnalysisSummary, App, AttentionData, BatchDlaResult, HeadContribution, HeadDlaLayer,
-        ManualField, Recipe, RecipeAnalysis, RecipeStore, RecipeUiDefaults, RidgeByLayer,
-        StepTopHeadSummary, TokenAnalysis,
+        attention_to_image, build_analyze_infer_ast, stats_summary_text, AnalysisSummary, App,
+        AttentionData, BatchDlaResult, HeadContribution, HeadDlaLayer, ManualField, Recipe,
+        RecipeAnalysis, RecipeStore, RecipeUiDefaults, RidgeByLayer, StepTopHeadSummary,
+        TokenAnalysis,
     };
 
     fn mock_result(num_layers: usize) -> BatchDlaResult {

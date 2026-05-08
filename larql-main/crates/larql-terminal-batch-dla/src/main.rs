@@ -1,11 +1,13 @@
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
+use clap::Parser;
+use crossterm::terminal::{
+    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+};
 use crossterm::{event, execute};
 use larql_terminal_batch_dla::{ui, App, Cli};
 use larql_terminal_renderer::{draw_frame, AtomicGraphicsBackend};
 use ratatui::Terminal;
 use std::io;
 use tokio::runtime::Runtime;
-use clap::Parser;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();

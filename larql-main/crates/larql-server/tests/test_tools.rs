@@ -168,7 +168,12 @@ async fn test_cross_path_equivalence_local_vs_remote() {
         mode: "fact_probe".to_string(),
         truth_spans: vec!["Paris".to_string(), "France".to_string()],
         materially_false_spans: vec!["London".to_string()],
-        coherence_markers: vec!["The".to_string(), "capital".to_string(), "of".to_string(), "is".to_string()],
+        coherence_markers: vec![
+            "The".to_string(),
+            "capital".to_string(),
+            "of".to_string(),
+            "is".to_string(),
+        ],
         max_generated_tokens: Some(1),
         ridge_dead_zone: Some(0.05),
     };
@@ -188,39 +193,89 @@ async fn test_cross_path_equivalence_local_vs_remote() {
 
     // Load model weights and tokenizer for local path
     let vindex_path = std::path::Path::new(FIXTURE_VINDEX);
-    let weights = larql_vindex::load_model_weights(vindex_path, &mut larql_vindex::SilentLoadCallbacks)
-        .expect("Failed to load model weights");
-    let tokenizer = larql_vindex::load_vindex_tokenizer(vindex_path)
-        .expect("Failed to load tokenizer");
+    let weights =
+        larql_vindex::load_model_weights(vindex_path, &mut larql_vindex::SilentLoadCallbacks)
+            .expect("Failed to load model weights");
+    let tokenizer =
+        larql_vindex::load_vindex_tokenizer(vindex_path).expect("Failed to load tokenizer");
 
     // Get result from local path via direct function call
     let num_layers = weights.num_layers;
-    let local_result = larql_inference::analyze_infer(&weights, tokenizer.as_ref(), num_layers, &request)
-        .expect("Local analysis failed");
+    let local_result =
+        larql_inference::analyze_infer(&weights, tokenizer.as_ref(), num_layers, &request)
+            .expect("Local analysis failed");
 
     // Compare critical fields for equivalence
-    assert_eq!(local_result.num_layers, remote_result.num_layers, "num_layers should match");
-    assert_eq!(local_result.seq_len, remote_result.seq_len, "seq_len should match");
-    assert_eq!(local_result.tokens, remote_result.tokens, "tokens should match");
-    assert_eq!(local_result.strings, remote_result.strings, "strings should match");
+    assert_eq!(
+        local_result.num_layers, remote_result.num_layers,
+        "num_layers should match"
+    );
+    assert_eq!(
+        local_result.seq_len, remote_result.seq_len,
+        "seq_len should match"
+    );
+    assert_eq!(
+        local_result.tokens, remote_result.tokens,
+        "tokens should match"
+    );
+    assert_eq!(
+        local_result.strings, remote_result.strings,
+        "strings should match"
+    );
 
     // Compare attention structure (layer count and dimensions)
-    assert_eq!(local_result.attention.len(), remote_result.attention.len(), "attention layer count should match");
-    for (local_layer, remote_layer) in local_result.attention.iter().zip(remote_result.attention.iter()) {
-        assert_eq!(local_layer.layer, remote_layer.layer, "attention layer index should match");
-        assert_eq!(local_layer.heads.len(), remote_layer.heads.len(), "head count should match per layer");
+    assert_eq!(
+        local_result.attention.len(),
+        remote_result.attention.len(),
+        "attention layer count should match"
+    );
+    for (local_layer, remote_layer) in local_result
+        .attention
+        .iter()
+        .zip(remote_result.attention.iter())
+    {
+        assert_eq!(
+            local_layer.layer, remote_layer.layer,
+            "attention layer index should match"
+        );
+        assert_eq!(
+            local_layer.heads.len(),
+            remote_layer.heads.len(),
+            "head count should match per layer"
+        );
     }
 
     // Compare head_dla structure
-    assert_eq!(local_result.head_dla.len(), remote_result.head_dla.len(), "head_dla layer count should match");
+    assert_eq!(
+        local_result.head_dla.len(),
+        remote_result.head_dla.len(),
+        "head_dla layer count should match"
+    );
 
     // Compare generation_trace (if non-empty)
     if !local_result.generation_trace.is_empty() && !remote_result.generation_trace.is_empty() {
-        assert_eq!(local_result.generation_trace.len(), remote_result.generation_trace.len(), "generation_trace length should match");
-        for (local_step, remote_step) in local_result.generation_trace.iter().zip(remote_result.generation_trace.iter()) {
-            assert_eq!(local_step.position, remote_step.position, "generation step position should match");
-            assert_eq!(local_step.token_id, remote_step.token_id, "generation step token_id should match");
-            assert_eq!(local_step.token, remote_step.token, "generation step token should match");
+        assert_eq!(
+            local_result.generation_trace.len(),
+            remote_result.generation_trace.len(),
+            "generation_trace length should match"
+        );
+        for (local_step, remote_step) in local_result
+            .generation_trace
+            .iter()
+            .zip(remote_result.generation_trace.iter())
+        {
+            assert_eq!(
+                local_step.position, remote_step.position,
+                "generation step position should match"
+            );
+            assert_eq!(
+                local_step.token_id, remote_step.token_id,
+                "generation step token_id should match"
+            );
+            assert_eq!(
+                local_step.token, remote_step.token,
+                "generation step token should match"
+            );
             // Probabilities may have minor floating point differences
             assert!(
                 (local_step.probability - remote_step.probability).abs() < 1e-6,
@@ -230,7 +285,11 @@ async fn test_cross_path_equivalence_local_vs_remote() {
     }
 
     // Compare ridge_by_layer totals (critical for scientific contract)
-    assert_eq!(local_result.ridge_by_layer.len(), remote_result.ridge_by_layer.len(), "ridge_by_layer count should match");
+    assert_eq!(
+        local_result.ridge_by_layer.len(),
+        remote_result.ridge_by_layer.len(),
+        "ridge_by_layer count should match"
+    );
     let local_total_ridge: f64 = local_result.ridge_by_layer.iter().map(|r| r.ridge).sum();
     let remote_total_ridge: f64 = remote_result.ridge_by_layer.iter().map(|r| r.ridge).sum();
     assert!(

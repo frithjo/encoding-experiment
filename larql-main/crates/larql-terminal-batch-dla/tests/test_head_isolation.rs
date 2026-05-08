@@ -1,7 +1,7 @@
 #[cfg(feature = "head-isolation")]
 mod tests {
-    use larql_terminal_batch_dla::{App, Focus, BatchDlaResult, AttentionData};
-    use crossterm::event::{KeyEvent, KeyCode, KeyModifiers};
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use larql_terminal_batch_dla::{App, AttentionData, BatchDlaResult, Focus};
     use tokio::runtime::Runtime;
 
     #[test]
@@ -12,8 +12,14 @@ mod tests {
         // Mock result with 2 layers, each with 2 heads
         let mock_result = BatchDlaResult {
             attention: vec![
-                AttentionData { layer: 0, heads: vec![vec![0.1; 4], vec![0.2; 4]] },
-                AttentionData { layer: 1, heads: vec![vec![0.3; 4], vec![0.4; 4]] },
+                AttentionData {
+                    layer: 0,
+                    heads: vec![vec![0.1; 4], vec![0.2; 4]],
+                },
+                AttentionData {
+                    layer: 1,
+                    heads: vec![vec![0.3; 4], vec![0.4; 4]],
+                },
             ],
             logit_lens: None,
             head_dla: vec![],

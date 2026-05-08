@@ -48,7 +48,6 @@ pub struct ContextMapEntry {
     pub fraction: f32,
 }
 
-
 /// Handle /tools/call endpoint
 pub async fn handle_tools_call(
     State(state): State<Arc<AppState>>,

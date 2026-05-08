@@ -1,7 +1,7 @@
 #[cfg(feature = "layer-diff")]
 mod tests {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use larql_terminal_batch_dla::{App, Focus};
-    use crossterm::event::{KeyEvent, KeyCode, KeyModifiers};
     use tokio::runtime::Runtime;
 
     #[test]
