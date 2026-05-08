@@ -1,3 +1,4 @@
+use super::{decision_surface_cmd, policy_rules_cmd};
 use clap::{Args, Subcommand};
 use larql_core::capsule::{validate_capsule, write_capsule_json, Capsule};
 use larql_governance::{
@@ -29,6 +30,10 @@ enum MachineCommand {
     Struct(StructArgs),
     /// Verify governance receipt capsules.
     Receipt(ReceiptArgs),
+    /// Evaluate invariant, policy, and rule registries.
+    Rules(policy_rules_cmd::RulesArgs),
+    /// Validate and record decision-surface debt.
+    DecisionSurface(decision_surface_cmd::DecisionSurfaceArgs),
 }
 
 #[derive(Args)]
@@ -140,6 +145,8 @@ pub fn run(args: MachineArgs) -> Result<(), Box<dyn Error>> {
         MachineCommand::Patch(args) => run_patch(args),
         MachineCommand::Struct(args) => run_struct(args),
         MachineCommand::Receipt(args) => run_receipt(args),
+        MachineCommand::Rules(args) => policy_rules_cmd::run(args),
+        MachineCommand::DecisionSurface(args) => decision_surface_cmd::run(args),
     }
 }
 
