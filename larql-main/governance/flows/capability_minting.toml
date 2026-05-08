@@ -1,0 +1,11 @@
+schema_version = "larql.governance.policy_flow.v1"
+
+[flow]
+id = "capability_minting"
+actions = ["mint_policy_capability"]
+steps = [
+  { id = "approval_verified", next = ["scope_verified"] },
+  { id = "scope_verified", next = ["checks_verified"] },
+  { id = "checks_verified", next = ["capability_minted"] },
+  { id = "capability_minted", next = [] },
+]

@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 #[derive(Debug, thiserror::Error)]
 pub enum PolicyLoadError {
@@ -36,7 +37,99 @@ pub struct PolicyRegistry {
     pub policy_hash: String,
     pub mode: PolicyMode,
     #[serde(default)]
+    pub rule_sets: BTreeMap<String, RuleSet>,
+    #[serde(default)]
+    pub profiles: BTreeMap<String, RuleProfile>,
+    #[serde(default)]
+    pub flows: BTreeMap<String, PolicyFlow>,
+    #[serde(default)]
+    pub recipes: BTreeMap<String, Recipe>,
+    #[serde(default)]
     pub rules: Vec<PolicyRule>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Recipe {
+    pub id: String,
+    pub kind: RecipeKind,
+    #[serde(default)]
+    pub entry_conditions: Vec<EntryCondition>,
+    #[serde(default)]
+    pub questions: Vec<Question>,
+    #[serde(default)]
+    pub factoids: Vec<FactoidSpec>,
+    #[serde(default)]
+    pub derives: Vec<DerivedFactRule>,
+    #[serde(default)]
+    pub required_outputs: Vec<RequiredOutput>,
+    #[serde(default)]
+    pub patch_templates: Vec<PatchTemplateRef>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RecipeKind {
+    ProposalRecipe,
+    RemediationRecipe,
+    MigrationRecipe,
+    AuditRecipe,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EntryCondition {
+    pub action: Option<String>,
+    pub fact: Option<String>,
+    pub equals: Option<FactValue>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Question {
+    pub id: String,
+    pub prompt: String,
+    pub answer_kind: AnswerKind,
+    #[serde(default)]
+    pub produces: Vec<String>,
+    #[serde(default)]
+    pub required_when: Option<ConditionBlock>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AnswerKind {
+    Bool,
+    Text,
+    Id,
+    Path,
+    List,
+    Schema,
+    Enum(Vec<String>),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FactoidSpec {
+    pub id: String,
+    pub kind: String,
+    #[serde(default)]
+    pub required: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DerivedFactRule {
+    pub id: String,
+    pub when: ConditionBlock,
+    pub produce: PolicyFact,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RequiredOutput {
+    pub id: String,
+    pub kind: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PatchTemplateRef {
+    pub id: String,
+    pub path: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -52,6 +145,92 @@ pub struct PolicyMode {
     pub unknown_rule: UnknownRuleMode,
     pub unknown_fact: UnknownFactMode,
     pub conflict_resolution: ConflictResolutionMode,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RuleSet {
+    pub id: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub rules: Vec<PolicyRule>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RuleProfile {
+    pub id: String,
+    pub applies_to: ArtifactClass,
+    #[serde(default)]
+    pub rule_sets: Vec<String>,
+    #[serde(default)]
+    pub required_facts: Vec<String>,
+    #[serde(default)]
+    pub default_flow: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactClass {
+    Machine,
+    GoverningArtifact,
+    EvidenceArtifact,
+    GeneratedArtifact,
+    RustStruct,
+    PolicyFile,
+    EventSchema,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PolicyFlow {
+    pub id: String,
+    #[serde(default)]
+    pub actions: Vec<String>,
+    #[serde(default)]
+    pub steps: Vec<FlowStep>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FlowStep {
+    pub id: String,
+    #[serde(default)]
+    pub next: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+pub struct RuleIndex(pub usize);
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PolicyCompileReport {
+    pub schema_version: String,
+    pub active_policy_set: String,
+    pub policy_hash: String,
+    pub rule_set_count: usize,
+    pub active_rule_count: usize,
+    pub profile_count: usize,
+    pub flow_count: usize,
+    pub recipe_count: usize,
+    #[serde(default)]
+    pub actions: Vec<String>,
+    #[serde(default)]
+    pub profiles: Vec<String>,
+    #[serde(default)]
+    pub flows: Vec<String>,
+    #[serde(default)]
+    pub recipes: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ActivePolicy {
+    pub engine: Arc<PolicyEngine>,
+    pub policy_hash: String,
+    pub generation: u64,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -132,6 +311,10 @@ pub enum FactValue {
     Bool(bool),
     Integer(i64),
     Text(String),
+    Id(String),
+    Path(PathBuf),
+    StringList(Vec<String>),
+    Paths(Vec<PathBuf>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -518,6 +701,43 @@ struct PolicyPackFile {
     pub rule: Vec<PolicyRule>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct PolicyEngineConfigFile {
+    pub schema_version: String,
+    #[serde(default)]
+    pub active: PolicyEngineActiveSelection,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+struct PolicyEngineActiveSelection {
+    #[serde(default)]
+    pub rule_sets: Vec<String>,
+    #[serde(default)]
+    pub profiles: Vec<String>,
+    #[serde(default)]
+    pub flows: Vec<String>,
+    #[serde(default)]
+    pub recipes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct RuleProfileFile {
+    pub schema_version: String,
+    pub profile: RuleProfile,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct PolicyFlowFile {
+    pub schema_version: String,
+    pub flow: PolicyFlow,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct RecipeFile {
+    pub schema_version: String,
+    pub recipe: Recipe,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) enum RuleDispatchClass {
     Global,
@@ -594,6 +814,154 @@ impl CompiledActionDispatch {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct CompiledPolicyPlan {
+    rules_by_action: BTreeMap<String, Vec<RuleIndex>>,
+    rules_by_profile: BTreeMap<String, Vec<RuleIndex>>,
+    rules_by_artifact_class: BTreeMap<ArtifactClass, Vec<RuleIndex>>,
+    global_rules: Vec<RuleIndex>,
+    flows_by_action: BTreeMap<String, String>,
+    recipes_by_action: BTreeMap<String, String>,
+    profile_by_artifact_class: BTreeMap<ArtifactClass, String>,
+    dispatch: CompiledActionDispatch,
+}
+
+impl CompiledPolicyPlan {
+    fn compile(registry: &PolicyRegistry) -> Result<Self, PolicyLoadError> {
+        validate_rule_ids(&registry.rules)?;
+        validate_registry_references(registry)?;
+
+        let dispatch = CompiledActionDispatch::compile(&registry.rules);
+        let mut global_rules = Vec::new();
+        let mut rules_by_action: BTreeMap<String, Vec<RuleIndex>> = BTreeMap::new();
+        for (idx, rule) in registry.rules.iter().enumerate() {
+            match compile_rule_dispatch_class(&rule.when) {
+                RuleDispatchClass::Global => global_rules.push(RuleIndex(idx)),
+                RuleDispatchClass::ActionBucket(action) => rules_by_action
+                    .entry(action)
+                    .or_default()
+                    .push(RuleIndex(idx)),
+            }
+        }
+
+        let rule_index_by_id: BTreeMap<&str, RuleIndex> = registry
+            .rules
+            .iter()
+            .enumerate()
+            .map(|(idx, rule)| (rule.id.as_str(), RuleIndex(idx)))
+            .collect();
+        let mut rule_indices_by_set: BTreeMap<String, Vec<RuleIndex>> = BTreeMap::new();
+        for (id, rule_set) in &registry.rule_sets {
+            if !rule_set.enabled {
+                continue;
+            }
+            let mut indices = Vec::new();
+            for rule in &rule_set.rules {
+                if let Some(idx) = rule_index_by_id.get(rule.id.as_str()) {
+                    indices.push(*idx);
+                }
+            }
+            rule_indices_by_set.insert(id.clone(), indices);
+        }
+
+        let mut rules_by_profile = BTreeMap::new();
+        let mut rules_by_artifact_class = BTreeMap::new();
+        let mut profile_by_artifact_class = BTreeMap::new();
+        for profile in registry.profiles.values() {
+            let mut indices = Vec::new();
+            for rule_set_id in &profile.rule_sets {
+                if let Some(rule_indices) = rule_indices_by_set.get(rule_set_id) {
+                    indices.extend(rule_indices.iter().copied());
+                }
+            }
+            indices.sort_unstable();
+            indices.dedup();
+            rules_by_profile.insert(profile.id.clone(), indices.clone());
+            rules_by_artifact_class.insert(profile.applies_to.clone(), indices);
+            profile_by_artifact_class.insert(profile.applies_to.clone(), profile.id.clone());
+        }
+
+        let mut flows_by_action = BTreeMap::new();
+        for flow in registry.flows.values() {
+            validate_flow(flow)?;
+            for action in &flow.actions {
+                flows_by_action.insert(action.clone(), flow.id.clone());
+            }
+        }
+
+        let mut recipes_by_action = BTreeMap::new();
+        for recipe in registry.recipes.values() {
+            for condition in &recipe.entry_conditions {
+                if let Some(action) = &condition.action {
+                    recipes_by_action.insert(action.clone(), recipe.id.clone());
+                }
+            }
+        }
+
+        Ok(Self {
+            rules_by_action,
+            rules_by_profile,
+            rules_by_artifact_class,
+            global_rules,
+            flows_by_action,
+            recipes_by_action,
+            profile_by_artifact_class,
+            dispatch,
+        })
+    }
+
+    fn eligible_indices(&self, input: &PolicyInput) -> Vec<usize> {
+        let mut indices: BTreeSet<usize> = self
+            .dispatch
+            .merged_eligible_index_list(&input.action)
+            .into_iter()
+            .collect();
+
+        if let Some(artifact_class) = resolve_artifact_class(input) {
+            if let Some(profile_id) = self.profile_by_artifact_class.get(&artifact_class) {
+                if let Some(profile_indices) = self.rules_by_profile.get(profile_id) {
+                    for idx in profile_indices {
+                        indices.insert(idx.0);
+                    }
+                }
+            }
+            if let Some(class_indices) = self.rules_by_artifact_class.get(&artifact_class) {
+                for idx in class_indices {
+                    indices.insert(idx.0);
+                }
+            }
+        }
+
+        for idx in &self.global_rules {
+            indices.insert(idx.0);
+        }
+        indices.into_iter().collect()
+    }
+
+    fn report(&self, registry: &PolicyRegistry) -> PolicyCompileReport {
+        let mut actions: BTreeSet<String> = self.rules_by_action.keys().cloned().collect();
+        actions.extend(self.flows_by_action.keys().cloned());
+        actions.extend(self.recipes_by_action.keys().cloned());
+        PolicyCompileReport {
+            schema_version: "larql.governance.policy_compile_report.v1".to_string(),
+            active_policy_set: format!(
+                "{}@{}",
+                registry.active_policy_set.id, registry.active_policy_set.version
+            ),
+            policy_hash: registry.policy_hash.clone(),
+            rule_set_count: registry.rule_sets.len(),
+            active_rule_count: registry.rules.len(),
+            profile_count: registry.profiles.len(),
+            flow_count: registry.flows.len(),
+            recipe_count: registry.recipes.len(),
+            actions: actions.into_iter().collect(),
+            profiles: registry.profiles.keys().cloned().collect(),
+            flows: registry.flows.keys().cloned().collect(),
+            recipes: registry.recipes.keys().cloned().collect(),
+        }
+    }
+}
+
 /// Merge two ascending, dedupe-stable slices without scanning full rule cardinality.
 pub(crate) fn merge_sorted_unique(lhs: &[usize], rhs: &[usize]) -> Vec<usize> {
     let mut out = Vec::with_capacity(lhs.len() + rhs.len());
@@ -628,9 +996,132 @@ enum EligibilityPlan<'a> {
     FullScan,
 }
 
+#[derive(Debug)]
 pub struct PolicyEngine {
     registry: PolicyRegistry,
-    dispatch: CompiledActionDispatch,
+    compiled: CompiledPolicyPlan,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FactStore {
+    #[serde(default)]
+    pub facts: BTreeMap<String, PolicyFact>,
+}
+
+impl FactStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn insert(&mut self, fact: PolicyFact) {
+        self.facts.insert(fact.fact_type.clone(), fact);
+    }
+
+    pub fn get(&self, fact_type: &str) -> Option<&PolicyFact> {
+        self.facts.get(fact_type)
+    }
+
+    pub fn has_fact(&self, fact_type: &str) -> bool {
+        self.facts.contains_key(fact_type)
+    }
+}
+
+pub struct RecipeRunner {
+    pub recipes: BTreeMap<String, Recipe>,
+}
+
+impl RecipeRunner {
+    pub fn new(recipes: BTreeMap<String, Recipe>) -> Self {
+        Self { recipes }
+    }
+
+    pub fn next_questions(&self, recipe_id: &str, facts: &FactStore) -> Vec<Question> {
+        let recipe = match self.recipes.get(recipe_id) {
+            Some(r) => r,
+            None => return Vec::new(),
+        };
+
+        recipe
+            .questions
+            .iter()
+            .filter(|q| {
+                // Skip if all produced facts already exist
+                if q.produces.iter().all(|f| facts.has_fact(f)) {
+                    return false;
+                }
+                // Check if required_when condition is met
+                if let Some(when) = &q.required_when {
+                    evaluate_recipe_condition_block(when, facts)
+                } else {
+                    true
+                }
+            })
+            .cloned()
+            .collect()
+    }
+
+    pub fn is_ready(&self, recipe_id: &str, facts: &FactStore) -> bool {
+        let recipe = match self.recipes.get(recipe_id) {
+            Some(r) => r,
+            None => return false,
+        };
+
+        // Check if all required factoids are present
+        recipe
+            .factoids
+            .iter()
+            .filter(|f| f.required)
+            .all(|f| facts.has_fact(&f.id))
+    }
+}
+
+fn evaluate_recipe_condition_block(block: &ConditionBlock, facts: &FactStore) -> bool {
+    if !block.all.is_empty()
+        && !block
+            .all
+            .iter()
+            .all(|c| evaluate_recipe_condition(c, facts))
+    {
+        return false;
+    }
+    if !block.any.is_empty()
+        && !block
+            .any
+            .iter()
+            .any(|c| evaluate_recipe_condition(c, facts))
+    {
+        return false;
+    }
+    if !block.not_conditions.is_empty()
+        && block
+            .not_conditions
+            .iter()
+            .any(|c| evaluate_recipe_condition(c, facts))
+    {
+        return false;
+    }
+    true
+}
+
+fn evaluate_recipe_condition(condition: &Condition, facts: &FactStore) -> bool {
+    if let Some(fact_type) = &condition.fact {
+        let fact = match facts.get(fact_type) {
+            Some(f) => f,
+            None => return condition.present == Some(false),
+        };
+
+        if let Some(expected) = &condition.equals {
+            if &fact.value != expected {
+                return false;
+            }
+        }
+
+        if condition.present == Some(false) {
+            return false;
+        }
+    }
+    // Other condition types (action, path_matches, risk_gte) are not yet supported for recipes
+    true
 }
 
 pub fn load_policy_registry(index_path: &Path) -> Result<PolicyRegistry, PolicyLoadError> {
@@ -654,7 +1145,7 @@ pub fn load_policy_registry(index_path: &Path) -> Result<PolicyRegistry, PolicyL
         ));
     }
 
-    let mut rules = Vec::new();
+    let mut rule_sets = BTreeMap::new();
     let mut hash_material = String::new();
     hash_material.push_str(&index_text);
     for include in &index.active_policy_set.includes {
@@ -674,18 +1165,59 @@ pub fn load_policy_registry(index_path: &Path) -> Result<PolicyRegistry, PolicyL
         }
         hash_material.push_str(include);
         hash_material.push_str(&text);
-        rules.extend(pack.rule);
+        let rule_set_id = rule_set_id_from_include(include)?;
+        rule_sets.insert(
+            rule_set_id.clone(),
+            RuleSet {
+                id: rule_set_id,
+                enabled: true,
+                source: Some(include.clone()),
+                rules: pack.rule,
+            },
+        );
     }
 
+    let governance_root = root.parent();
+    let engine_config = if let Some(governance_root) = governance_root {
+        load_engine_config(governance_root, &mut hash_material)?
+    } else {
+        None
+    };
+    let active_rule_sets = active_rule_set_ids(&rule_sets, engine_config.as_ref())?;
+    let profiles =
+        if let (Some(governance_root), Some(config)) = (governance_root, engine_config.as_ref()) {
+            load_profiles(governance_root, &config.active.profiles, &mut hash_material)?
+        } else {
+            BTreeMap::new()
+        };
+    let flows =
+        if let (Some(governance_root), Some(config)) = (governance_root, engine_config.as_ref()) {
+            load_flows(governance_root, &config.active.flows, &mut hash_material)?
+        } else {
+            BTreeMap::new()
+        };
+    let recipes =
+        if let (Some(governance_root), Some(config)) = (governance_root, engine_config.as_ref()) {
+            load_recipes(governance_root, &config.active.recipes, &mut hash_material)?
+        } else {
+            BTreeMap::new()
+        };
+    let rules = flatten_active_rules(&rule_sets, &active_rule_sets);
     validate_rule_ids(&rules)?;
     let policy_hash = crate::hash::hash_text(&hash_material);
-    Ok(PolicyRegistry {
+    let registry = PolicyRegistry {
         schema_version: "larql.governance.policy_registry.v1".to_string(),
         active_policy_set: index.active_policy_set,
         policy_hash,
         mode: index.mode,
+        rule_sets,
+        profiles,
+        flows,
+        recipes,
         rules,
-    })
+    };
+    validate_registry_references(&registry)?;
+    Ok(registry)
 }
 
 fn validate_policy_include_segment(include: &str) -> Result<(), PolicyLoadError> {
@@ -752,6 +1284,197 @@ fn normalize_policy_logical_path(path: &str) -> Option<String> {
     }
 }
 
+fn rule_set_id_from_include(include: &str) -> Result<String, PolicyLoadError> {
+    validate_policy_include_segment(include)?;
+    let stem = Path::new(include)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .ok_or_else(|| {
+            PolicyLoadError::Invalid(format!("policy include has no valid file stem: {include}"))
+        })?;
+    Ok(stem.replace('-', "_"))
+}
+
+fn load_engine_config(
+    governance_root: &Path,
+    hash_material: &mut String,
+) -> Result<Option<PolicyEngineConfigFile>, PolicyLoadError> {
+    let path = governance_root.join("engine.toml");
+    if !path.exists() {
+        return Ok(None);
+    }
+    let text = read_policy_text(&path)?;
+    let config: PolicyEngineConfigFile =
+        toml::from_str(&text).map_err(|source| PolicyLoadError::Toml {
+            path: path.display().to_string(),
+            source,
+        })?;
+    if config.schema_version != "larql.governance.engine_config.v1" {
+        return Err(PolicyLoadError::Invalid(
+            "unsupported policy engine config schema".to_string(),
+        ));
+    }
+    hash_material.push_str("engine.toml");
+    hash_material.push_str(&text);
+    Ok(Some(config))
+}
+
+fn active_rule_set_ids(
+    rule_sets: &BTreeMap<String, RuleSet>,
+    config: Option<&PolicyEngineConfigFile>,
+) -> Result<Vec<String>, PolicyLoadError> {
+    let ids = config
+        .map(|config| config.active.rule_sets.clone())
+        .filter(|ids| !ids.is_empty())
+        .unwrap_or_else(|| rule_sets.keys().cloned().collect());
+
+    for id in &ids {
+        if !rule_sets.contains_key(id) {
+            return Err(PolicyLoadError::Invalid(format!(
+                "active rule set is not loaded by policy index: {id}"
+            )));
+        }
+    }
+    Ok(ids)
+}
+
+fn flatten_active_rules(
+    rule_sets: &BTreeMap<String, RuleSet>,
+    active_ids: &[String],
+) -> Vec<PolicyRule> {
+    let mut rules = Vec::new();
+    for id in active_ids {
+        if let Some(rule_set) = rule_sets.get(id) {
+            if rule_set.enabled {
+                rules.extend(rule_set.rules.clone());
+            }
+        }
+    }
+    rules
+}
+
+fn load_profiles(
+    governance_root: &Path,
+    profile_ids: &[String],
+    hash_material: &mut String,
+) -> Result<BTreeMap<String, RuleProfile>, PolicyLoadError> {
+    let mut profiles = BTreeMap::new();
+    for profile_id in profile_ids {
+        validate_policy_component_id("profile", profile_id)?;
+        let path = governance_root
+            .join("profiles")
+            .join(format!("{profile_id}.toml"));
+        let text = read_policy_text(&path)?;
+        let file: RuleProfileFile =
+            toml::from_str(&text).map_err(|source| PolicyLoadError::Toml {
+                path: path.display().to_string(),
+                source,
+            })?;
+        if file.schema_version != "larql.governance.rule_profile.v1" {
+            return Err(PolicyLoadError::Invalid(format!(
+                "unsupported rule profile schema: {}",
+                path.display()
+            )));
+        }
+        if file.profile.id != *profile_id {
+            return Err(PolicyLoadError::Invalid(format!(
+                "profile file id mismatch: expected {profile_id}, got {}",
+                file.profile.id
+            )));
+        }
+        hash_material.push_str(&format!("profiles/{profile_id}.toml"));
+        hash_material.push_str(&text);
+        profiles.insert(file.profile.id.clone(), file.profile);
+    }
+    Ok(profiles)
+}
+
+fn load_flows(
+    governance_root: &Path,
+    flow_ids: &[String],
+    hash_material: &mut String,
+) -> Result<BTreeMap<String, PolicyFlow>, PolicyLoadError> {
+    let mut flows = BTreeMap::new();
+    for flow_id in flow_ids {
+        validate_policy_component_id("flow", flow_id)?;
+        let path = governance_root
+            .join("flows")
+            .join(format!("{flow_id}.toml"));
+        let text = read_policy_text(&path)?;
+        let file: PolicyFlowFile =
+            toml::from_str(&text).map_err(|source| PolicyLoadError::Toml {
+                path: path.display().to_string(),
+                source,
+            })?;
+        if file.schema_version != "larql.governance.policy_flow.v1" {
+            return Err(PolicyLoadError::Invalid(format!(
+                "unsupported policy flow schema: {}",
+                path.display()
+            )));
+        }
+        if file.flow.id != *flow_id {
+            return Err(PolicyLoadError::Invalid(format!(
+                "flow file id mismatch: expected {flow_id}, got {}",
+                file.flow.id
+            )));
+        }
+        validate_flow(&file.flow)?;
+        hash_material.push_str(&format!("flows/{flow_id}.toml"));
+        hash_material.push_str(&text);
+        flows.insert(file.flow.id.clone(), file.flow);
+    }
+    Ok(flows)
+}
+
+fn load_recipes(
+    governance_root: &Path,
+    recipe_ids: &[String],
+    hash_material: &mut String,
+) -> Result<BTreeMap<String, Recipe>, PolicyLoadError> {
+    let mut recipes = BTreeMap::new();
+    for recipe_id in recipe_ids {
+        validate_policy_component_id("recipe", recipe_id)?;
+        let path = governance_root
+            .join("recipes")
+            .join(format!("{recipe_id}.toml"));
+        let text = read_policy_text(&path)?;
+        let file: RecipeFile = toml::from_str(&text).map_err(|source| PolicyLoadError::Toml {
+            path: path.display().to_string(),
+            source,
+        })?;
+        if file.schema_version != "larql.governance.recipe.v1" {
+            return Err(PolicyLoadError::Invalid(format!(
+                "unsupported recipe schema: {}",
+                path.display()
+            )));
+        }
+        if file.recipe.id != *recipe_id {
+            return Err(PolicyLoadError::Invalid(format!(
+                "recipe file id mismatch: expected {recipe_id}, got {}",
+                file.recipe.id
+            )));
+        }
+        hash_material.push_str(&format!("recipes/{recipe_id}.toml"));
+        hash_material.push_str(&text);
+        recipes.insert(file.recipe.id.clone(), file.recipe);
+    }
+    Ok(recipes)
+}
+
+fn validate_policy_component_id(kind: &str, value: &str) -> Result<(), PolicyLoadError> {
+    if value.trim().is_empty()
+        || value.contains('/')
+        || value.contains('\\')
+        || value.contains("..")
+        || Path::new(value).is_absolute()
+    {
+        return Err(PolicyLoadError::Invalid(format!(
+            "{kind} id must be a local component id: {value}"
+        )));
+    }
+    Ok(())
+}
+
 /// Load a policy registry from in-memory index and pack contents. Keys in `packs` must be the
 /// **exact** `active_policy_set.includes` strings from the index (same as on disk under the index
 /// parent directory), not basenames alone — so `packs/security/ci.toml` and `ci.toml` do not
@@ -779,7 +1502,7 @@ pub fn load_policy_registry_from_material(
         ));
     }
 
-    let mut rules = Vec::new();
+    let mut rule_sets = BTreeMap::new();
     let mut hash_material = String::new();
     hash_material.push_str(index_text);
     for include in &index.active_policy_set.includes {
@@ -802,33 +1525,57 @@ pub fn load_policy_registry_from_material(
         }
         hash_material.push_str(include);
         hash_material.push_str(text);
-        rules.extend(pack.rule);
+        let rule_set_id = rule_set_id_from_include(include)?;
+        rule_sets.insert(
+            rule_set_id.clone(),
+            RuleSet {
+                id: rule_set_id,
+                enabled: true,
+                source: Some(include.clone()),
+                rules: pack.rule,
+            },
+        );
     }
 
+    let active_rule_sets = active_rule_set_ids(&rule_sets, None)?;
+    let rules = flatten_active_rules(&rule_sets, &active_rule_sets);
     validate_rule_ids(&rules)?;
     let policy_hash = crate::hash::hash_text(&hash_material);
-    Ok(PolicyRegistry {
+    let registry = PolicyRegistry {
         schema_version: "larql.governance.policy_registry.v1".to_string(),
         active_policy_set: index.active_policy_set,
         policy_hash,
         mode: index.mode,
+        rule_sets,
+        profiles: BTreeMap::new(),
+        flows: BTreeMap::new(),
+        recipes: BTreeMap::new(),
         rules,
-    })
+    };
+    validate_registry_references(&registry)?;
+    Ok(registry)
 }
 
 impl PolicyEngine {
     pub fn new(registry: PolicyRegistry) -> Result<Self, PolicyLoadError> {
-        validate_rule_ids(&registry.rules)?;
-        let dispatch = CompiledActionDispatch::compile(&registry.rules);
-        Ok(Self { registry, dispatch })
+        let compiled = CompiledPolicyPlan::compile(&registry)?;
+        Ok(Self { registry, compiled })
     }
 
     pub fn registry(&self) -> &PolicyRegistry {
         &self.registry
     }
 
+    pub fn compiled_plan(&self) -> &CompiledPolicyPlan {
+        &self.compiled
+    }
+
+    pub fn compile_report(&self) -> PolicyCompileReport {
+        self.compiled.report(&self.registry)
+    }
+
     pub fn evaluate(&self, input: &PolicyInput) -> PolicyEngineDecision {
-        let eligible = self.dispatch.merged_eligible_index_list(&input.action);
+        let eligible = self.compiled.eligible_indices(input);
         self.evaluate_inner(input, EligibilityPlan::Merged(&eligible))
     }
 
@@ -839,7 +1586,9 @@ impl PolicyEngine {
 
     #[cfg(test)]
     pub(crate) fn merged_eligible_indices_for_action(&self, input_action: &str) -> Vec<usize> {
-        self.dispatch.merged_eligible_index_list(input_action)
+        self.compiled
+            .dispatch
+            .merged_eligible_index_list(input_action)
     }
 
     fn evaluate_inner(
@@ -929,7 +1678,7 @@ impl PolicyEngine {
     fn evaluate_rule_at_index(
         rule: &PolicyRule,
         input: &PolicyInput,
-        facts: &HashMap<String, &PolicyFact>,
+        facts: &FactView<'_>,
         decision: &mut DecisionKind,
         matched_rules: &mut Vec<String>,
         required_actions: &mut BTreeSet<String>,
@@ -1237,6 +1986,18 @@ impl PolicyEngine {
             policy_hash: self.registry.policy_hash.clone(),
             cases,
         }
+    }
+}
+
+impl ActivePolicy {
+    pub fn new(registry: PolicyRegistry, generation: u64) -> Result<Self, PolicyLoadError> {
+        let policy_hash = registry.policy_hash.clone();
+        let engine = Arc::new(PolicyEngine::new(registry)?);
+        Ok(Self {
+            engine,
+            policy_hash,
+            generation,
+        })
     }
 }
 
@@ -1675,6 +2436,83 @@ fn policy_update_required_phases() -> &'static [&'static str] {
     ]
 }
 
+fn validate_registry_references(registry: &PolicyRegistry) -> Result<(), PolicyLoadError> {
+    for (id, rule_set) in &registry.rule_sets {
+        if rule_set.id != *id {
+            return Err(PolicyLoadError::Invalid(format!(
+                "rule set map id mismatch: expected {id}, got {}",
+                rule_set.id
+            )));
+        }
+    }
+    for profile in registry.profiles.values() {
+        if profile.id.trim().is_empty() {
+            return Err(PolicyLoadError::Invalid("profile requires id".to_string()));
+        }
+        for rule_set_id in &profile.rule_sets {
+            match registry.rule_sets.get(rule_set_id) {
+                Some(rule_set) if rule_set.enabled => {}
+                Some(_) => {
+                    return Err(PolicyLoadError::Invalid(format!(
+                        "profile {} references disabled rule set {rule_set_id}",
+                        profile.id
+                    )));
+                }
+                None => {
+                    return Err(PolicyLoadError::Invalid(format!(
+                        "profile {} references unknown rule set {rule_set_id}",
+                        profile.id
+                    )));
+                }
+            }
+        }
+        if let Some(flow_id) = &profile.default_flow {
+            if !registry.flows.contains_key(flow_id) {
+                return Err(PolicyLoadError::Invalid(format!(
+                    "profile {} references unknown default flow {flow_id}",
+                    profile.id
+                )));
+            }
+        }
+    }
+    for flow in registry.flows.values() {
+        validate_flow(flow)?;
+    }
+    Ok(())
+}
+
+fn validate_flow(flow: &PolicyFlow) -> Result<(), PolicyLoadError> {
+    if flow.id.trim().is_empty() {
+        return Err(PolicyLoadError::Invalid("flow requires id".to_string()));
+    }
+    let mut step_ids = BTreeSet::new();
+    for step in &flow.steps {
+        if step.id.trim().is_empty() {
+            return Err(PolicyLoadError::Invalid(format!(
+                "flow {} has empty step id",
+                flow.id
+            )));
+        }
+        if !step_ids.insert(step.id.clone()) {
+            return Err(PolicyLoadError::Invalid(format!(
+                "flow {} has duplicate step id {}",
+                flow.id, step.id
+            )));
+        }
+    }
+    for step in &flow.steps {
+        for next in &step.next {
+            if !step_ids.contains(next) {
+                return Err(PolicyLoadError::Invalid(format!(
+                    "flow {} step {} references unknown next step {}",
+                    flow.id, step.id, next
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn validate_rule_ids(rules: &[PolicyRule]) -> Result<(), PolicyLoadError> {
     let mut ids = BTreeSet::new();
     for rule in rules {
@@ -1788,6 +2626,50 @@ fn policy_input_from_test_case(case: &PolicyTestCase) -> PolicyInput {
     }
 }
 
+fn resolve_artifact_class(input: &PolicyInput) -> Option<ArtifactClass> {
+    for fact in &input.facts {
+        if fact.fact_type == "artifact_class" {
+            if let FactValue::Text(value) = &fact.value {
+                return parse_artifact_class(value);
+            }
+        }
+    }
+
+    match input.action.as_str() {
+        "create_machine" => Some(ArtifactClass::Machine),
+        "add_policy_rule" | "activate_policy_set" => Some(ArtifactClass::PolicyFile),
+        "verify_governance_rule_profile" | "ci_governance_check" => {
+            Some(ArtifactClass::GoverningArtifact)
+        }
+        "mint_struct" => Some(ArtifactClass::RustStruct),
+        _ => input.target_paths.iter().find_map(|path| {
+            if path.starts_with("governance/policies/") {
+                Some(ArtifactClass::PolicyFile)
+            } else if path.starts_with("governance/schemas/") {
+                Some(ArtifactClass::EventSchema)
+            } else if path.starts_with("governance/") {
+                Some(ArtifactClass::GoverningArtifact)
+            } else {
+                None
+            }
+        }),
+    }
+}
+
+fn parse_artifact_class(value: &str) -> Option<ArtifactClass> {
+    match value {
+        "machine" => Some(ArtifactClass::Machine),
+        "governing_artifact" => Some(ArtifactClass::GoverningArtifact),
+        "evidence_artifact" => Some(ArtifactClass::EvidenceArtifact),
+        "generated_artifact" => Some(ArtifactClass::GeneratedArtifact),
+        "rust_struct" => Some(ArtifactClass::RustStruct),
+        "policy_file" => Some(ArtifactClass::PolicyFile),
+        "event_schema" => Some(ArtifactClass::EventSchema),
+        "unknown" => Some(ArtifactClass::Unknown),
+        _ => None,
+    }
+}
+
 fn read_policy_text(path: &Path) -> Result<String, PolicyLoadError> {
     std::fs::read_to_string(path).map_err(|source| PolicyLoadError::Io {
         path: path.display().to_string(),
@@ -1813,18 +2695,39 @@ pub(crate) struct ConditionOutcome {
     evidence: Vec<String>,
 }
 
-pub(crate) fn fact_map(facts: &[PolicyFact]) -> HashMap<String, &PolicyFact> {
-    let mut map = HashMap::new();
-    for fact in facts {
-        map.insert(fact.fact_type.clone(), fact);
+#[derive(Debug, Clone)]
+pub struct FactView<'a> {
+    by_kind: HashMap<String, &'a PolicyFact>,
+}
+
+impl<'a> FactView<'a> {
+    pub fn new(facts: &'a [PolicyFact]) -> Self {
+        let mut by_kind = HashMap::new();
+        for fact in facts {
+            by_kind.insert(fact.fact_type.clone(), fact);
+        }
+        Self { by_kind }
     }
-    map
+
+    pub fn get(&self, fact_type: &str) -> Option<&'a PolicyFact> {
+        self.by_kind.get(fact_type).copied()
+    }
+
+    fn contains_evidence(&self, evidence_id: &str) -> bool {
+        self.by_kind
+            .values()
+            .any(|fact| fact.evidence.iter().any(|value| value == evidence_id))
+    }
+}
+
+pub(crate) fn fact_map(facts: &[PolicyFact]) -> FactView<'_> {
+    FactView::new(facts)
 }
 
 pub(crate) fn evaluate_block(
     block: &ConditionBlock,
     input: &PolicyInput,
-    facts: &HashMap<String, &PolicyFact>,
+    facts: &FactView<'_>,
 ) -> ConditionOutcome {
     let mut outcome = ConditionOutcome {
         matched: true,
@@ -1832,7 +2735,7 @@ pub(crate) fn evaluate_block(
     };
 
     for condition in &block.all {
-        let condition_outcome = evaluate_condition(condition, input, facts);
+        let condition_outcome = evaluate_policy_condition(condition, input, facts);
         merge_outcome(&mut outcome, &condition_outcome);
         outcome.matched &= condition_outcome.matched;
     }
@@ -1840,7 +2743,7 @@ pub(crate) fn evaluate_block(
     if !block.any.is_empty() {
         let mut any_matched = false;
         for condition in &block.any {
-            let condition_outcome = evaluate_condition(condition, input, facts);
+            let condition_outcome = evaluate_policy_condition(condition, input, facts);
             merge_outcome(&mut outcome, &condition_outcome);
             any_matched |= condition_outcome.matched;
         }
@@ -1848,7 +2751,7 @@ pub(crate) fn evaluate_block(
     }
 
     for condition in &block.not_conditions {
-        let condition_outcome = evaluate_condition(condition, input, facts);
+        let condition_outcome = evaluate_policy_condition(condition, input, facts);
         merge_outcome(&mut outcome, &condition_outcome);
         outcome.matched &= !condition_outcome.matched;
     }
@@ -1856,10 +2759,10 @@ pub(crate) fn evaluate_block(
     outcome
 }
 
-fn evaluate_condition(
+fn evaluate_policy_condition(
     condition: &Condition,
     input: &PolicyInput,
-    facts: &HashMap<String, &PolicyFact>,
+    facts: &FactView<'_>,
 ) -> ConditionOutcome {
     let mut matched = true;
     let mut missing_facts = Vec::new();
@@ -1880,9 +2783,7 @@ fn evaluate_condition(
     }
     if let Some(evidence_id) = &condition.evidence {
         let present = input.evidence.iter().any(|value| value == evidence_id)
-            || facts
-                .values()
-                .any(|fact| fact.evidence.iter().any(|value| value == evidence_id));
+            || facts.contains_evidence(evidence_id);
         if !present {
             missing_evidence.push(evidence_id.clone());
         } else {
@@ -1971,6 +2872,42 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn engine() -> PolicyEngine {
+        let rules = vec![PolicyRule {
+            id: "machine_creation.requires_overlap_check".to_string(),
+            class: PolicyClass::CeremonyPolicy,
+            severity: PolicySeverity::Deny,
+            description: "requires overlap evidence".to_string(),
+            when: ConditionBlock {
+                all: vec![Condition {
+                    action: Some("create_machine".to_string()),
+                    ..Condition::default()
+                }],
+                ..ConditionBlock::default()
+            },
+            require: ConditionBlock {
+                all: vec![Condition {
+                    evidence: Some("existing_machine_overlap_check".to_string()),
+                    present: Some(true),
+                    ..Condition::default()
+                }],
+                ..ConditionBlock::default()
+            },
+            decision: RuleDecision {
+                on_missing: DecisionKind::Deny,
+                message: "missing overlap".to_string(),
+                required_actions: vec!["attach overlap check".to_string()],
+            },
+        }];
+        let mut rule_sets = BTreeMap::new();
+        rule_sets.insert(
+            "machine_runtime".to_string(),
+            RuleSet {
+                id: "machine_runtime".to_string(),
+                enabled: true,
+                source: Some("machine-runtime.toml".to_string()),
+                rules: rules.clone(),
+            },
+        );
         PolicyEngine::new(PolicyRegistry {
             schema_version: "larql.governance.policy_registry.v1".to_string(),
             active_policy_set: PolicySet {
@@ -1984,32 +2921,11 @@ mod tests {
                 unknown_fact: UnknownFactMode::Warn,
                 conflict_resolution: ConflictResolutionMode::MostRestrictive,
             },
-            rules: vec![PolicyRule {
-                id: "machine_creation.requires_overlap_check".to_string(),
-                class: PolicyClass::CeremonyPolicy,
-                severity: PolicySeverity::Deny,
-                description: "requires overlap evidence".to_string(),
-                when: ConditionBlock {
-                    all: vec![Condition {
-                        action: Some("create_machine".to_string()),
-                        ..Condition::default()
-                    }],
-                    ..ConditionBlock::default()
-                },
-                require: ConditionBlock {
-                    all: vec![Condition {
-                        evidence: Some("existing_machine_overlap_check".to_string()),
-                        present: Some(true),
-                        ..Condition::default()
-                    }],
-                    ..ConditionBlock::default()
-                },
-                decision: RuleDecision {
-                    on_missing: DecisionKind::Deny,
-                    message: "missing overlap".to_string(),
-                    required_actions: vec!["attach overlap check".to_string()],
-                },
-            }],
+            rule_sets,
+            profiles: BTreeMap::new(),
+            flows: BTreeMap::new(),
+            recipes: BTreeMap::new(),
+            rules,
         })
         .unwrap()
     }
@@ -2032,10 +2948,129 @@ mod tests {
         }
         let from_material =
             load_policy_registry_from_material("repo_index.toml", &index_text, &packs).unwrap();
-        assert_eq!(disk.policy_hash, from_material.policy_hash);
+        if index_path
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("engine.toml")
+            .exists()
+        {
+            assert_ne!(disk.policy_hash, from_material.policy_hash);
+            assert!(!disk.profiles.is_empty());
+            assert!(!disk.flows.is_empty());
+        } else {
+            assert_eq!(disk.policy_hash, from_material.policy_hash);
+        }
         assert_eq!(disk.rules.len(), from_material.rules.len());
         assert_eq!(disk.active_policy_set, from_material.active_policy_set);
         assert_eq!(disk.mode, from_material.mode);
+    }
+
+    #[test]
+    fn repo_policy_compile_report_exposes_engine_layers() {
+        let Some(engine) = try_repo_policy_engine() else {
+            return;
+        };
+        let report = engine.compile_report();
+
+        assert!(report.rule_set_count >= 4);
+        assert!(report.profile_count >= 5);
+        assert!(report.flow_count >= 6);
+        assert!(report.actions.contains(&"create_machine".to_string()));
+        assert!(report.actions.contains(&"add_policy_rule".to_string()));
+        assert!(report.profiles.contains(&"machine".to_string()));
+        assert!(report.profiles.contains(&"policy_file".to_string()));
+        assert!(report.flows.contains(&"machine_creation".to_string()));
+        assert!(report.flows.contains(&"policy_update".to_string()));
+    }
+
+    #[test]
+    fn compiled_profile_indices_follow_flattened_rule_ids() {
+        let a_rule = PolicyRule {
+            id: "a.rule".to_string(),
+            class: PolicyClass::ArtifactPolicy,
+            severity: PolicySeverity::Deny,
+            description: "a".to_string(),
+            when: ConditionBlock::default(),
+            require: ConditionBlock::default(),
+            decision: RuleDecision {
+                on_missing: DecisionKind::Deny,
+                message: "a".to_string(),
+                required_actions: Vec::new(),
+            },
+        };
+        let b_rule = PolicyRule {
+            id: "b.rule".to_string(),
+            class: PolicyClass::ArtifactPolicy,
+            severity: PolicySeverity::Deny,
+            description: "b".to_string(),
+            when: ConditionBlock::default(),
+            require: ConditionBlock::default(),
+            decision: RuleDecision {
+                on_missing: DecisionKind::Deny,
+                message: "b".to_string(),
+                required_actions: Vec::new(),
+            },
+        };
+        let mut rule_sets = BTreeMap::new();
+        rule_sets.insert(
+            "a".to_string(),
+            RuleSet {
+                id: "a".to_string(),
+                enabled: true,
+                source: None,
+                rules: vec![a_rule.clone()],
+            },
+        );
+        rule_sets.insert(
+            "b".to_string(),
+            RuleSet {
+                id: "b".to_string(),
+                enabled: true,
+                source: None,
+                rules: vec![b_rule.clone()],
+            },
+        );
+        let mut profiles = BTreeMap::new();
+        profiles.insert(
+            "generated".to_string(),
+            RuleProfile {
+                id: "generated".to_string(),
+                applies_to: ArtifactClass::GeneratedArtifact,
+                rule_sets: vec!["b".to_string()],
+                required_facts: Vec::new(),
+                default_flow: None,
+            },
+        );
+        let engine = PolicyEngine::new(PolicyRegistry {
+            schema_version: "larql.governance.policy_registry.v1".to_string(),
+            active_policy_set: PolicySet {
+                id: "test".to_string(),
+                version: "1".to_string(),
+                includes: vec!["b.toml".to_string(), "a.toml".to_string()],
+            },
+            policy_hash: crate::hash::hash_text("profile-order"),
+            mode: PolicyMode {
+                unknown_rule: UnknownRuleMode::Deny,
+                unknown_fact: UnknownFactMode::Warn,
+                conflict_resolution: ConflictResolutionMode::MostRestrictive,
+            },
+            rule_sets,
+            profiles,
+            flows: BTreeMap::new(),
+            recipes: BTreeMap::new(),
+            rules: vec![b_rule, a_rule],
+        })
+        .unwrap();
+
+        let indices = engine
+            .compiled
+            .rules_by_profile
+            .get("generated")
+            .expect("profile indices");
+        assert_eq!(indices, &vec![RuleIndex(0)]);
+        assert_eq!(engine.registry.rules[indices[0].0].id, "b.rule");
     }
 
     fn proposal() -> RuleProposal {
@@ -2873,5 +3908,92 @@ conflict_resolution = "most_restrictive"
                 serde_json::to_value(&full_scan).unwrap(),
             );
         }
+    }
+
+    #[test]
+    fn recipe_runner_suggests_next_questions_based_on_facts() {
+        let mut recipes = BTreeMap::new();
+        recipes.insert(
+            "test_recipe".to_string(),
+            Recipe {
+                id: "test_recipe".to_string(),
+                kind: RecipeKind::ProposalRecipe,
+                entry_conditions: Vec::new(),
+                questions: vec![
+                    Question {
+                        id: "q1".to_string(),
+                        prompt: "Question 1".to_string(),
+                        answer_kind: AnswerKind::Text,
+                        produces: vec!["fact1".to_string()],
+                        required_when: None,
+                    },
+                    Question {
+                        id: "q2".to_string(),
+                        prompt: "Question 2".to_string(),
+                        answer_kind: AnswerKind::Bool,
+                        produces: vec!["fact2".to_string()],
+                        required_when: Some(ConditionBlock {
+                            all: vec![Condition {
+                                fact: Some("fact1".to_string()),
+                                present: Some(true),
+                                ..Condition::default()
+                            }],
+                            ..ConditionBlock::default()
+                        }),
+                    },
+                ],
+                factoids: vec![
+                    FactoidSpec {
+                        id: "fact1".to_string(),
+                        kind: "text".to_string(),
+                        required: true,
+                    },
+                    FactoidSpec {
+                        id: "fact2".to_string(),
+                        kind: "bool".to_string(),
+                        required: true,
+                    },
+                ],
+                derives: Vec::new(),
+                required_outputs: Vec::new(),
+                patch_templates: Vec::new(),
+            },
+        );
+
+        let runner = RecipeRunner::new(recipes);
+        let mut facts = FactStore::new();
+
+        // Initially only q1 should be suggested
+        let questions = runner.next_questions("test_recipe", &facts);
+        assert_eq!(questions.len(), 1);
+        assert_eq!(questions[0].id, "q1");
+
+        // After answering q1, q2 should be suggested
+        facts.insert(PolicyFact {
+            fact_type: "fact1".to_string(),
+            value: FactValue::Bool(true), // Use bool for the condition to match
+            subject: None,
+            evidence: Vec::new(),
+            source: None,
+            state_hash: None,
+        });
+
+        let questions = runner.next_questions("test_recipe", &facts);
+        assert_eq!(questions.len(), 1);
+        assert_eq!(questions[0].id, "q2");
+
+        // After answering q2, no more questions
+        facts.insert(PolicyFact {
+            fact_type: "fact2".to_string(),
+            value: FactValue::Bool(true),
+            subject: None,
+            evidence: Vec::new(),
+            source: None,
+            state_hash: None,
+        });
+
+        let questions = runner.next_questions("test_recipe", &facts);
+        assert!(questions.is_empty());
+        assert!(runner.is_ready("test_recipe", &facts));
     }
 }

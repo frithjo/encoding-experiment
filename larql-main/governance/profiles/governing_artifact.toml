@@ -1,0 +1,12 @@
+schema_version = "larql.governance.rule_profile.v1"
+
+[profile]
+id = "governing_artifact"
+applies_to = "governing_artifact"
+rule_sets = [
+  "ci",
+  "machine_profile",
+  "rule_admission",
+]
+required_facts = []
+default_flow = "replay_closure"

@@ -43,6 +43,11 @@ declarative policy packs and described by `larql-governance::artifact`:
 - `validate_governance_artifact_definition`;
 - `validate_authority_operation`.
 
+Machine governance also has a first-class rule profile:
+`governance/profiles/machine.toml`. That profile attaches the active machine
+rule sets to the `machine` artifact class and selects
+`governance/flows/machine_creation.toml` as the lawful default flow.
+
 ## Non-Machine
 
 A non-machine can be authoritative, but it is not active. It does not execute
@@ -71,6 +76,17 @@ Non-machine contracts are applied by the same policy engine:
 - `AuthorityOperation::StableDeclarativeConstraint`;
 - `GovernanceInvariantRegistry`;
 - declarative-only validation in `validate_governance_artifact_definition`.
+
+Non-machine profiles live beside machine profiles:
+
+- `governance/profiles/governing_artifact.toml`;
+- `governance/profiles/policy_file.toml`;
+- `governance/profiles/rust_struct.toml`;
+- `governance/profiles/event_schema.toml`.
+
+These files select rule sets and flows. They do not execute policy. Runtime
+authority starts only after `PolicyRegistry` validation and `CompiledPolicyPlan`
+compilation.
 
 ## Invariant Registry
 
@@ -151,8 +167,9 @@ governor policy extract-intent \
 ```
 
 Candidate rules use `governance/proposals/*.json`, policy tests use
-`governance/policies/*_cases.toml`, and active rules live under
-`governance/policies/*.toml`.
+`governance/tests/*_cases.toml`, and active rules live under
+`governance/policies/*.toml`. CI runs those tests through
+`./scripts/check_governance_rules.sh` after compiling the active policy set.
 
 ## Boundary
 

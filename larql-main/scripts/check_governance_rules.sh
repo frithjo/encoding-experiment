@@ -8,10 +8,14 @@ mkdir -p target/governance
 rm -f \
   target/governance/invariant-registry-receipt.json \
   target/governance/policy-decisions.jsonl \
+  target/governance/policy-compile-report.json \
   target/governance/policy-shadow-eval-report.json
 cargo run -q -p larql-cli --bin larql -- machine rules verify \
   --registry governance/invariants/registry.json \
   --out target/governance/invariant-registry-receipt.json >/dev/null
+cargo run -q -p larql-cli --bin governor -- policy compile \
+  --policy governance/policies/index.toml \
+  > target/governance/policy-compile-report.json
 cargo run -q -p larql-cli --bin larql -- machine rules eval \
   --facts governance/facts/ci_governance_rules.json \
   --policy governance/policies/index.toml \
@@ -20,6 +24,11 @@ cargo run -q -p larql-cli --bin governor -- replay \
   --ledger target/governance/policy-decisions.jsonl >/dev/null
 for cases in governance/policies/*_cases.toml; do
   cargo run -q -p larql-cli --bin larql -- machine rules test \
+    --cases "$cases" \
+    --policy governance/policies/index.toml >/dev/null
+done
+for cases in governance/tests/*_cases.toml; do
+  cargo run -q -p larql-cli --bin governor -- policy test \
     --cases "$cases" \
     --policy governance/policies/index.toml >/dev/null
 done

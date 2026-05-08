@@ -1,0 +1,57 @@
+schema_version = "larql.governance.recipe.v1"
+
+[recipe]
+id = "struct_minting"
+kind = "proposal_recipe"
+
+[[recipe.entry_conditions]]
+action = "mint_struct"
+
+[[recipe.questions]]
+id = "type_name"
+prompt = "What is the name of the new struct?"
+answer_kind = "id"
+produces = ["type.name"]
+
+[[recipe.questions]]
+id = "target_module"
+prompt = "Which module should own this struct?"
+answer_kind = "path"
+produces = ["type.target_module"]
+
+[[recipe.questions]]
+id = "visibility"
+prompt = "Should the struct be public?"
+answer_kind = "bool"
+produces = ["type.visibility"]
+
+[[recipe.questions]]
+id = "fields"
+prompt = "What fields does the struct need?"
+answer_kind = "text"
+produces = ["type.fields"]
+
+[[recipe.questions]]
+id = "serialization"
+prompt = "Will this struct be serialized or persisted?"
+answer_kind = "bool"
+produces = ["type.serialization_required"]
+
+[[recipe.factoids]]
+id = "type.name"
+kind = "id"
+required = true
+
+[[recipe.factoids]]
+id = "type.target_module"
+kind = "path"
+required = true
+
+[[recipe.factoids]]
+id = "type.fields"
+kind = "text"
+required = true
+
+[[recipe.required_outputs]]
+id = "struct_spec"
+kind = "StructSpec"

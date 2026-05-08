@@ -1,0 +1,33 @@
+[[case]]
+name = "allow_default_profile"
+action = "verify_governance_rule_profile"
+
+[case.facts]
+"profile.allow_machine_generate_unsafe_code" = false
+"profile.allow_unregistered_invariants" = false
+"profile.allow_ci_without_invariant_registry" = false
+
+[case.expect]
+decision = "allow"
+
+[[case]]
+name = "deny_profile_that_allows_unsafe_code"
+action = "verify_governance_rule_profile"
+
+[case.facts]
+"profile.allow_machine_generate_unsafe_code" = true
+
+[case.expect]
+decision = "deny"
+rule_id = "profile.machine_unsafe_code.forbidden"
+
+[[case]]
+name = "deny_profile_that_allows_unregistered_invariants"
+action = "verify_governance_rule_profile"
+
+[case.facts]
+"profile.allow_unregistered_invariants" = true
+
+[case.expect]
+decision = "deny"
+rule_id = "profile.unregistered_invariants.forbidden"

@@ -38,6 +38,11 @@ enum RulesCommand {
         #[arg(long)]
         ledger: Option<PathBuf>,
     },
+    /// Compile the active policy registry and emit the derived plan summary.
+    Compile {
+        #[arg(long)]
+        policy: PathBuf,
+    },
     /// Run TOML policy cases against the active policy index.
     Test {
         #[arg(long)]
@@ -155,6 +160,7 @@ pub fn run(args: RulesArgs) -> Result<(), Box<dyn Error>> {
             policy,
             ledger,
         } => run_eval(&facts, &policy, ledger.as_deref()),
+        RulesCommand::Compile { policy } => run_compile(&policy),
         RulesCommand::Test { cases, policy } => run_test(&cases, &policy),
         RulesCommand::ShadowEval {
             proposal,
@@ -224,6 +230,12 @@ pub fn run(args: RulesArgs) -> Result<(), Box<dyn Error>> {
         ),
         RulesCommand::Apply { request, policy } => run_apply(&request, &policy),
     }
+}
+
+fn run_compile(policy: &Path) -> Result<(), Box<dyn Error>> {
+    let registry = load_policy_registry(policy)?;
+    let engine = PolicyEngine::new(registry)?;
+    write_json_or_print(None, &engine.compile_report())
 }
 
 pub fn run_replay(args: ReplayArgs) -> Result<(), Box<dyn Error>> {

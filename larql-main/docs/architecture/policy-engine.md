@@ -7,9 +7,30 @@ admittance path, and one CI/runtime integration contract.
 
 Active policy lives in:
 
+- `governance/engine.toml`;
 - `governance/policies/index.toml`;
 - included `governance/policies/*.toml` packs;
-- `governance/policies/*_cases.toml` policy tests.
+- `governance/profiles/*.toml`;
+- `governance/flows/*.toml`;
+- `governance/tests/*_cases.toml` policy tests.
+
+The authored files are not the engine. They are loaded into a
+`PolicyRegistry`, validated, and compiled into a `CompiledPolicyPlan`. Runtime
+decisions use `PolicyEngine`, which owns the registry and compiled plan. Active
+runtime state is represented by `ActivePolicy`, an immutable `Arc<PolicyEngine>`
+plus policy hash and generation.
+
+```text
+authored config/packs/profiles/flows
+-> validated PolicyRegistry
+-> CompiledPolicyPlan
+-> immutable PolicyEngine
+-> decisions / receipts / capabilities / activation
+```
+
+The config selects active packs, profiles, flows, and mode. It does not contain
+executable policy logic. Rules remain in policy packs. Profiles attach rule sets
+to artifact classes. Flows define lawful transition paths.
 
 The engine accepts facts and emits decisions:
 
@@ -32,6 +53,17 @@ CI uses the same evaluator as runtime:
 
 ```bash
 ./scripts/check_governance_rules.sh
+```
+
+That script first compiles active policy into
+`target/governance/policy-compile-report.json`, then runs policy evaluation,
+replay, policy tests, shadow evaluation, and decision-surface validation through
+the same Rust engine:
+
+```bash
+governor policy compile --policy governance/policies/index.toml
+governor policy test governance/tests/machine_creation_cases.toml
+governor policy shadow-eval governance/fixtures/shadow_eval_cases.toml
 ```
 
 Governance source-file shape is also checked in CI:
@@ -62,6 +94,23 @@ authority. Its prohibitions are declarative rules in
 `governance/policies/machine-profile.toml`, included by the active policy
 index, and `larql machine rules verify` evaluates the profile through that
 policy set before emitting the invariant-registry receipt.
+
+Rule profiles are now first-class config:
+
+- `governance/profiles/machine.toml`;
+- `governance/profiles/governing_artifact.toml`;
+- `governance/profiles/policy_file.toml`;
+- `governance/profiles/rust_struct.toml`;
+- `governance/profiles/event_schema.toml`.
+
+Policy flows are first-class config:
+
+- `governance/flows/machine_creation.toml`;
+- `governance/flows/policy_update.toml`;
+- `governance/flows/policy_weakening.toml`;
+- `governance/flows/patch_application.toml`;
+- `governance/flows/capability_minting.toml`;
+- `governance/flows/replay_closure.toml`.
 
 Decision surface:
 

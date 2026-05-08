@@ -1,0 +1,13 @@
+schema_version = "larql.governance.policy_flow.v1"
+
+[flow]
+id = "policy_weakening"
+actions = ["weaken_policy_rule"]
+steps = [
+  { id = "authority_reduction_named", next = ["false_positive_examples_attached"] },
+  { id = "false_positive_examples_attached", next = ["hostile_regression_test_attached"] },
+  { id = "hostile_regression_test_attached", next = ["rollback_path_attached"] },
+  { id = "rollback_path_attached", next = ["human_approval_recorded"] },
+  { id = "human_approval_recorded", next = ["weakening_closed"] },
+  { id = "weakening_closed", next = [] },
+]
