@@ -176,10 +176,12 @@ impl Parser {
                             let path = self.expect_string()?;
                             into_report = Some(path);
                         }
-                        t => return Err(ParseError(format!(
-                            "expected PATCH or REPORT after INTO, got {:?}",
-                            t
-                        ))),
+                        t => {
+                            return Err(ParseError(format!(
+                                "expected PATCH or REPORT after INTO, got {:?}",
+                                t
+                            )))
+                        }
                     }
                 }
                 _ => break,

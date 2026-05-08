@@ -355,11 +355,14 @@ impl Session {
             };
 
             let num_layers = weights.num_layers;
-            let result = larql_inference::analyze_infer(weights, tokenizer.as_ref(), num_layers, &request)
-                .map_err(|e| LqlError::Execution(format!("analysis failed: {}", e)))?;
+            let result =
+                larql_inference::analyze_infer(weights, tokenizer.as_ref(), num_layers, &request)
+                    .map_err(|e| LqlError::Execution(format!("analysis failed: {}", e)))?;
 
             match format {
-                Some(crate::ast::OutputFormat::Json) => return self.format_analysis_result_json(&result),
+                Some(crate::ast::OutputFormat::Json) => {
+                    return self.format_analysis_result_json(&result)
+                }
                 _ => return self.format_analysis_result(&result),
             }
         }
@@ -394,8 +397,9 @@ impl Session {
         };
 
         let num_layers = weights.num_layers;
-        let result = larql_inference::analyze_infer(&weights, tokenizer.as_ref(), num_layers, &request)
-            .map_err(|e| LqlError::Execution(format!("analysis failed: {}", e)))?;
+        let result =
+            larql_inference::analyze_infer(&weights, tokenizer.as_ref(), num_layers, &request)
+                .map_err(|e| LqlError::Execution(format!("analysis failed: {}", e)))?;
 
         match format {
             Some(crate::ast::OutputFormat::Json) => self.format_analysis_result_json(&result),
@@ -437,7 +441,11 @@ impl Session {
                 for (i, head) in summary.top_coherence_heads.iter().take(5).enumerate() {
                     out.push(format!(
                         "  {}. L{} H{} (source T{}, contribution: {:.4})",
-                        i + 1, head.layer, head.head, head.source_token, head.contribution
+                        i + 1,
+                        head.layer,
+                        head.head,
+                        head.source_token,
+                        head.contribution
                     ));
                 }
                 out.push(String::new());
@@ -449,7 +457,11 @@ impl Session {
                 for (i, head) in summary.top_false_content_heads.iter().take(5).enumerate() {
                     out.push(format!(
                         "  {}. L{} H{} (source T{}, contribution: {:.4})",
-                        i + 1, head.layer, head.head, head.source_token, head.contribution
+                        i + 1,
+                        head.layer,
+                        head.head,
+                        head.source_token,
+                        head.contribution
                     ));
                 }
                 out.push(String::new());
@@ -460,7 +472,10 @@ impl Session {
         if !result.ridge_by_layer.is_empty() {
             out.push("Ridge by Layer:".into());
             for layer_ridge in &result.ridge_by_layer {
-                out.push(format!("  L{}: {:.4}", layer_ridge.layer, layer_ridge.ridge));
+                out.push(format!(
+                    "  L{}: {:.4}",
+                    layer_ridge.layer, layer_ridge.ridge
+                ));
             }
             out.push(String::new());
         }
@@ -484,7 +499,9 @@ impl Session {
             for step in &result.generation_trace {
                 out.push(format!(
                     "  Pos {}: {} ({:.2}%)",
-                    step.position, step.token, step.probability * 100.0
+                    step.position,
+                    step.token,
+                    step.probability * 100.0
                 ));
             }
             out.push(String::new());
@@ -1861,7 +1878,10 @@ impl Session {
         let mut out = Vec::new();
         let total_edges = edges.len();
 
-        out.push(format!("{} ({} edges - streaming mode)", entity, total_edges));
+        out.push(format!(
+            "{} ({} edges - streaming mode)",
+            entity, total_edges
+        ));
 
         if relations_only {
             out.push("  Relations:".to_string());
@@ -1870,11 +1890,20 @@ impl Session {
         }
 
         for (i, batch) in edges.chunks(batch_size).enumerate() {
-            out.push(format!("  Batch {} (edges {}-{})", i + 1, i * batch_size + 1, (i + 1) * batch_size.min(total_edges)));
-            
+            out.push(format!(
+                "  Batch {} (edges {}-{})",
+                i + 1,
+                i * batch_size + 1,
+                (i + 1) * batch_size.min(total_edges)
+            ));
+
             for edge in batch {
                 if relations_only {
-                    let rel = edge.also.first().cloned().unwrap_or_else(|| edge.original.clone());
+                    let rel = edge
+                        .also
+                        .first()
+                        .cloned()
+                        .unwrap_or_else(|| edge.original.clone());
                     out.push(format!("    {}", rel));
                 } else {
                     let gate_str = if verbose {
@@ -1894,10 +1923,7 @@ impl Session {
                     };
                     out.push(format!(
                         "    {} {} {}{}",
-                        edge.original,
-                        gate_str,
-                        layer_str,
-                        also_str
+                        edge.original, gate_str, layer_str, also_str
                     ));
                 }
             }

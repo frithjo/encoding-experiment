@@ -425,7 +425,7 @@ impl Session {
                 output,
                 on_conflict.unwrap_or(CompileConflict::LastWins),
             ),
-            CompileTarget::Model => self.exec_compile_into_model(&vindex_path, output, format),
+            CompileTarget::Model => self.exec_compile_into_model(&vindex_path, output, _format),
         }
     }
 
@@ -526,9 +526,10 @@ impl Session {
                 // Default to safetensors
             }
             Some(OutputFormat::Json) | Some(OutputFormat::Csv) => {
-                return Err(LqlError::Execution(
-                    format!("Unsupported output format for COMPILE INTO MODEL: {:?}", format)
-                ));
+                return Err(LqlError::Execution(format!(
+                    "Unsupported output format for COMPILE INTO MODEL: {:?}",
+                    format
+                )));
             }
         }
 
@@ -976,7 +977,11 @@ impl Session {
                     .unwrap()
                     .as_secs()
                     .to_string(),
-                description: Some(format!("Diff from {} to {}", path_a.display(), path_b.display())),
+                description: Some(format!(
+                    "Diff from {} to {}",
+                    path_a.display(),
+                    path_b.display()
+                )),
                 author: None,
                 tags: Vec::new(),
                 operations,
@@ -999,12 +1004,19 @@ impl Session {
         // If INTO REPORT specified, generate a markdown report
         if let Some(report_path) = into_report {
             let mut report_lines = Vec::new();
-            report_lines.push(format!("# Diff Report: {} vs {}", path_a.display(), path_b.display()));
+            report_lines.push(format!(
+                "# Diff Report: {} vs {}",
+                path_a.display(),
+                path_b.display()
+            ));
             report_lines.push(String::new());
-            report_lines.push(format!("Generated: {}", std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs()));
+            report_lines.push(format!(
+                "Generated: {}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+            ));
             report_lines.push(String::new());
 
             // Summary statistics
@@ -1050,7 +1062,10 @@ impl Session {
             report_lines.push(format!("- Added: {}", added_count));
             report_lines.push(format!("- Removed: {}", removed_count));
             report_lines.push(format!("- Modified: {}", modified_count));
-            report_lines.push(format!("- Total changes: {}", added_count + removed_count + modified_count));
+            report_lines.push(format!(
+                "- Total changes: {}",
+                added_count + removed_count + modified_count
+            ));
             report_lines.push(String::new());
 
             // Detailed changes by layer
@@ -1081,30 +1096,19 @@ impl Session {
                         {
                             layer_changes.push(format!(
                                 "  - Modified L{}F{}: '{}' → '{}' (confidence: {:.2} → {:.2})",
-                                layer,
-                                feat,
-                                a.top_token,
-                                b.top_token,
-                                a.c_score,
-                                b.c_score
+                                layer, feat, a.top_token, b.top_token, a.c_score, b.c_score
                             ));
                         }
                         (Some(a), None) => {
                             layer_changes.push(format!(
                                 "  - Removed L{}F{}: '{}' (confidence: {:.2})",
-                                layer,
-                                feat,
-                                a.top_token,
-                                a.c_score
+                                layer, feat, a.top_token, a.c_score
                             ));
                         }
                         (None, Some(b)) => {
                             layer_changes.push(format!(
                                 "  - Added L{}F{}: '{}' (confidence: {:.2})",
-                                layer,
-                                feat,
-                                b.top_token,
-                                b.c_score
+                                layer, feat, b.top_token, b.c_score
                             ));
                         }
                         _ => {}
@@ -1149,7 +1153,11 @@ impl Session {
         let relation_classifier = RelationClassifier::from_vindex(&vindex_path);
 
         let mut out = Vec::new();
-        out.push(format!("Exporting {} to {}...", vindex_path.display(), output));
+        out.push(format!(
+            "Exporting {} to {}...",
+            vindex_path.display(),
+            output
+        ));
 
         // Collect all edges from the knowledge graph
         let mut edges = Vec::new();
@@ -1162,8 +1170,7 @@ impl Session {
                     if let Some(meta) = meta {
                         // Get relation label if available
                         let relation = if let Some(rc) = &relation_classifier {
-                            rc.label_for_feature(*layer, feat)
-                                .unwrap_or("unknown")
+                            rc.label_for_feature(*layer, feat).unwrap_or("unknown")
                         } else {
                             "unknown"
                         };
@@ -1253,13 +1260,9 @@ impl Session {
             .map_err(|e| LqlError::exec("failed to create relationships.csv", e))?;
 
         // Neo4j CSV headers
-        writeln!(nodes_file, "id:ID,name")
+        writeln!(nodes_file, "id:ID,name").map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(rels_file, ":START_ID,relationship,:END_ID,confidence")
             .map_err(|e| LqlError::exec("failed to write", e))?;
-        writeln!(
-            rels_file,
-            ":START_ID,relationship,:END_ID,confidence"
-        )
-        .map_err(|e| LqlError::exec("failed to write", e))?;
 
         // Collect unique entities
         let mut entities: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -1313,14 +1316,21 @@ impl Session {
                 writeln!(file, ",").map_err(|e| LqlError::exec("failed to write", e))?;
             }
             writeln!(file, "    {{").map_err(|e| LqlError::exec("failed to write", e))?;
-            writeln!(file, "      \"@id\": \"entity/{}\",", entity.replace(' ', "_"))
-                .map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(
+                file,
+                "      \"@id\": \"entity/{}\",",
+                entity.replace(' ', "_")
+            )
+            .map_err(|e| LqlError::exec("failed to write", e))?;
             writeln!(file, "      \"{}\": {{", relation)
                 .map_err(|e| LqlError::exec("failed to write", e))?;
             writeln!(file, "        \"@value\": \"{}\",", entity)
                 .map_err(|e| LqlError::exec("failed to write", e))?;
-            writeln!(file, "        \"@type\": \"http://www.w3.org/2001/XMLSchema#string\"")
-                .map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(
+                file,
+                "        \"@type\": \"http://www.w3.org/2001/XMLSchema#string\""
+            )
+            .map_err(|e| LqlError::exec("failed to write", e))?;
             writeln!(file, "      }},").map_err(|e| LqlError::exec("failed to write", e))?;
             writeln!(file, "      \"confidence\": {}", confidence)
                 .map_err(|e| LqlError::exec("failed to write", e))?;
@@ -1346,10 +1356,16 @@ impl Session {
 
         writeln!(file, r#"<?xml version="1.0" encoding="UTF-8"?>"#)
             .map_err(|e| LqlError::exec("failed to write", e))?;
-        writeln!(file, r#"<graphml xmlns="http://graphml.graphdrawing.org/xmlns""#)
-            .map_err(|e| LqlError::exec("failed to write", e))?;
-        writeln!(file, r#"  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance""#)
-            .map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(
+            file,
+            r#"<graphml xmlns="http://graphml.graphdrawing.org/xmlns""#
+        )
+        .map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(
+            file,
+            r#"  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance""#
+        )
+        .map_err(|e| LqlError::exec("failed to write", e))?;
         writeln!(
             file,
             r#"  xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">"#
@@ -1372,8 +1388,7 @@ impl Session {
                 .map_err(|e| LqlError::exec("failed to write", e))?;
             writeln!(file, r#"      <data key="name">{}</data>"#, entity)
                 .map_err(|e| LqlError::exec("failed to write", e))?;
-            writeln!(file, r#"    </node>"#)
-                .map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(file, r#"    </node>"#).map_err(|e| LqlError::exec("failed to write", e))?;
         }
 
         // Write edges
@@ -1387,10 +1402,13 @@ impl Session {
             .map_err(|e| LqlError::exec("failed to write", e))?;
             writeln!(file, r#"      <data key="relation">{}</data>"#, relation)
                 .map_err(|e| LqlError::exec("failed to write", e))?;
-            writeln!(file, r#"      <data key="confidence">{}</data>"#, confidence)
-                .map_err(|e| LqlError::exec("failed to write", e))?;
-            writeln!(file, r#"    </edge>"#)
-                .map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(
+                file,
+                r#"      <data key="confidence">{}</data>"#,
+                confidence
+            )
+            .map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(file, r#"    </edge>"#).map_err(|e| LqlError::exec("failed to write", e))?;
         }
 
         writeln!(file, r#"  </graph>"#).map_err(|e| LqlError::exec("failed to write", e))?;

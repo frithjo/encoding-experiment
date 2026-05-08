@@ -307,7 +307,9 @@ impl Parser {
                         self.advance();
                         AnalysisMode::WorkflowProbe
                     } else {
-                        return Err(ParseError("expected FACT_PROBE or WORKFLOW_PROBE".to_string()));
+                        return Err(ParseError(
+                            "expected FACT_PROBE or WORKFLOW_PROBE".to_string(),
+                        ));
                     };
                     mode_seen = true;
                 }
@@ -359,21 +361,23 @@ impl Parser {
 
         // Validate required clauses for strict scientific contract
         if !mode_seen {
-            return Err(ParseError("ANALYZE INFER requires MODE clause. Example: MODE FACT_PROBE".to_string()));
+            return Err(ParseError(
+                "ANALYZE INFER requires MODE clause. Example: MODE FACT_PROBE".to_string(),
+            ));
         }
 
         match mode {
             AnalysisMode::FactProbe => {
                 if truth_spans.is_empty() && materially_false_spans.is_empty() {
                     return Err(ParseError(
-                        "MODE FACT_PROBE requires at least TRUTH_SPANS or FALSE_SPANS".to_string()
+                        "MODE FACT_PROBE requires at least TRUTH_SPANS or FALSE_SPANS".to_string(),
                     ));
                 }
             }
             AnalysisMode::WorkflowProbe => {
                 if materially_false_spans.is_empty() {
                     return Err(ParseError(
-                        "MODE WORKFLOW_PROBE requires FALSE_SPANS".to_string()
+                        "MODE WORKFLOW_PROBE requires FALSE_SPANS".to_string(),
                     ));
                 }
             }

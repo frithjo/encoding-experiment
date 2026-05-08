@@ -195,10 +195,16 @@ impl std::fmt::Display for Statement {
                 layers,
                 extract_level,
             } => {
-                write!(f, "EXTRACT MODEL {} INTO {}", quote_string(model), quote_string(output))?;
+                write!(
+                    f,
+                    "EXTRACT MODEL {} INTO {}",
+                    quote_string(model),
+                    quote_string(output)
+                )?;
                 if let Some(comps) = components {
                     if !comps.is_empty() {
-                        let comp_strs: Vec<String> = comps.iter().map(|c| format!("{:?}", c)).collect();
+                        let comp_strs: Vec<String> =
+                            comps.iter().map(|c| format!("{:?}", c)).collect();
                         write!(f, " COMPONENTS ({})", comp_strs.join(", "))?;
                     }
                 }
@@ -260,7 +266,11 @@ impl std::fmt::Display for Statement {
                 }
                 write!(f, ";")
             }
-            Statement::Infer { prompt, top, compare } => {
+            Statement::Infer {
+                prompt,
+                top,
+                compare,
+            } => {
                 write!(f, "INFER {}", quote_string(prompt))?;
                 if let Some(t) = top {
                     write!(f, " TOP {}", t)?;
@@ -331,14 +341,30 @@ impl std::fmt::Display for Statement {
                         if i > 0 {
                             write!(f, " AND ")?;
                         }
-                        write!(f, "{} {:?} {}", cond.field, cond.op, format_value(&cond.value))?;
+                        write!(
+                            f,
+                            "{} {:?} {}",
+                            cond.field,
+                            cond.op,
+                            format_value(&cond.value)
+                        )?;
                     }
                 }
                 if let Some(n) = nearest {
-                    write!(f, " NEAREST {} AT LAYER {}", quote_string(&n.entity), n.layer)?;
+                    write!(
+                        f,
+                        " NEAREST {} AT LAYER {}",
+                        quote_string(&n.entity),
+                        n.layer
+                    )?;
                 }
                 if let Some(o) = order {
-                    write!(f, " ORDER BY {} {}", o.field, if o.descending { "DESC" } else { "ASC" })?;
+                    write!(
+                        f,
+                        " ORDER BY {} {}",
+                        o.field,
+                        if o.descending { "DESC" } else { "ASC" }
+                    )?;
                 }
                 if let Some(l) = limit {
                     write!(f, " LIMIT {}", l)?;
@@ -408,7 +434,13 @@ impl std::fmt::Display for Statement {
                 confidence,
                 alpha,
             } => {
-                write!(f, "INSERT ({}, {}, {})", quote_string(entity), quote_string(relation), quote_string(target))?;
+                write!(
+                    f,
+                    "INSERT ({}, {}, {})",
+                    quote_string(entity),
+                    quote_string(relation),
+                    quote_string(target)
+                )?;
                 if let Some(l) = layer {
                     write!(f, " AT LAYER {}", l)?;
                 }
@@ -428,7 +460,13 @@ impl std::fmt::Display for Statement {
                         if i > 0 {
                             write!(f, " AND ")?;
                         }
-                        write!(f, "{} {:?} {}", cond.field, cond.op, format_value(&cond.value))?;
+                        write!(
+                            f,
+                            "{} {:?} {}",
+                            cond.field,
+                            cond.op,
+                            format_value(&cond.value)
+                        )?;
                     }
                 }
                 write!(f, ";")
@@ -439,7 +477,12 @@ impl std::fmt::Display for Statement {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{} = {}", assignment.field, format_value(&assignment.value))?;
+                    write!(
+                        f,
+                        "{} = {}",
+                        assignment.field,
+                        format_value(&assignment.value)
+                    )?;
                 }
                 if !conditions.is_empty() {
                     write!(f, " WHERE ")?;
@@ -447,7 +490,13 @@ impl std::fmt::Display for Statement {
                         if i > 0 {
                             write!(f, " AND ")?;
                         }
-                        write!(f, "{} {:?} {}", cond.field, cond.op, format_value(&cond.value))?;
+                        write!(
+                            f,
+                            "{} {:?} {}",
+                            cond.field,
+                            cond.op,
+                            format_value(&cond.value)
+                        )?;
                     }
                 }
                 write!(f, ";")

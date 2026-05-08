@@ -454,12 +454,12 @@ impl Parser {
     pub(crate) fn parse_string_list(&mut self) -> Result<Vec<String>, ParseError> {
         self.expect_token(&Token::LParen)?;
         let mut strings = Vec::new();
-        
+
         if self.check(Token::RParen) {
             self.advance();
             return Ok(strings);
         }
-        
+
         loop {
             match self.peek() {
                 Token::StringLit(s) => {
@@ -473,14 +473,14 @@ impl Parser {
                     )))
                 }
             }
-            
+
             if self.check(Token::RParen) {
                 self.advance();
                 break;
             }
             self.expect_token(&Token::Comma)?;
         }
-        
+
         Ok(strings)
     }
 

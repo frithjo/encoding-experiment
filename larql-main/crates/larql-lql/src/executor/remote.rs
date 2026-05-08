@@ -738,7 +738,8 @@ impl Session {
 
         let request_json = serde_json::to_value(&request)
             .map_err(|e| LqlError::Execution(format!("failed to serialize request: {e}")))?;
-        let result_json = self.remote_post_json("/v1/analyze-infer", &request_json, false)
+        let result_json = self
+            .remote_post_json("/v1/analyze-infer", &request_json, false)
             .map_err(|e| LqlError::Execution(format!("remote analysis failed: {e}")))?;
         let result: larql_inference::AnalysisResult = serde_json::from_value(result_json)
             .map_err(|e| LqlError::Execution(format!("invalid remote analysis result: {e}")))?;
@@ -748,11 +749,9 @@ impl Session {
             Some(OutputFormat::Csv) => Err(LqlError::Execution(
                 "CSV format is not implemented for remote ANALYZE INFER".into(),
             )),
-            Some(OutputFormat::Safetensors) | Some(OutputFormat::Gguf) => {
-                Err(LqlError::Execution(
-                    "Only text and JSON output are supported for remote ANALYZE INFER".into(),
-                ))
-            }
+            Some(OutputFormat::Safetensors) | Some(OutputFormat::Gguf) => Err(LqlError::Execution(
+                "Only text and JSON output are supported for remote ANALYZE INFER".into(),
+            )),
             None => self.format_analysis_result(&result),
         }
     }
