@@ -13,8 +13,8 @@
 //! - LARQL_HUGGINGFACE__CACHE_DIR -> huggingface.cache_dir
 //! - LARQL_PATHS__HOME_DIR -> paths.home_dir
 
-mod types;
 mod loader;
+mod types;
 
-pub use types::{AppConfig, VindexConfig, ModelConfig, HuggingFaceConfig, PathConfig};
 pub use loader::{load_config, ConfigError};
+pub use types::{AppConfig, HuggingFaceConfig, ModelConfig, PathConfig, VindexConfig};

@@ -12,6 +12,7 @@ categories = ["data-structures", "science"]
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+sha2 = "0.10"
 libc = "0.2"
 config = "0.14"
 dotenvy = "0.15"

@@ -91,9 +91,7 @@ pub struct PathConfig {
 
 impl Default for PathConfig {
     fn default() -> Self {
-        Self {
-            home_dir: None,
-        }
+        Self { home_dir: None }
     }
 }
 
@@ -110,26 +108,26 @@ impl PathConfig {
     /// Resolve a path that may contain ~ or $HOME.
     pub fn resolve_path(&self, path: &str) -> PathBuf {
         let path = path.trim();
-        
+
         // Handle ~ expansion
         if path.starts_with("~/") {
             let mut resolved = self.home_dir();
             resolved.push(&path[2..]);
             return resolved;
         }
-        
+
         // Handle $HOME expansion
         if path.starts_with("$HOME/") {
             let mut resolved = self.home_dir();
             resolved.push(&path[6..]);
             return resolved;
         }
-        
+
         // Handle absolute paths
         if path.starts_with('/') {
             return PathBuf::from(path);
         }
-        
+
         // Handle relative paths
         let mut resolved = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         resolved.push(path);

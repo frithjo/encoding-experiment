@@ -10,7 +10,7 @@ use crate::config::types::AppConfig;
 pub enum ConfigError {
     #[error("Failed to load configuration: {0}")]
     LoadError(#[from] config::ConfigError),
-    
+
     #[error("Configuration validation failed: {0}")]
     ValidationError(String),
 }
@@ -35,7 +35,7 @@ pub enum ConfigError {
 pub fn load_config() -> Result<AppConfig, ConfigError> {
     // Load .env file if present
     dotenvy::dotenv().ok();
-    
+
     let config = Config::builder()
         // Add default config file (optional)
         .add_source(File::with_name("config/default").required(false))
@@ -45,15 +45,15 @@ pub fn load_config() -> Result<AppConfig, ConfigError> {
         .add_source(
             Environment::with_prefix("LARQL")
                 .prefix_separator("__")
-                .separator("__")
+                .separator("__"),
         )
         .build()?;
-    
+
     let app_config: AppConfig = config.try_deserialize()?;
-    
+
     // Validate configuration
     validate_config(&app_config)?;
-    
+
     Ok(app_config)
 }
 
@@ -62,7 +62,7 @@ fn validate_config(config: &AppConfig) -> Result<(), ConfigError> {
     // Check that vindex path is not empty
     if config.vindex.path.is_empty() {
         return Err(ConfigError::ValidationError(
-            "vindex.path cannot be empty".to_string()
+            "vindex.path cannot be empty".to_string(),
         ));
     }
 
@@ -72,23 +72,24 @@ fn validate_config(config: &AppConfig) -> Result<(), ConfigError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+    use crate::config::PathConfig;
+    use std::path::PathBuf;
+
     #[test]
     fn test_default_config() {
         let config = AppConfig::default();
-        assert!(!config.vindex.default_path.is_empty());
-        assert_eq!(config.models.bitnet_id, "bitnet-ml/BitNet-1B58-3B");
-        assert_eq!(config.models.gemma_id, "google/gemma-3-4b-it");
+        assert!(!config.vindex.path.is_empty());
+        assert_eq!(config.models.path, "google/gemma-3-4b-it");
     }
-    
+
     #[test]
     fn test_path_resolution() {
         let path_config = PathConfig::default();
-        
+
         // Test relative path resolution
         let resolved = path_config.resolve_path("data/test");
         assert!(resolved.is_absolute());
-        
+
         // Test absolute path
         let resolved = path_config.resolve_path("/tmp/test");
         assert_eq!(resolved, PathBuf::from("/tmp/test"));

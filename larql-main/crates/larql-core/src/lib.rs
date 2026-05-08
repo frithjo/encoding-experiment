@@ -1,4 +1,5 @@
 pub mod algo;
+pub mod capsule;
 pub mod config;
 pub mod core;
 pub mod engine;
