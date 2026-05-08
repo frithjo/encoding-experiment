@@ -5,6 +5,7 @@ mod formatting;
 mod utils;
 
 use commands::extraction::*;
+use commands::machine_cmd;
 use commands::query::*;
 use larql_core::config::{load_config, AppConfig};
 
@@ -102,6 +103,9 @@ enum Commands {
 
     /// Verify vindex file integrity (SHA256 checksums).
     Verify(verify_cmd::VerifyArgs),
+
+    /// Governed machine policy, minting, and receipt commands.
+    Machine(machine_cmd::MachineArgs),
 
     // GraphWalk removed — used deprecated FeatureListFfn
     /// Trace residual stream trajectories on the sphere across layers.
@@ -266,6 +270,7 @@ fn main() {
         Commands::Convert(args) => convert_cmd::run(args),
         Commands::Hf(args) => hf_cmd::run(args),
         Commands::Verify(args) => verify_cmd::run(args),
+        Commands::Machine(args) => machine_cmd::run(args),
         // Commands::GraphWalk removed
         Commands::TrajectoryTrace(args) => trajectory_trace_cmd::run(args),
         // Commands::VindexBench removed
