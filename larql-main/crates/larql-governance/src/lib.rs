@@ -1,5 +1,6 @@
 pub mod binding;
 pub mod ceremony;
+pub mod decision_surface;
 pub mod hash;
 pub mod patch_pipeline;
 pub mod policy;
@@ -10,6 +11,14 @@ pub mod struct_minter;
 pub use binding::{derive_struct_bindings, RustStructBinding};
 pub use ceremony::{
     CapabilityScope, CeremonyEvent, CeremonyReceipt, MachineCapability, MachineChannel,
+};
+pub use decision_surface::{
+    load_ceremony_decision_budgets, load_decision_surface_registry, load_llm_autonomy_roles,
+    parse_ceremony_decision_budgets_from_str, parse_decision_surface_registry_from_str,
+    validate_decision_surface, CeremonyDecisionBudget, CeremonyDecisionBudgets, DecisionOwner,
+    DecisionRisk, DecisionStatus, DecisionSurfaceError, DecisionSurfaceItem,
+    DecisionSurfaceRegistry, DecisionSurfaceValidation, LlmAutonomyRole, LlmAutonomyRoles,
+    PromotionPath, UnknownDecisionEncountered,
 };
 pub use hash::{hash_bytes, hash_json, hash_text, HashRef};
 pub use patch_pipeline::{

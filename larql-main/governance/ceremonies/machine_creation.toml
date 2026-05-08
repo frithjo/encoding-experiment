@@ -1,0 +1,40 @@
+schema_version = "larql.governance.ceremony.v1"
+id = "machine_creation"
+name = "MachineCreationCeremony"
+max_open_llm_decisions = 3
+
+phases = [
+  "MachineNeedAssessmentSubmitted",
+  "ExistingMachineOverlapChecked",
+  "ResponsibilityBoundaryDeclared",
+  "MachineProposalPacketDrafted",
+  "ExamplesAndCounterexamplesAttached",
+  "PolicyImpactChecked",
+  "CapabilityScopeReviewed",
+  "TestsAttached",
+  "HumanApprovalRecorded",
+  "MachineCapabilityMinted",
+  "RegistrationPatchPrepared",
+  "ReplayVerified",
+  "MachineCreationClosed",
+]
+
+required_artifacts = [
+  "governance/templates/machine_proposal.toml",
+  "governance/schemas/machine_creation_proposal.schema.json",
+  "governance/fixtures/machine_creation/",
+]
+
+required_evidence = [
+  "existing_machine_overlap_check",
+  "machine_responsibility_boundary",
+  "machine_accepts_valid_input_test",
+  "machine_rejects_malformed_input_test",
+  "rollback_plan",
+]
+
+[authority]
+llm_may_create_machine = false
+creation_requires_capability = true
+creation_requires_policy_hash = true
+creation_requires_fixture_comparison = true
