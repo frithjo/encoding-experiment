@@ -35,11 +35,24 @@ attach rule sets to artifact classes. Flows define lawful transition paths.
 Recipes collect structured questions, factoids, derived facts, and required
 outputs for governed work.
 
-**Key Invariant: Recipes gather, Policies authorize.**
-Recipes are responsible for structuring the evidence and facts required for a
-given intent. They do not decide authority. Final admissibility is always
-determined by the policy engine evaluating the gathered facts against the
-active rule set.
+**Key Invariants: Recipes gather, Policies authorize.**
+
+1. **Recipes gather.** They are responsible for structuring the evidence and facts required for a given intent.
+2. **FactStore preserves.** All gathered facts are stored with explicit provenance.
+3. **Conflicts are explicit.** Facts do not silently overwrite; differing claims for the same fact type are recorded as conflicts.
+4. **Policies authorize.** Recipes do not decide authority. Final admissibility is always determined by the policy engine evaluating the gathered facts against the active rule set.
+5. **Admissibility is separate from existence.** A fact may exist in the store but be deemed inadmissible (e.g., due to low-trust source or staleness).
+6. **Fact presence does not imply fact authority.** Recipes produce **candidate facts**. The policy engine determines whether those candidate facts become accepted governance facts.
+
+```text
+prose intent
+→ governed recipe questions
+→ typed candidate facts
+→ provenance-bound FactStore
+→ conflict records
+→ deterministic compile
+→ policy engine remains authority
+```
 
 The engine accepts facts and emits decisions:
 
