@@ -211,6 +211,8 @@ pub struct PolicyCompileReport {
     pub active_rule_count: usize,
     pub profile_count: usize,
     pub flow_count: usize,
+    #[serde(default)]
+    pub flow_transition_count: usize,
     pub recipe_count: usize,
     #[serde(default)]
     pub actions: Vec<String>,
@@ -398,7 +400,13 @@ pub struct PolicyEngineDecision {
     pub schema_version: String,
     pub active_policy_set: String,
     pub policy_hash: String,
+    #[serde(default)]
+    pub policy_generation: u64,
     pub input_state_hash: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_profile: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_flow: Option<String>,
     pub decision: DecisionKind,
     #[serde(default)]
     pub matched_rules: Vec<String>,
@@ -850,10 +858,44 @@ pub struct CompiledPolicyPlan {
     rules_by_profile: BTreeMap<String, Vec<RuleIndex>>,
     rules_by_artifact_class: BTreeMap<ArtifactClass, Vec<RuleIndex>>,
     global_rules: Vec<RuleIndex>,
+    compiled_flows: BTreeMap<String, CompiledFlow>,
     flows_by_action: BTreeMap<String, String>,
     recipes_by_action: BTreeMap<String, String>,
     profile_by_artifact_class: BTreeMap<ArtifactClass, String>,
     dispatch: CompiledActionDispatch,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CompiledFlow {
+    pub id: String,
+    #[serde(default)]
+    pub steps: Vec<FlowStep>,
+    #[serde(default)]
+    pub step_by_id: BTreeMap<String, usize>,
+    #[serde(default)]
+    pub allowed_next: BTreeMap<String, Vec<String>>,
+}
+
+impl CompiledFlow {
+    fn compile(flow: &PolicyFlow) -> Result<Self, PolicyLoadError> {
+        validate_flow(flow)?;
+        let mut step_by_id = BTreeMap::new();
+        let mut allowed_next = BTreeMap::new();
+        for (idx, step) in flow.steps.iter().enumerate() {
+            step_by_id.insert(step.id.clone(), idx);
+            allowed_next.insert(step.id.clone(), step.next.clone());
+        }
+        Ok(Self {
+            id: flow.id.clone(),
+            steps: flow.steps.clone(),
+            step_by_id,
+            allowed_next,
+        })
+    }
+
+    pub fn allowed_next_steps(&self, step_id: &str) -> Option<&[String]> {
+        self.allowed_next.get(step_id).map(Vec::as_slice)
+    }
 }
 
 impl CompiledPolicyPlan {
@@ -911,12 +953,14 @@ impl CompiledPolicyPlan {
             profile_by_artifact_class.insert(profile.applies_to.clone(), profile.id.clone());
         }
 
+        let mut compiled_flows = BTreeMap::new();
         let mut flows_by_action = BTreeMap::new();
         for flow in registry.flows.values() {
-            validate_flow(flow)?;
+            let compiled_flow = CompiledFlow::compile(flow)?;
             for action in &flow.actions {
                 flows_by_action.insert(action.clone(), flow.id.clone());
             }
+            compiled_flows.insert(flow.id.clone(), compiled_flow);
         }
 
         let mut recipes_by_action = BTreeMap::new();
@@ -933,6 +977,7 @@ impl CompiledPolicyPlan {
             rules_by_profile,
             rules_by_artifact_class,
             global_rules,
+            compiled_flows,
             flows_by_action,
             recipes_by_action,
             profile_by_artifact_class,
@@ -968,6 +1013,37 @@ impl CompiledPolicyPlan {
         indices.into_iter().collect()
     }
 
+    pub fn resolved_profile_id(&self, input: &PolicyInput) -> Option<&str> {
+        let artifact_class = resolve_artifact_class(input)?;
+        self.profile_by_artifact_class
+            .get(&artifact_class)
+            .map(String::as_str)
+    }
+
+    pub fn resolved_flow_id<'a>(
+        &'a self,
+        input: &PolicyInput,
+        registry: &'a PolicyRegistry,
+    ) -> Option<&'a str> {
+        if let Some(flow_id) = self.flows_by_action.get(&input.action) {
+            return Some(flow_id.as_str());
+        }
+        let profile_id = self.resolved_profile_id(input)?;
+        let profile = registry.profiles.get(profile_id)?;
+        profile
+            .default_flow
+            .as_deref()
+            .filter(|flow_id| self.compiled_flows.contains_key(*flow_id))
+    }
+
+    pub fn compiled_flow(&self, flow_id: &str) -> Option<&CompiledFlow> {
+        self.compiled_flows.get(flow_id)
+    }
+
+    pub fn allowed_next_steps(&self, flow_id: &str, step_id: &str) -> Option<&[String]> {
+        self.compiled_flow(flow_id)?.allowed_next_steps(step_id)
+    }
+
     fn report(&self, registry: &PolicyRegistry) -> PolicyCompileReport {
         let mut actions: BTreeSet<String> = self.rules_by_action.keys().cloned().collect();
         actions.extend(self.flows_by_action.keys().cloned());
@@ -983,6 +1059,11 @@ impl CompiledPolicyPlan {
             active_rule_count: registry.rules.len(),
             profile_count: registry.profiles.len(),
             flow_count: registry.flows.len(),
+            flow_transition_count: self
+                .compiled_flows
+                .values()
+                .map(|flow| flow.allowed_next.values().map(Vec::len).sum::<usize>())
+                .sum(),
             recipe_count: registry.recipes.len(),
             actions: actions.into_iter().collect(),
             profiles: registry.profiles.keys().cloned().collect(),
@@ -1794,13 +1875,33 @@ impl PolicyEngine {
     }
 
     pub fn evaluate(&self, input: &PolicyInput) -> PolicyEngineDecision {
+        self.evaluate_with_generation(input, 0)
+    }
+
+    pub fn evaluate_with_generation(
+        &self,
+        input: &PolicyInput,
+        policy_generation: u64,
+    ) -> PolicyEngineDecision {
         let eligible = self.compiled.eligible_indices(input);
-        self.evaluate_inner(input, EligibilityPlan::Merged(&eligible))
+        self.evaluate_inner(input, policy_generation, EligibilityPlan::Merged(&eligible))
+    }
+
+    pub fn resolve_profile_id(&self, input: &PolicyInput) -> Option<&str> {
+        self.compiled.resolved_profile_id(input)
+    }
+
+    pub fn resolve_flow_id(&self, input: &PolicyInput) -> Option<&str> {
+        self.compiled.resolved_flow_id(input, &self.registry)
+    }
+
+    pub fn allowed_next_steps(&self, flow_id: &str, step_id: &str) -> Option<&[String]> {
+        self.compiled.allowed_next_steps(flow_id, step_id)
     }
 
     #[cfg(test)]
     pub(crate) fn evaluate_full_scan_for_test(&self, input: &PolicyInput) -> PolicyEngineDecision {
-        self.evaluate_inner(input, EligibilityPlan::FullScan)
+        self.evaluate_inner(input, 0, EligibilityPlan::FullScan)
     }
 
     #[cfg(test)]
@@ -1813,9 +1914,12 @@ impl PolicyEngine {
     fn evaluate_inner(
         &self,
         input: &PolicyInput,
+        policy_generation: u64,
         plan: EligibilityPlan<'_>,
     ) -> PolicyEngineDecision {
         let facts = fact_map(&input.facts);
+        let resolved_profile = self.resolve_profile_id(input).map(str::to_string);
+        let resolved_flow = self.resolve_flow_id(input).map(str::to_string);
         let mut decision = DecisionKind::Allow;
         let mut matched_rules = Vec::new();
         let mut required_actions = BTreeSet::new();
@@ -1885,7 +1989,10 @@ impl PolicyEngine {
                 self.registry.active_policy_set.id, self.registry.active_policy_set.version
             ),
             policy_hash: self.registry.policy_hash.clone(),
+            policy_generation,
             input_state_hash: input.state_hash.clone(),
+            resolved_profile,
+            resolved_flow,
             decision,
             matched_rules,
             required_actions: required_actions.into_iter().collect(),
@@ -2217,6 +2324,10 @@ impl ActivePolicy {
             policy_hash,
             generation,
         })
+    }
+
+    pub fn evaluate(&self, input: &PolicyInput) -> PolicyEngineDecision {
+        self.engine.evaluate_with_generation(input, self.generation)
     }
 }
 
@@ -3212,6 +3323,102 @@ mod tests {
         .unwrap()
     }
 
+    fn flow_engine() -> PolicyEngine {
+        let rule = PolicyRule {
+            id: "machine_creation.requires_overlap_check".to_string(),
+            class: PolicyClass::CeremonyPolicy,
+            severity: PolicySeverity::Deny,
+            description: "requires overlap evidence".to_string(),
+            when: ConditionBlock {
+                all: vec![Condition {
+                    action: Some("create_machine".to_string()),
+                    ..Condition::default()
+                }],
+                ..ConditionBlock::default()
+            },
+            require: ConditionBlock {
+                all: vec![Condition {
+                    evidence: Some("existing_machine_overlap_check".to_string()),
+                    present: Some(true),
+                    ..Condition::default()
+                }],
+                ..ConditionBlock::default()
+            },
+            decision: RuleDecision {
+                on_missing: DecisionKind::Deny,
+                message: "missing overlap".to_string(),
+                required_actions: vec!["attach overlap check".to_string()],
+            },
+        };
+        let mut rule_sets = BTreeMap::new();
+        rule_sets.insert(
+            "machine_runtime".to_string(),
+            RuleSet {
+                id: "machine_runtime".to_string(),
+                enabled: true,
+                source: Some("machine-runtime.toml".to_string()),
+                rules: vec![rule.clone()],
+            },
+        );
+        let mut profiles = BTreeMap::new();
+        profiles.insert(
+            "machine".to_string(),
+            RuleProfile {
+                id: "machine".to_string(),
+                applies_to: ArtifactClass::Machine,
+                rule_sets: vec!["machine_runtime".to_string()],
+                required_facts: Vec::new(),
+                default_flow: Some("machine_creation".to_string()),
+            },
+        );
+        let mut flows = BTreeMap::new();
+        flows.insert(
+            "machine_creation".to_string(),
+            PolicyFlow {
+                id: "machine_creation".to_string(),
+                actions: vec!["create_machine".to_string()],
+                steps: vec![
+                    FlowStep {
+                        id: "submitted".to_string(),
+                        next: vec!["overlap_checked".to_string()],
+                    },
+                    FlowStep {
+                        id: "overlap_checked".to_string(),
+                        next: vec!["approved".to_string(), "denied".to_string()],
+                    },
+                    FlowStep {
+                        id: "approved".to_string(),
+                        next: Vec::new(),
+                    },
+                    FlowStep {
+                        id: "denied".to_string(),
+                        next: Vec::new(),
+                    },
+                ],
+            },
+        );
+        PolicyEngine::new(PolicyRegistry {
+            schema_version: "larql.governance.policy_registry.v1".to_string(),
+            active_policy_set: PolicySet {
+                id: "test".to_string(),
+                version: "1".to_string(),
+                includes: vec!["machine-runtime.toml".to_string()],
+            },
+            policy_hash: crate::hash::hash_text("flow-policy"),
+            mode: PolicyMode {
+                unknown_rule: UnknownRuleMode::Deny,
+                unknown_fact: UnknownFactMode::Warn,
+                conflict_resolution: ConflictResolutionMode::MostRestrictive,
+            },
+            rule_sets,
+            profiles,
+            flows,
+            recipes: BTreeMap::new(),
+            rules: vec![rule],
+        })
+        .unwrap()
+    }
+
     #[test]
     fn material_registry_matches_disk_for_repo_policies() {
         let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -3296,6 +3503,64 @@ mod tests {
         assert!(report.profiles.contains(&"policy_file".to_string()));
         assert!(report.flows.contains(&"machine_creation".to_string()));
         assert!(report.flows.contains(&"policy_update".to_string()));
+    }
+
+    #[test]
+    fn compiled_flow_governs_allowed_next_steps() {
+        let engine = flow_engine();
+        let next = engine
+            .allowed_next_steps("machine_creation", "overlap_checked")
+            .expect("compiled flow step");
+
+        assert_eq!(next, &["approved".to_string(), "denied".to_string()]);
+        assert!(engine
+            .allowed_next_steps("machine_creation", "unknown_step")
+            .is_none());
+        assert_eq!(engine.compile_report().flow_transition_count, 3);
+    }
+
+    #[test]
+    fn decision_receipt_records_generation_profile_and_flow() {
+        let engine = flow_engine();
+        let input = PolicyInput {
+            schema_version: "larql.governance.policy_input.v1".to_string(),
+            state_hash: crate::hash::hash_text("input"),
+            actor: "human:test".to_string(),
+            action: "create_machine".to_string(),
+            target_paths: Vec::new(),
+            evidence: Vec::new(),
+            risk: 0,
+            facts: Vec::new(),
+        };
+
+        let decision = engine.evaluate_with_generation(&input, 42);
+
+        assert_eq!(decision.policy_generation, 42);
+        assert_eq!(decision.resolved_profile.as_deref(), Some("machine"));
+        assert_eq!(decision.resolved_flow.as_deref(), Some("machine_creation"));
+    }
+
+    #[test]
+    fn active_policy_decisions_cite_active_generation() {
+        let engine = flow_engine();
+        let active = ActivePolicy::new(engine.registry.clone(), 7).unwrap();
+        let input = PolicyInput {
+            schema_version: "larql.governance.policy_input.v1".to_string(),
+            state_hash: crate::hash::hash_text("active-input"),
+            actor: "human:test".to_string(),
+            action: "create_machine".to_string(),
+            target_paths: Vec::new(),
+            evidence: vec!["existing_machine_overlap_check".to_string()],
+            risk: 0,
+            facts: Vec::new(),
+        };
+
+        let decision = active.evaluate(&input);
+
+        assert_eq!(decision.policy_generation, 7);
+        assert_eq!(decision.decision, DecisionKind::Allow);
+        assert_eq!(decision.resolved_profile.as_deref(), Some("machine"));
+        assert_eq!(decision.resolved_flow.as_deref(), Some("machine_creation"));
     }
 
     #[test]
