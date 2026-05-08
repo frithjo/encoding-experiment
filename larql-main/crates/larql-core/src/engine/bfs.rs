@@ -76,11 +76,11 @@ pub fn extract_bfs(
                 1
             };
 
-            let result = match chain_tokens(provider, &prompt, max_tok, config.confidence_floor, None)
-            {
-                Ok(r) => r,
-                Err(_) => continue,
-            };
+            let result =
+                match chain_tokens(provider, &prompt, max_tok, config.confidence_floor, None) {
+                    Ok(r) => r,
+                    Err(_) => continue,
+                };
 
             total_passes += result.num_passes;
 

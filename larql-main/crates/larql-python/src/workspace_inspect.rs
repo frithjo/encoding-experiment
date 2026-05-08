@@ -1,6 +1,6 @@
 //! Workbench workspace inspection — implemented in Rust so UI Python stays thin.
 //!
-//! Returns a dict compatible with `larql.ui.models.WorkspaceSummary` (same keys/types).
+//! Returns a dict compatible with `larql_ui.ui.models.WorkspaceSummary` (same keys/types).
 
 use std::path::Path;
 
@@ -56,7 +56,11 @@ fn probe_lql(path: &str) -> Result<(), String> {
 /// `mlx_available` must be supplied from Python (`importlib.util.find_spec`) — MLX is a Python stack.
 #[pyfunction]
 #[pyo3(signature = (path, mlx_available=false))]
-pub fn inspect_workspace_for_ui(py: Python<'_>, path: &str, mlx_available: bool) -> PyResult<Py<PyDict>> {
+pub fn inspect_workspace_for_ui(
+    py: Python<'_>,
+    path: &str,
+    mlx_available: bool,
+) -> PyResult<Py<PyDict>> {
     let norm_path = Path::new(path);
     if !norm_path.exists() {
         return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
@@ -99,7 +103,11 @@ pub fn inspect_workspace_for_ui(py: Python<'_>, path: &str, mlx_available: bool)
         d.set_item("name", rel.name)?;
         d.set_item("count", rel.count)?;
         d.set_item("cluster_id", rel.cluster_id)?;
-        let tops: Vec<String> = rel.top_tokens.into_iter().take(TOP_TOKENS_PER_RELATION).collect();
+        let tops: Vec<String> = rel
+            .top_tokens
+            .into_iter()
+            .take(TOP_TOKENS_PER_RELATION)
+            .collect();
         d.set_item("top_tokens", tops)?;
         relation_labels.append(d)?;
     }
@@ -161,9 +169,8 @@ pub fn inspect_workspace_for_ui(py: Python<'_>, path: &str, mlx_available: bool)
                     .into(),
             );
         } else {
-            warnings.push(
-                "No model weights. Inference, trace, and mmap WalkModel disabled.".into(),
-            );
+            warnings
+                .push("No model weights. Inference, trace, and mmap WalkModel disabled.".into());
         }
     }
     if relation_count == 0 && num_probe_labels == 0 {

@@ -5,9 +5,9 @@
 
 use std::sync::Arc;
 
-use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::HeaderMap;
+use axum::Json;
 use serde::Deserialize;
 
 use crate::error::ServerError;
@@ -30,7 +30,9 @@ fn session_id(headers: &HeaderMap) -> Option<String> {
 }
 
 /// Resolve a patch from the request body (inline or URL).
-fn resolve_patch(req: &ApplyPatchRequest) -> Result<(larql_vindex::VindexPatch, String), ServerError> {
+fn resolve_patch(
+    req: &ApplyPatchRequest,
+) -> Result<(larql_vindex::VindexPatch, String), ServerError> {
     if let Some(ref patch) = req.patch {
         let name = req
             .url
@@ -48,7 +50,9 @@ fn resolve_patch(req: &ApplyPatchRequest) -> Result<(larql_vindex::VindexPatch, 
             if vlp_path.exists() {
                 vlp_path
             } else {
-                return Err(ServerError::BadRequest(format!("no patch.vlp found at {url}")));
+                return Err(ServerError::BadRequest(format!(
+                    "no patch.vlp found at {url}"
+                )));
             }
         } else {
             std::path::PathBuf::from(url)
@@ -58,65 +62,114 @@ fn resolve_patch(req: &ApplyPatchRequest) -> Result<(larql_vindex::VindexPatch, 
         return Ok((patch, url.clone()));
     }
 
-    Err(ServerError::BadRequest("must provide 'url' or 'patch' in request body".into()))
+    Err(ServerError::BadRequest(
+        "must provide 'url' or 'patch' in request body".into(),
+    ))
+}
+
+fn resolve_top_token_id(
+    model: &crate::state::LoadedModel,
+    down_meta: &mut larql_vindex::patch::core::PatchDownMeta,
+) -> Result<(), ServerError> {
+    if down_meta.top_token_id != 0 || down_meta.top_token.trim().is_empty() {
+        return Ok(());
+    }
+
+    let encoding = model
+        .tokenizer
+        .encode(down_meta.top_token.as_str(), false)
+        .map_err(|e| {
+            ServerError::BadRequest(format!(
+                "failed to tokenize update target {:?}: {e}",
+                down_meta.top_token
+            ))
+        })?;
+    let Some(token_id) = encoding.ids.first().copied() else {
+        return Err(ServerError::BadRequest(format!(
+            "update target {:?} did not resolve to any token ids",
+            down_meta.top_token
+        )));
+    };
+    down_meta.top_token_id = token_id;
+    Ok(())
 }
 
 /// Synthesise a gate vector from entity embedding when the client didn't provide one.
-fn enrich_patch_ops(model: &crate::state::LoadedModel, patch: &mut larql_vindex::VindexPatch) {
+fn enrich_patch_ops(
+    model: &crate::state::LoadedModel,
+    patch: &mut larql_vindex::VindexPatch,
+) -> Result<(), ServerError> {
     let hidden = model.embeddings.shape()[1];
     for op in &mut patch.operations {
-        if let larql_vindex::PatchOp::Insert {
-            entity,
-            relation,
-            feature,
-            gate_vector_b64,
-            ..
-        } = op
-        {
-            // Synthesise gate vector if missing
-            if gate_vector_b64.is_none() {
-                let encoding = model.tokenizer.encode(entity.as_str(), false);
-                if let Ok(enc) = encoding {
-                    let ids = enc.ids.as_slice();
-                    if !ids.is_empty() {
-                        let mut embed = vec![0.0f32; hidden];
-                        for &tok in ids {
-                            let row = model.embeddings.row(tok as usize);
-                            for j in 0..hidden {
-                                embed[j] += row[j] * model.embed_scale;
+        match op {
+            larql_vindex::PatchOp::Insert {
+                entity,
+                relation,
+                feature,
+                gate_vector_b64,
+                ..
+            } => {
+                // Synthesise gate vector if missing
+                if gate_vector_b64.is_none() {
+                    let encoding = model.tokenizer.encode(entity.as_str(), false);
+                    if let Ok(enc) = encoding {
+                        let ids = enc.ids.as_slice();
+                        if !ids.is_empty() {
+                            let mut embed = vec![0.0f32; hidden];
+                            for &tok in ids {
+                                let row = model.embeddings.row(tok as usize);
+                                for j in 0..hidden {
+                                    embed[j] += row[j] * model.embed_scale;
+                                }
                             }
-                        }
-                        let n = ids.len() as f32;
-                        for v in &mut embed { *v /= n; }
+                            let n = ids.len() as f32;
+                            for v in &mut embed {
+                                *v /= n;
+                            }
 
-                        // Normalise the embedding to unit length — gate KNN uses
-                        // cosine similarity so magnitude doesn't matter.
-                        let embed_norm: f32 = embed.iter().map(|v| v * v).sum::<f32>().sqrt();
-                        if embed_norm > 1e-8 {
-                            for v in &mut embed { *v /= embed_norm; }
-                        }
+                            // Normalise the embedding to unit length — gate KNN uses
+                            // cosine similarity so magnitude doesn't matter.
+                            let embed_norm: f32 = embed.iter().map(|v| v * v).sum::<f32>().sqrt();
+                            if embed_norm > 1e-8 {
+                                for v in &mut embed {
+                                    *v /= embed_norm;
+                                }
+                            }
 
-                        *gate_vector_b64 = Some(larql_vindex::patch::core::encode_gate_vector(&embed));
+                            *gate_vector_b64 =
+                                Some(larql_vindex::patch::core::encode_gate_vector(&embed));
+                        }
+                    }
+
+                    // Assign a feature slot if unset
+                    if *feature == 0 {
+                        // Use a deterministic slot based on layer + entity hash
+                        let hash = entity
+                            .bytes()
+                            .fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64));
+                        *feature = (hash as usize % 10240) + 1;
                     }
                 }
 
-                // Assign a feature slot if unset
-                if *feature == 0 {
-                    // Use a deterministic slot based on layer + entity hash
-                    let hash = entity.bytes().fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64));
-                    *feature = (hash as usize % 10240) + 1;
+                // Register the relation label so DESCRIBE shows it
+                if let Some(rel) = relation {
+                    if !rel.is_empty() {
+                        // We can't mutate probe_labels directly (it's not behind a lock),
+                        // but the patched overlay will store the metadata.
+                    }
                 }
             }
-
-            // Register the relation label so DESCRIBE shows it
-            if let Some(rel) = relation {
-                if !rel.is_empty() {
-                    // We can't mutate probe_labels directly (it's not behind a lock),
-                    // but the patched overlay will store the metadata.
+            larql_vindex::PatchOp::Update { down_meta, .. } => {
+                if let Some(down_meta) = down_meta {
+                    resolve_top_token_id(model, down_meta)?;
                 }
             }
+            larql_vindex::PatchOp::Delete { .. }
+            | larql_vindex::PatchOp::InsertKnn { .. }
+            | larql_vindex::PatchOp::DeleteKnn { .. } => {}
         }
     }
+    Ok(())
 }
 
 async fn apply_patch_to_model(
@@ -132,7 +185,7 @@ async fn apply_patch_to_model(
     let (mut patch, name) = resolve_patch(&req)?;
 
     // Enrich INSERT ops with gate vectors if missing
-    enrich_patch_ops(model, &mut patch);
+    enrich_patch_ops(model, &mut patch)?;
 
     let op_count = patch.operations.len();
 

@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="page-title">Studio</h1>
+
+<form id="studio-form" method="post" class="task-form">
+  <label for="engine">Engine</label>
+  <select id="engine" name="engine">
+    <option value="describe" {% if form_data.engine == 'describe' %}selected{% endif %}>describe</option>
+    <option value="lql" {% if form_data.engine == 'lql' %}selected{% endif %}>lql</option>
+    <option value="infer" {% if form_data.engine == 'infer' %}selected{% endif %} {% if not supports_infer %}disabled{% endif %}>infer</option>
+    <option value="walk_model" {% if form_data.engine == 'walk_model' %}selected{% endif %} {% if not supports_walk_model %}disabled{% endif %}>walk_model</option>
+  </select>
+
+  <label for="inline_template">Subject</label>
+  <textarea id="inline_template" name="inline_template" rows="3" placeholder="Enter subject or template...">{{ form_data.inline_template }}</textarea>
+
+  <div class="form-row">
+    <div class="form-col">
+      <label for="band">Band</label>
+      <select id="band" name="band">
+        {% for band_name in ["knowledge", "syntax", "output", "all"] %}
+        <option value="{{ band_name }}" {% if form_data.band == band_name %}selected{% endif %}>{{ band_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-col">
+      <label for="infer_top_k_predictions">Top-k</label>
+      <input id="infer_top_k_predictions" name="infer_top_k_predictions" type="number" min="1" value="{{ form_data.infer_top_k_predictions }}">
+    </div>
+
+    <div class="form-col checkbox-col">
+      <div class="checkbox-row">
+        <input type="checkbox" id="studio_verbose" name="verbose" {% if form_data.verbose %}checked{% endif %}>
+        <label for="studio_verbose">Verbose</label>
+      </div>
+    </div>
+  </div>
+
+  <button type="submit" class="submit-button">Run <kbd>Ctrl+Enter</kbd></button>
+</form>
+
+{% if run %}
+<section class="panel result-panel">
+  <h2>Result</h2>
+  <div class="muted">{{ run.summary }} | {{ run.engine }} | {{ run.duration_ms }} ms</div>
+  {% if run.raw.predictions %}
+  <ul class="predictions">
+    {% for p in run.raw.predictions %}
+    <li><strong>{{ p.token }}</strong> — {{ (p.probability * 100) | round(2) }}%</li>
+    {% endfor %}
+  </ul>
+  {% elif run.raw.edges %}
+  <div class="result-list">
+    {% for edge in run.raw.edges[:15] %}
+    <article class="result-card">
+      <div class="result-main">
+        <strong>{{ edge.relation or "?" }}</strong>
+        <span class="arrow">-&gt;</span>
+        <span>{{ edge.target }}</span>
+      </div>
+      <div class="muted">L{{ edge.layer }} score {{ edge.gate_score | round(1) }}</div>
+    </article>
+    {% endfor %}
+  </div>
+  {% elif run.raw.lines %}
+  <pre>{% for line in run.raw.lines %}{{ line }}
+{% endfor %}</pre>
+  {% endif %}
+  <details class="tty-details">
+    <summary>Raw JSON</summary>
+    <pre>{{ run.raw|to_pretty_json }}</pre>
+  </details>
+</section>
+{% endif %}
+{% endblock %}

@@ -28,34 +28,31 @@ impl ModelArchitecture for QwenArch {
     // (the forward pass checks if the vector exists).
 
     fn attn_q_norm_key(&self, layer: usize) -> Option<String> {
-        Some(format!("{}self_attn.q_norm.weight", self.layer_prefix(layer)))
+        Some(format!(
+            "{}self_attn.q_norm.weight",
+            self.layer_prefix(layer)
+        ))
     }
 
     fn attn_k_norm_key(&self, layer: usize) -> Option<String> {
-        Some(format!("{}self_attn.k_norm.weight", self.layer_prefix(layer)))
+        Some(format!(
+            "{}self_attn.k_norm.weight",
+            self.layer_prefix(layer)
+        ))
     }
 
     // Qwen2/2.5 have attention bias on Q, K, V projections.
     // Qwen3 does not — returning keys for absent tensors is harmless.
 
     fn attn_q_bias_key(&self, layer: usize) -> Option<String> {
-        Some(format!(
-            "{}self_attn.q_proj.bias",
-            self.layer_prefix(layer)
-        ))
+        Some(format!("{}self_attn.q_proj.bias", self.layer_prefix(layer)))
     }
 
     fn attn_k_bias_key(&self, layer: usize) -> Option<String> {
-        Some(format!(
-            "{}self_attn.k_proj.bias",
-            self.layer_prefix(layer)
-        ))
+        Some(format!("{}self_attn.k_proj.bias", self.layer_prefix(layer)))
     }
 
     fn attn_v_bias_key(&self, layer: usize) -> Option<String> {
-        Some(format!(
-            "{}self_attn.v_proj.bias",
-            self.layer_prefix(layer)
-        ))
+        Some(format!("{}self_attn.v_proj.bias", self.layer_prefix(layer)))
     }
 }

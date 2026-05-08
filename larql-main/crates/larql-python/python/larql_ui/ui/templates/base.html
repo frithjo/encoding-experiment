@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en" class="terminal-workbench">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <meta name="description" content="LARQL Workbench — first-party terminal browser (larql-terminal-browser). Monospace, keyboard-first.">
+    <title>{{ title }} | LARQL Workbench</title>
+    <link rel="stylesheet" href="{{ request.url_for('static', path='app.css') }}">
+    <script defer src="{{ request.url_for('static', path='async_runs.js') }}"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+    
+    <header class="site-header">
+      <div class="task-switcher">
+        <span class="task-switcher-label">Tasks:</span>
+        {% for key, label, href in nav_items %}
+        <a href="{{ href }}" class="task-link {% if current_page == key %}active{% endif %}"{% if current_page == key %} aria-current="page"{% endif %}>{{ label }}</a>
+        {% endfor %}
+      </div>
+      <div class="keyboard-hints">
+        <span class="hint">g w/s/e/q/t/r/u</span>
+        <span class="hint">?</span>
+        <span class="hint">Esc</span>
+      </div>
+    </header>
+
+    <details class="keyboard-help" id="keyboard-help">
+      <summary>Keyboard shortcuts</summary>
+      <div class="keyboard-help-body">
+        <dl>
+          <dt><kbd>Ctrl</kbd> + <kbd>Enter</kbd></dt><dd>Submit current form</dd>
+          <dt><kbd>g</kbd> <kbd>w/s/e/q/t/r/u</kbd></dt><dd>Switch task</dd>
+          <dt><kbd>?</kbd></dt><dd>Toggle help</dd>
+          <dt><kbd>Esc</kbd></dt><dd>Cancel</dd>
+        </dl>
+      </div>
+    </details>
+
+    {% if notice %}
+    <section class="banner notice">{{ notice }}</section>
+    {% endif %}
+    {% if error %}
+    <section class="banner error">{{ error }}</section>
+    {% endif %}
+    {% if page_error %}
+    <section class="banner error">{{ page_error }}</section>
+    {% endif %}
+
+    <main class="page-shell" id="main-content" tabindex="-1">
+      {% block content %}{% endblock %}
+    </main>
+
+    <script>
+      document.addEventListener("keydown", (event) => {
+        const t = event.target;
+        const tag = t && t.tagName;
+        const inTextField =
+          t &&
+          (t.isContentEditable === true ||
+            (tag && ["INPUT", "TEXTAREA", "SELECT"].includes(tag)));
+        
+        // Ctrl+Enter to submit form (works even in text fields)
+        if (event.key === "Enter" && event.ctrlKey) {
+          const form = t && t.closest && t.closest("form");
+          if (form) {
+            event.preventDefault();
+            form.requestSubmit();
+          }
+          return;
+        }
+        
+        if (event.key === "Escape") {
+          window.__larqlNavPrefix = false;
+          const h = document.getElementById("keyboard-help");
+          if (h) h.open = false;
+          return;
+        }
+        if (inTextField) return;
+        if (event.key === "?") {
+          const h = document.getElementById("keyboard-help");
+          if (h) {
+            event.preventDefault();
+            h.open = !h.open;
+          }
+          return;
+        }
+        if (event.key === "g") {
+          window.__larqlNavPrefix = true;
+          setTimeout(() => { window.__larqlNavPrefix = false; }, 700);
+          return;
+        }
+        if (!window.__larqlNavPrefix) return;
+        const routes = { w: "/workspace", s: "/studio", e: "/explorer", q: "/lql", t: "/trace", r: "/recipes", u: "/runs" };
+        const route = routes[event.key];
+        if (route) {
+          event.preventDefault();
+          window.__larqlNavPrefix = false;
+          window.location.href = route;
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -27,10 +27,11 @@ sha2 = "0.10"
 
 # System
 libc = "0.2"
+dirs = "5.0"
 
 # HuggingFace Hub integration (optional - knowledge format is HF-agnostic)
 [features]
-default = []
+default = ["huggingface"]
 metal = ["larql-compute/metal"]
 huggingface = ["larql-core/huggingface"]
 
@@ -44,3 +45,9 @@ harness = false
 [[bench]]
 name = "vindex_scaling"
 harness = false
+
+[package.metadata.product]
+zone = "core"
+role = "vindex-storage-query-and-patch-lifecycle"
+release_impact = "high"
+stability_target = "stable"

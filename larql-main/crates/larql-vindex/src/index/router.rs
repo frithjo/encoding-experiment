@@ -8,8 +8,8 @@
 
 use std::path::Path;
 
-use ndarray::{Array1, Array2};
 use larql_core::mmap::Mmap;
+use ndarray::{Array1, Array2};
 
 /// MoE router weights for all layers.
 pub struct RouterIndex {
@@ -39,7 +39,9 @@ impl RouterIndex {
     /// Returns None if router_weights.bin doesn't exist (dense model).
     pub fn load(dir: &Path, config: &crate::config::VindexConfig) -> Option<Self> {
         let path = dir.join("router_weights.bin");
-        if !path.exists() { return None; }
+        if !path.exists() {
+            return None;
+        }
 
         let moe_config = config.model_config.as_ref()?.moe.as_ref()?;
         let num_experts = moe_config.num_experts;
@@ -60,7 +62,9 @@ impl RouterIndex {
 
         for layer in 0..num_layers {
             let base = layer * per_layer;
-            if base + per_layer > floats.len() { break; }
+            if base + per_layer > floats.len() {
+                break;
+            }
 
             let w_data = &floats[base..base + weight_size];
             let w = Array2::from_shape_vec((num_experts, hidden_size), w_data.to_vec()).ok()?;
@@ -71,16 +75,24 @@ impl RouterIndex {
             biases.push(b);
         }
 
-        Some(RouterIndex { weights, biases, num_experts, top_k })
+        Some(RouterIndex {
+            weights,
+            biases,
+            num_experts,
+            top_k,
+        })
     }
 
     /// Route an entity embedding through the router at a specific layer.
     pub fn route(&self, layer: usize, embedding: &Array1<f32>) -> Option<RouteResult> {
-        if layer >= self.weights.len() { return None; }
+        if layer >= self.weights.len() {
+            return None;
+        }
 
         let hidden = embedding.len();
         let x = embedding.view().into_shape_with_order((1, hidden)).unwrap();
-        let cpu = larql_compute::CpuBackend;
+        let cpu = larql_compute::cpu_backend();
+        #[allow(unused_imports)]
         use larql_compute::ComputeBackend;
         let proj = cpu.matmul(x, self.weights[layer].view()); // [1, num_classes]
         let scores_1d = ndarray::Array1::from_vec(proj.into_raw_vec_and_offset().0);
@@ -100,7 +112,11 @@ impl RouterIndex {
         let sum: f32 = exp_scores.iter().sum();
         let probs: Vec<f32> = exp_scores.iter().map(|e| e / sum).collect();
 
-        Some(RouteResult { experts, probs, scores })
+        Some(RouteResult {
+            experts,
+            probs,
+            scores,
+        })
     }
 
     /// Route an entity across all layers and find the most common experts.
@@ -110,7 +126,8 @@ impl RouterIndex {
         layer_range: std::ops::RangeInclusive<usize>,
     ) -> Vec<(usize, usize, f32)> {
         // Count how often each expert is selected across layers, with avg probability
-        let mut expert_counts: std::collections::HashMap<usize, (usize, f32)> = std::collections::HashMap::new();
+        let mut expert_counts: std::collections::HashMap<usize, (usize, f32)> =
+            std::collections::HashMap::new();
 
         for layer in layer_range {
             if let Some(result) = self.route(layer, embedding) {

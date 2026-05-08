@@ -3,8 +3,8 @@ use std::time::Instant;
 
 use clap::Args;
 use larql_inference::{
-    trace_forward, CachedFfn, ClusteredFfn, ClusteredGateIndex, EntityRoutedFfn, GateIndex,
-    InferenceModel, SparseFfn, WeightFfn, FfnBackend,
+    trace_forward, CachedFfn, ClusteredFfn, ClusteredGateIndex, EntityRoutedFfn, FfnBackend,
+    GateIndex, InferenceModel, SparseFfn, WeightFfn,
 };
 
 #[derive(Args)]
@@ -22,7 +22,11 @@ pub struct FfnBenchArgs {
     layer: usize,
 
     /// Comma-separated K values to test.
-    #[arg(short = 'k', long, default_value = "64,128,256,512,1024,2048,4096,8192,10240")]
+    #[arg(
+        short = 'k',
+        long,
+        default_value = "64,128,256,512,1024,2048,4096,8192,10240"
+    )]
     top_k_values: String,
 
     /// Number of iterations per K value.
@@ -58,7 +62,11 @@ pub fn run(args: FfnBenchArgs) -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("Loading gate index: {}", path.display());
         let start = Instant::now();
         let gi = GateIndex::load(path, 10)?;
-        eprintln!("  {} layers ({:.1}s)", gi.num_layers(), start.elapsed().as_secs_f64());
+        eprintln!(
+            "  {} layers ({:.1}s)",
+            gi.num_layers(),
+            start.elapsed().as_secs_f64()
+        );
         Some(gi)
     } else {
         None
@@ -125,7 +133,10 @@ pub fn run(args: FfnBenchArgs) -> Result<(), Box<dyn std::error::Error>> {
     let cached_us = start.elapsed().as_micros() as f64 / args.iterations as f64;
     println!(
         "{:>12} {:>8.0}us {:>9.1}x {:>8}",
-        "cached", cached_us, dense_us / cached_us, "lookup"
+        "cached",
+        cached_us,
+        dense_us / cached_us,
+        "lookup"
     );
 
     // Sparse at each K
@@ -142,7 +153,9 @@ pub fn run(args: FfnBenchArgs) -> Result<(), Box<dyn std::error::Error>> {
 
         println!(
             "{:>12} {:>8.0}us {:>9.2}x {:>7.1}%",
-            format!("sparse:{k}"), sparse_us, dense_us / sparse_us,
+            format!("sparse:{k}"),
+            sparse_us,
+            dense_us / sparse_us,
             k as f64 / intermediate as f64 * 100.0,
         );
     }
@@ -163,36 +176,47 @@ pub fn run(args: FfnBenchArgs) -> Result<(), Box<dyn std::error::Error>> {
 
             println!(
                 "{:>12} {:>8.0}us {:>9.2}x {:>7.1}%",
-                format!("entity:{k}"), entity_us, dense_us / entity_us,
+                format!("entity:{k}"),
+                entity_us,
+                dense_us / entity_us,
                 k as f64 / intermediate as f64 * 100.0,
             );
         }
     }
 
     // Clustered hierarchical index
-    let top_c_values: Vec<usize> = args.top_c_values.split(',')
-        .map(|s| s.trim().parse().unwrap()).collect();
+    let top_c_values: Vec<usize> = args
+        .top_c_values
+        .split(',')
+        .map(|s| s.trim().parse().unwrap())
+        .collect();
 
-    eprintln!("\nBuilding clustered index: {} clusters, {} iters...",
-        args.clusters, 10);
-    let cluster_start = Instant::now();
-    let cluster_index = ClusteredGateIndex::build(
-        weights, &[layer], args.clusters, 1, 10,
-        |idx, total| { eprint!("\r  K-means layer {}/{}...", idx + 1, total); },
+    eprintln!(
+        "\nBuilding clustered index: {} clusters, {} iters...",
+        args.clusters, 10
     );
-    eprintln!("\r  Built in {:.1}s, avg cluster size: {:.0}",
-        cluster_start.elapsed().as_secs_f64(), cluster_index.avg_cluster_size());
+    let cluster_start = Instant::now();
+    let cluster_index =
+        ClusteredGateIndex::build(weights, &[layer], args.clusters, 1, 10, |idx, total| {
+            eprint!("\r  K-means layer {}/{}...", idx + 1, total);
+        });
+    eprintln!(
+        "\r  Built in {:.1}s, avg cluster size: {:.0}",
+        cluster_start.elapsed().as_secs_f64(),
+        cluster_index.avg_cluster_size()
+    );
 
     println!("{}", "-".repeat(46));
     for &tc in &top_c_values {
         // Rebuild with this top_c (cheap — just changes the probe count)
-        let mut ci = ClusteredGateIndex::build(
-            weights, &[layer], args.clusters, tc, 10,
-            |_, _| {},
-        );
+        let mut ci = ClusteredGateIndex::build(weights, &[layer], args.clusters, tc, 10, |_, _| {});
         ci.top_c = tc;
 
-        let clustered_ffn = ClusteredFfn { weights, cluster_index: &ci, top_k: 10240 };
+        let clustered_ffn = ClusteredFfn {
+            weights,
+            cluster_index: &ci,
+            top_k: 10240,
+        };
         let _ = clustered_ffn.forward(layer, &x);
 
         let start = Instant::now();
@@ -206,7 +230,10 @@ pub fn run(args: FfnBenchArgs) -> Result<(), Box<dyn std::error::Error>> {
 
         println!(
             "{:>12} {:>8.0}us {:>9.2}x {:>5} feats",
-            format!("clust:c{tc}"), clust_us, dense_us / clust_us, sample_feats,
+            format!("clust:c{tc}"),
+            clust_us,
+            dense_us / clust_us,
+            sample_feats,
         );
     }
 

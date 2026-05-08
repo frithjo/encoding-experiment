@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>LARQL Factoid Board</title>
+    <link data-trunk rel="rust" data-target-name="larql_leptos" />
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        :root {
+            --surface: #041b21;
+            --surface-alt: #072730;
+            --panel: #06232b;
+            --panel-hi: #0c3a34;
+            --ink: #edf7f1;
+            --muted: #a3b9b8;
+            --green: #84e274;
+            --green-soft: #103f30;
+            --gold: #e2b74b;
+            --rust: #e75542;
+            --blue: #60b7d1;
+            --line: #1f4d56;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--surface);
+            color: var(--ink);
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .factboard-root {
+            display: grid;
+            gap: 18px;
+        }
+
+        .factboard-header {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            padding: 16px;
+        }
+
+        .factboard-header p {
+            margin-top: 8px;
+            color: var(--muted);
+        }
+        
+        h1 {
+            margin-bottom: 10px;
+            color: var(--green);
+        }
+        
+        h2 {
+            margin: 0 0 8px 0;
+            color: var(--gold);
+        }
+
+        h3 {
+            color: var(--blue);
+            margin: 0 0 8px 0;
+        }
+
+        h4 {
+            color: var(--ink);
+            margin: 0;
+        }
+
+        button,
+        .brand-button {
+            margin-top: 10px;
+            padding: 8px 14px;
+            background: var(--green-soft);
+            color: var(--green);
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        button:hover,
+        .brand-button:hover {
+            border-color: var(--green);
+        }
+
+        .location-grid {
+            display: grid;
+            gap: 14px;
+        }
+
+        .location-card {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            padding: 12px;
+        }
+
+        .feature-block {
+            background: var(--surface-alt);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 8px;
+        }
+
+        .factoid-card {
+            background: rgba(4, 27, 33, 0.8);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 8px;
+        }
+
+        .factoid-summary {
+            margin: 6px 0 8px 0;
+            color: var(--muted);
+        }
+
+        .rust-paths,
+        .symbols {
+            margin: 6px 0;
+            padding-left: 16px;
+            color: var(--muted);
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="module">
+        import init from "/pkg/larql_leptos.js";
+        init().then(() => {
+            console.log("LARQL Leptos initialized");
+        });
+    </script>
+</body>
+</html>

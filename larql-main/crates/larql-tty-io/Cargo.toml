@@ -1,0 +1,23 @@
+[package]
+name = "larql-tty-io"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "TTY input decoding and terminal mode management for terminal-embedded UIs"
+repository.workspace = true
+
+[dependencies]
+libc = "0.2"
+
+[features]
+default = ["kitty"]
+kitty = []
+
+[dev-dependencies]
+portable-pty = "0.8"
+
+[package.metadata.product]
+zone = "interface"
+role = "tty-input-and-mode"
+release_impact = "medium"
+stability_target = "iterative"

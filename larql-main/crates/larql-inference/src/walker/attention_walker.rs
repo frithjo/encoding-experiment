@@ -61,10 +61,7 @@ impl AttentionWalker {
         let tokenizer = larql_tokenizer::load_tokenizer(&tokenizer_path)
             .map_err(|e| InferenceError::Parse(e.to_string()))?;
 
-        Ok(Self {
-            weights,
-            tokenizer,
-        })
+        Ok(Self { weights, tokenizer })
     }
 
     pub fn num_layers(&self) -> usize {

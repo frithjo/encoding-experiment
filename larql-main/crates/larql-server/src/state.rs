@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use larql_models::ModelWeights;
-use larql_vindex::{PatchedVindex, TokenizerArc, VindexConfig, ndarray::Array2};
+use larql_vindex::{ndarray::Array2, PatchedVindex, TokenizerArc, VindexConfig};
 use tokio::sync::RwLock;
 
 use crate::cache::DescribeCache;
@@ -109,8 +109,12 @@ pub fn load_probe_labels(vindex_path: &std::path::Path) -> HashMap<(usize, usize
             let parts: Vec<&str> = key.split('_').collect();
             if parts.len() == 2 {
                 if let (Some(layer), Some(feat)) = (
-                    parts[0].strip_prefix('L').and_then(|s| s.parse::<usize>().ok()),
-                    parts[1].strip_prefix('F').and_then(|s| s.parse::<usize>().ok()),
+                    parts[0]
+                        .strip_prefix('L')
+                        .and_then(|s| s.parse::<usize>().ok()),
+                    parts[1]
+                        .strip_prefix('F')
+                        .and_then(|s| s.parse::<usize>().ok()),
                 ) {
                     labels.insert((layer, feat), rel.to_string());
                 }

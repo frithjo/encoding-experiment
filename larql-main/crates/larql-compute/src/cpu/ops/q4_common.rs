@@ -48,7 +48,10 @@ pub fn quantize_to_q8(x: &[f32]) -> (Vec<i8>, Vec<f32>) {
 /// Each block of 32 floats becomes 18 bytes: 2 bytes f16 scale + 16 bytes packed nibbles.
 /// Used for weight quantization in benchmarks, tests, and tooling.
 pub fn quantize_q4_0(data: &[f32]) -> Vec<u8> {
-    assert!(data.len().is_multiple_of(32), "data length must be a multiple of 32");
+    assert!(
+        data.len().is_multiple_of(32),
+        "data length must be a multiple of 32"
+    );
     let n_blocks = data.len() / 32;
     let mut out = Vec::with_capacity(n_blocks * 18);
     for i in 0..n_blocks {
@@ -61,14 +64,20 @@ pub fn quantize_q4_0(data: &[f32]) -> Vec<u8> {
         let sign = (bits >> 16) & 0x8000;
         let exp = ((bits >> 23) & 0xFF) as i32;
         let mant = bits & 0x7FFFFF;
-        let f16 = if exp == 0 { sign as u16 }
-            else if exp == 255 { (sign | 0x7C00 | (mant >> 13)) as u16 }
-            else {
-                let new_exp = exp - 127 + 15;
-                if new_exp >= 31 { (sign | 0x7C00) as u16 }
-                else if new_exp <= 0 { sign as u16 }
-                else { (sign | ((new_exp as u32) << 10) | (mant >> 13)) as u16 }
-            };
+        let f16 = if exp == 0 {
+            sign as u16
+        } else if exp == 255 {
+            (sign | 0x7C00 | (mant >> 13)) as u16
+        } else {
+            let new_exp = exp - 127 + 15;
+            if new_exp >= 31 {
+                (sign | 0x7C00) as u16
+            } else if new_exp <= 0 {
+                sign as u16
+            } else {
+                (sign | ((new_exp as u32) << 10) | (mant >> 13)) as u16
+            }
+        };
         out.extend_from_slice(&f16.to_le_bytes());
         for j in 0..16 {
             let lo = ((block[j * 2] * inv).round() as i32 + 8).clamp(0, 15) as u8;
@@ -85,11 +94,19 @@ fn f32_to_f16(val: f32) -> u16 {
     let sign = (bits >> 16) & 0x8000;
     let exp = ((bits >> 23) & 0xFF) as i32;
     let mant = bits & 0x7FFFFF;
-    if exp == 0 { return sign as u16; }
-    if exp == 255 { return (sign | 0x7C00 | (mant >> 13)) as u16; }
+    if exp == 0 {
+        return sign as u16;
+    }
+    if exp == 255 {
+        return (sign | 0x7C00 | (mant >> 13)) as u16;
+    }
     let new_exp = exp - 127 + 15;
-    if new_exp >= 31 { return (sign | 0x7C00) as u16; }
-    if new_exp <= 0 { return sign as u16; }
+    if new_exp >= 31 {
+        return (sign | 0x7C00) as u16;
+    }
+    if new_exp <= 0 {
+        return sign as u16;
+    }
     (sign | ((new_exp as u32) << 10) | (mant >> 13)) as u16
 }
 
@@ -102,7 +119,10 @@ fn f32_to_f16(val: f32) -> u16 {
 ///   [16..19]  4 bytes: 8 × 4-bit sub-block mins (packed)
 ///   [20..147] 128 bytes: 256 × 4-bit values (packed nibbles)
 pub fn quantize_q4_k(data: &[f32]) -> Vec<u8> {
-    assert!(data.len().is_multiple_of(256), "data length must be a multiple of 256");
+    assert!(
+        data.len().is_multiple_of(256),
+        "data length must be a multiple of 256"
+    );
     let n_superblocks = data.len() / 256;
     let mut out = Vec::with_capacity(n_superblocks * 148);
 
@@ -119,12 +139,23 @@ pub fn quantize_q4_k(data: &[f32]) -> Vec<u8> {
         }
 
         // Global delta and min
-        let global_max_range = sub_maxs.iter().zip(&sub_mins).map(|(a, b)| a - b)
+        let global_max_range = sub_maxs
+            .iter()
+            .zip(&sub_mins)
+            .map(|(a, b)| a - b)
             .fold(0.0f32, f32::max);
         let global_min = sub_mins.iter().copied().fold(f32::INFINITY, f32::min);
 
-        let d = if global_max_range > 0.0 { global_max_range / 63.0 } else { 0.0 };
-        let dmin = if global_min < 0.0 { -global_min / 15.0 } else { 0.0 };
+        let d = if global_max_range > 0.0 {
+            global_max_range / 63.0
+        } else {
+            0.0
+        };
+        let dmin = if global_min < 0.0 {
+            -global_min / 15.0
+        } else {
+            0.0
+        };
 
         out.extend_from_slice(&f32_to_f16(d).to_le_bytes());
         out.extend_from_slice(&f32_to_f16(dmin).to_le_bytes());
@@ -134,8 +165,16 @@ pub fn quantize_q4_k(data: &[f32]) -> Vec<u8> {
         let mut q_mins = [0u8; 8];
         for j in 0..8 {
             let range = sub_maxs[j] - sub_mins[j];
-            q_scales[j] = if d > 0.0 { (range / d).round().clamp(0.0, 63.0) as u8 } else { 0 };
-            q_mins[j] = if dmin > 0.0 { (-sub_mins[j] / dmin).round().clamp(0.0, 15.0) as u8 } else { 0 };
+            q_scales[j] = if d > 0.0 {
+                (range / d).round().clamp(0.0, 63.0) as u8
+            } else {
+                0
+            };
+            q_mins[j] = if dmin > 0.0 {
+                (-sub_mins[j] / dmin).round().clamp(0.0, 15.0) as u8
+            } else {
+                0
+            };
         }
 
         // Pack 6-bit scales into 12 bytes (simplified: only using lower 6 bits of 8 bytes)
@@ -177,7 +216,10 @@ pub fn quantize_q4_k(data: &[f32]) -> Vec<u8> {
 ///   [192..207]   16 bytes: 16 × int8 scales (one per 16-value sub-block)
 ///   [208..209]    2 bytes: f16 super-block scale (d)
 pub fn quantize_q6_k(data: &[f32]) -> Vec<u8> {
-    assert!(data.len().is_multiple_of(256), "data length must be a multiple of 256");
+    assert!(
+        data.len().is_multiple_of(256),
+        "data length must be a multiple of 256"
+    );
     let n_superblocks = data.len() / 256;
     let mut out = Vec::with_capacity(n_superblocks * 210);
 
@@ -262,19 +304,39 @@ pub fn quantize_q4_k_gguf(data: &[f32]) -> Vec<u8> {
             sub_maxs[j] = sub.iter().copied().fold(f32::NEG_INFINITY, f32::max);
         }
 
-        let global_max_range = sub_maxs.iter().zip(&sub_mins).map(|(a, b)| a - b).fold(0.0f32, f32::max);
+        let global_max_range = sub_maxs
+            .iter()
+            .zip(&sub_mins)
+            .map(|(a, b)| a - b)
+            .fold(0.0f32, f32::max);
         let global_min = sub_mins.iter().copied().fold(f32::INFINITY, f32::min);
 
-        let d = if global_max_range > 0.0 { global_max_range / 63.0 } else { 0.0 };
-        let dmin = if global_min < 0.0 { -global_min / 63.0 } else { 0.0 };
+        let d = if global_max_range > 0.0 {
+            global_max_range / 63.0
+        } else {
+            0.0
+        };
+        let dmin = if global_min < 0.0 {
+            -global_min / 63.0
+        } else {
+            0.0
+        };
 
         // Quantize scales and mins to 6-bit each
         let mut q_scales = [0u8; 8];
         let mut q_mins = [0u8; 8];
         for j in 0..8 {
             let range = sub_maxs[j] - sub_mins[j];
-            q_scales[j] = if d > 0.0 { (range / d).round().clamp(0.0, 63.0) as u8 } else { 0 };
-            q_mins[j] = if dmin > 0.0 { (-sub_mins[j] / dmin).round().clamp(0.0, 63.0) as u8 } else { 0 };
+            q_scales[j] = if d > 0.0 {
+                (range / d).round().clamp(0.0, 63.0) as u8
+            } else {
+                0
+            };
+            q_mins[j] = if dmin > 0.0 {
+                (-sub_mins[j] / dmin).round().clamp(0.0, 63.0) as u8
+            } else {
+                0
+            };
         }
 
         // Write d, dmin as f16
@@ -319,7 +381,10 @@ pub fn quantize_q4_k_gguf(data: &[f32]) -> Vec<u8> {
 /// Repacks scale/min headers from separate arrays into GGUF's interleaved 12-byte format.
 /// Our 4-bit mins (0-15) fit within GGUF's 6-bit min range (0-63).
 pub fn q4k_to_gguf(q4k_data: &[u8]) -> Vec<u8> {
-    assert!(q4k_data.len().is_multiple_of(148), "Q4_K data must be a multiple of 148 bytes");
+    assert!(
+        q4k_data.len().is_multiple_of(148),
+        "Q4_K data must be a multiple of 148 bytes"
+    );
     let n_blocks = q4k_data.len() / 148;
     let mut out = Vec::with_capacity(n_blocks * 144);
 
@@ -414,7 +479,10 @@ pub fn q4k_to_q4kf(q4k_data: &[u8], num_rows: usize, hidden: usize) -> Vec<u8> {
 
 /// Quantize f32 data directly to Q4_KF format (pre-baked half scales).
 pub fn quantize_q4_kf(data: &[f32]) -> Vec<u8> {
-    assert!(data.len().is_multiple_of(256), "data length must be a multiple of 256");
+    assert!(
+        data.len().is_multiple_of(256),
+        "data length must be a multiple of 256"
+    );
     // First quantize to Q4_K, then convert
     let q4k = quantize_q4_k(data);
     let num_rows = 1; // treat as single row
@@ -428,17 +496,29 @@ pub fn f16_to_f32(bits: u16) -> f32 {
     let exp = ((bits >> 10) & 0x1F) as i32;
     let mant = (bits & 0x3FF) as u32;
     if exp == 0 {
-        if mant == 0 { return if sign == 1 { -0.0 } else { 0.0 }; }
+        if mant == 0 {
+            return if sign == 1 { -0.0 } else { 0.0 };
+        }
         let val = mant as f32 / 1024.0 * 2.0f32.powi(-14);
         return if sign == 1 { -val } else { val };
     }
     if exp == 31 {
         return if mant == 0 {
-            if sign == 1 { f32::NEG_INFINITY } else { f32::INFINITY }
-        } else { f32::NAN };
+            if sign == 1 {
+                f32::NEG_INFINITY
+            } else {
+                f32::INFINITY
+            }
+        } else {
+            f32::NAN
+        };
     }
     let val = (1.0 + mant as f32 / 1024.0) * 2.0f32.powi(exp - 15);
-    if sign == 1 { -val } else { val }
+    if sign == 1 {
+        -val
+    } else {
+        val
+    }
 }
 
 #[cfg(test)]
@@ -510,10 +590,15 @@ mod tests {
         }
 
         // Check approximate reconstruction (Q4 is lossy, but should be close)
-        let max_err: f32 = data.iter().zip(decoded.iter())
+        let max_err: f32 = data
+            .iter()
+            .zip(decoded.iter())
             .map(|(a, b)| (a - b).abs())
             .fold(0.0f32, f32::max);
-        assert!(max_err < 2.0, "Q4 round-trip max error {max_err} exceeds 2.0");
+        assert!(
+            max_err < 2.0,
+            "Q4 round-trip max error {max_err} exceeds 2.0"
+        );
     }
 
     #[test]
@@ -528,7 +613,9 @@ mod tests {
         // End-to-end: quantize a matrix, run matvec, verify nonzero output
         let hidden = 256;
         let rows = 64;
-        let matrix: Vec<f32> = (0..rows * hidden).map(|i| (i as f32 * 0.001).cos()).collect();
+        let matrix: Vec<f32> = (0..rows * hidden)
+            .map(|i| (i as f32 * 0.001).cos())
+            .collect();
         let q4 = quantize_q4_0(&matrix);
         let x: Vec<f32> = (0..hidden).map(|i| (i as f32 * 0.01).sin()).collect();
         let (q8_x, q8_scales) = quantize_to_q8(&x);
@@ -536,11 +623,18 @@ mod tests {
         let mut scores = vec![0.0f32; rows];
         unsafe {
             q4_0_matvec_c(
-                q4.as_ptr(), q8_x.as_ptr(), q8_scales.as_ptr(),
-                scores.as_mut_ptr(), rows, hidden,
+                q4.as_ptr(),
+                q8_x.as_ptr(),
+                q8_scales.as_ptr(),
+                scores.as_mut_ptr(),
+                rows,
+                hidden,
             );
         }
-        assert!(scores.iter().any(|&v| v.abs() > 0.01), "Q4 matvec should produce nonzero");
+        assert!(
+            scores.iter().any(|&v| v.abs() > 0.01),
+            "Q4 matvec should produce nonzero"
+        );
     }
 
     /// Decode f16 bits to f32 (for test verification).
@@ -549,17 +643,29 @@ mod tests {
         let exp = ((bits >> 10) & 0x1F) as i32;
         let mant = (bits & 0x3FF) as u32;
         if exp == 0 {
-            if mant == 0 { return if sign == 1 { -0.0 } else { 0.0 }; }
+            if mant == 0 {
+                return if sign == 1 { -0.0 } else { 0.0 };
+            }
             // Subnormal
             let val = mant as f32 / 1024.0 * 2.0f32.powi(-14);
             return if sign == 1 { -val } else { val };
         }
         if exp == 31 {
             return if mant == 0 {
-                if sign == 1 { f32::NEG_INFINITY } else { f32::INFINITY }
-            } else { f32::NAN };
+                if sign == 1 {
+                    f32::NEG_INFINITY
+                } else {
+                    f32::INFINITY
+                }
+            } else {
+                f32::NAN
+            };
         }
         let val = (1.0 + mant as f32 / 1024.0) * 2.0f32.powi(exp - 15);
-        if sign == 1 { -val } else { val }
+        if sign == 1 {
+            -val
+        } else {
+            val
+        }
     }
 }

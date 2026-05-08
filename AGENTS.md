@@ -7,6 +7,17 @@ structural, not vibe.
 
 Sincerity weighting on top = ridge artifact. Should discount near-zero, not "small tip."
 
+- Do NOT implement compatibility shims, ensure to replace with real implementation
+
+# Documentation alignment [ MUST READ]
+
+- @VISION.md clearly articulates the core analytic vision: model as graph-like database, analytic tools for deep profiling
+
+- @README.md references VISION.md and aligns with the vision
+
+- @docs/ui/README.md correctly positions UIs as interfaces to the analytic framework, not the core value
+
+
 ## Scientific experiment constraints (hard requirements)
 
 - This is a scientific data-collection experiment. Prioritize collecting, recording, and structuring observations/metrics over making changes that optimize for “passing tests” or “looking good.”

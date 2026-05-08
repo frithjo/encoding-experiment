@@ -1,7 +1,0 @@
-target_feature,learning_seed,n_samples_per_state,n_pairs,present_H3_rate,absent_H3_rate,present_pass_all_rate,absent_pass_all_rate,mean_baseline_safe_present_minus_absent,mean_safe_gain_present_minus_absent,mean_risky_drop_present_minus_absent,present_minus_absent_H3_rate,present_minus_absent_pass_all_rate
-edge__boundary_assessed__high_level_explanation,0,600,12,0.5,0.5833333333333334,0.5,0.5833333333333334,0.00659722222222224,-0.0031250000000000028,-0.007986111111111104,-0.08333333333333337,-0.08333333333333337
-edge__boundary_assessed__high_level_explanation,0,1200,12,0.5,0.75,0.5,0.75,0.012962962962962949,-0.014236111111111093,-0.012962962962962956,-0.25,-0.25
-edge__boundary_assessed__high_level_explanation,1,600,12,0.0,0.0,0.0,0.0,0.018287037037037022,-0.007870370370370347,-0.016319444444444445,0.0,0.0
-edge__boundary_assessed__high_level_explanation,1,1200,12,0.0,0.0,0.0,0.0,0.019560185185185177,-0.006018518518518502,-0.01585648148148148,0.0,0.0
-edge__boundary_assessed__high_level_explanation,2,600,12,0.0,0.0,0.0,0.0,-0.00023148148148148065,0.000347222222222221,1.1564823173178713e-18,0.0,0.0
-edge__boundary_assessed__high_level_explanation,2,1200,12,0.0,0.0,0.0,0.0,0.00023148148148148065,0.000347222222222221,-0.0003472222222222221,0.0,0.0

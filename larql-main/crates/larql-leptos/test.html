@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Test Page</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+            background: #1a1a2e;
+            color: #eee;
+        }
+        button {
+            padding: 10px 20px;
+            background: #4ade80;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px;
+        }
+        input {
+            padding: 10px;
+            margin: 10px;
+            border: 1px solid #333;
+            background: #16213e;
+            color: #eee;
+        }
+    </style>
+</head>
+<body>
+    <h1>Test Page for Carbonyl</h1>
+    <p>This is a test to verify carbonyl can render HTML with interactive elements.</p>
+    
+    <input type="text" placeholder="Enter text here" id="testInput"/>
+    <button onclick="alert('Button clicked!')">Click Me</button>
+    <button onclick="document.getElementById('output').textContent = document.getElementById('testInput').value">Show Input</button>
+    
+    <p id="output">Output will appear here</p>
+    
+    <script>
+        console.log("JavaScript loaded successfully");
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log("DOM loaded");
+        });
+    </script>
+</body>
+</html>

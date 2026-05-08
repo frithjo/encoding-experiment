@@ -1,0 +1,1018 @@
+242 -                        .iter()
+     243 -                        .map(|head| head.get(token_idx).copied().u
+          nwrap_or(0.0))
+     244 -                        .sum();
+     245 -                    sum / target_prev.len() as f32
+     246 -                })
+     247 -                .collect();
+     248 -
+     249 -            for i in 0..seq_len {
+     250 -                averaged_attention[i] = averaged_attention[i] - pr
+          ev_avg[i];
+     251 -            }
+     252 -        }
+     253 -    }
+     254 -
+     255 -    for (c, val) in averaged_attention.into_iter().enumerate() {
+     256 -        let intensity = (val.abs() * 255.0 * 5.0).min(255.0) as u8
+          ;
+     257 -        let color = if val < 0.0 {
+     258 -            Rgb::new(0, (intensity as f32 * 0.5) as u8, intensity)
+     259 -        } else {
+     260 -            Rgb::new(intensity, (intensity as f32 * 0.5) as u8, 25
+          5 - intensity)
+     261 -        };
+     262 -        img.set(c, 0, color);
+     263 -    }
+     264 -
+     265 -    #[cfg(feature = "circuit-detect")]
+     266 -    if let Some(highlights) = circuits {
+     267 -        for h in highlights {
+     268 -            if h.layer == current_layer {
+     269 -                #[cfg(feature = "head-isolation")]
+     270 -                if let Some(selected) = selected_head {
+     271 -                    if h.head != selected {
+     272 -                        continue;
+     273 -                    }
+     274 -                }
+     275 -
+     276 -                let color = Rgb::new(h.color_rgb.0, h.color_rgb.1,
+           h.color_rgb.2);
+     277 -                if h.from_token < seq_len && h.to_token == seq_len
+          .saturating_sub(1) {
+     278 -                    img.set(h.from_token, 0, color);
+     279 -                }
+     280 -            }
+     281 -        }
+     282 -    }
+     283 -
+     284 -    img
+     285 -}
+     286 -
+     287 -#[derive(PartialEq, Debug, Clone, Copy)]
+     288 -pub enum Focus {
+     289 -    Prompt,
+     290 -    Results,
+     291 -    LayerList,
+     292 -    Image,
+     293 -    RecipeList,
+     294 -}
+     295 -
+     296 -#[derive(Clone, Serialize, Deserialize)]
+     297 -pub struct RecipeUiDefaults {
+     298 -    pub layer: Option<usize>,
+     299 -    pub head: Option<usize>,
+     300 -}
+     301 -
+     302 -#[derive(Clone, Serialize, Deserialize)]
+     303 -pub struct RecipeAnalysis {
+     304 -    pub mode: String,
+     305 -    pub truth_span: Option<String>,
+     306 -    pub materially_false_spans: Vec<String>,
+     307 -    pub coherence_markers: Vec<String>,
+     308 -    pub max_generated_tokens: Option<usize>,
+     309 -    pub ridge_dead_zone: Option<f32>,
+     310 -}
+     311 -
+     312 -#[derive(Clone, Serialize, Deserialize)]
+     313 -pub struct Recipe {
+     314 -    pub name: String,
+     315 -    pub prompt: String,
+     316 -    pub description: Option<String>,
+     317 -    pub ui_defaults: RecipeUiDefaults,
+     318 -    pub analysis: RecipeAnalysis,
+     319 -}
+     320 -
+     321 -pub struct RecipeStore {
+     322 -    pub recipes: Vec<Recipe>,
+     323 -    pub base_path: std::path::PathBuf,
+     324 -}
+     325 -
+     326 -impl RecipeStore {
+     327 -    pub fn new(base_path: std::path::PathBuf) -> Self {
+     328 -        if !base_path.exists() {
+     329 -            let _ = std::fs::create_dir_all(&base_path);
+     330 -        }
+     331 -        let mut store = Self {
+     332 -            recipes: Vec::new(),
+     333 -            base_path,
+     334 -        };
+     335 -        let _ = store.load();
+     336 -        store
+     337 -    }
+     338 -
+     339 -    pub fn load(&mut self) -> io::Result<()> {
+     340 -        let path = self.base_path.join("recipes.json");
+     341 -        if path.exists() {
+     342 -            let content = std::fs::read_to_string(path)?;
+     343 -            self.recipes = serde_json::from_str(&content).unwrap_o
+          r_default();
+     344 -        }
+     345 -        Ok(())
+     346 -    }
+     347 -
+     348 -    pub fn save(&self) -> io::Result<()> {
+     349 -        let path = self.base_path.join("recipes.json");
+     350 -        let content = serde_json::to_string_pretty(&self.recipes).
+          unwrap();
+     351 -        std::fs::write(path, content)
+     352 -    }
+     353 -}
+     354 -
+     355 -pub struct App {
+     356 -    pub prompt: String,
+     357 -    pub result: Option<BatchDlaResult>,
+     358 -    pub error: Option<String>,
+     359 -    pub last_export: Option<String>,
+     360 -    pub renderer: Renderer,
+     361 -    pub heatmaps: Vec<Image>,
+     362 -    pub focus: Focus,
+     363 -    pub list_state: ListState,
+     364 -    pub recipe_list_state: ListState,
+     365 -    pub recipe_store: RecipeStore,
+     366 -    pub active_analysis: Option<RecipeAnalysis>,
+     367 -    pub zoom: f32,
+     368 -    pub offset_x: f32,
+     369 -    pub offset_y: f32,
+     370 -    pub cursor_x: usize,
+     371 -    pub cursor_y: usize,
+     372 -    pub z_index: i32,
+     373 -    pub is_scanning: bool,
+     374 -    #[cfg(feature = "head-isolation")]
+     375 -    pub selected_head: Option<usize>,
+     376 -    #[cfg(feature = "layer-diff")]
+     377 -    pub diff_mode: bool,
+     378 -}
+     379 -
+     380 -impl App {
+     381 -    pub fn new() -> Self {
+     382 -        let mut list_state = ListState::default();
+     383 -        list_state.select(Some(0));
+     384 -        let mut recipe_list_state = ListState::default();
+     385 -        recipe_list_state.select(Some(0));
+     386 -
+     387 -        Self {
+     388 -            prompt: String::new(),
+     389 -            result: None,
+     390 -            error: None,
+     391 -            last_export: None,
+     392 -            renderer: Renderer::new_auto(),
+     393 -            heatmaps: Vec::new(),
+     394 -            focus: Focus::Prompt,
+     395 -            list_state,
+     396 -            recipe_list_state,
+     397 -            recipe_store: RecipeStore::new(std::path::PathBuf::fro
+          m("recipes")),
+     398 -            active_analysis: None,
+     399 -            zoom: 1.0,
+     400 -            offset_x: 0.5,
+     401 -            offset_y: 0.5,
+     402 -            cursor_x: 0,
+     403 -            cursor_y: 0,
+     404 -            z_index: 0,
+     405 -            is_scanning: false,
+     406 -            #[cfg(feature = "head-isolation")]
+     407 -            selected_head: None,
+     408 -            #[cfg(feature = "layer-diff")]
+     409 -            diff_mode: false,
+     410 -        }
+     411 -    }
+     412 -
+     413 -    pub fn regenerate_heatmaps(&mut self) {
+     414 -        if let Some(res) = &self.result {
+     415 -            let mut new_heatmaps = Vec::new();
+     416 -            for i in 0..res.attention.len() {
+     417 -                let prev = if i > 0 {
+     418 -                    Some(res.attention[i - 1].heads.as_slice())
+     419 -                } else {
+     420 -                    None
+     421 -                };
+     422 -
+     423 -                #[cfg(feature = "head-isolation")]
+     424 -                let head = self.selected_head;
+     425 -                #[cfg(not(feature = "head-isolation"))]
+     426 -                let head = None;
+     427 -
+     428 -                #[cfg(feature = "layer-diff")]
+     429 -                let diff = self.diff_mode;
+     430 -                #[cfg(not(feature = "layer-diff"))]
+     431 -                let diff = false;
+     432 -
+     433 -                new_heatmaps.push(attention_to_image(
+     434 -                    &res.attention[i].heads,
+     435 -                    prev,
+     436 -                    res.seq_len,
+     437 -                    head,
+     438 -                    diff,
+     439 -                    #[cfg(feature = "circuit-detect")]
+     440 -                    res.circuits.as_deref(),
+     441 -                    #[cfg(feature = "circuit-detect")]
+     442 -                    i,
+     443 -                ));
+     444 -            }
+     445 -            self.heatmaps = new_heatmaps;
+     446 -            self.clamp_layer_selection();
+     447 -        }
+     448 -    }
+     449 -
+     450 -    fn clamp_layer_selection(&mut self) {
+     451 -        let selection = match self.heatmaps.len() {
+     452 -            0 => None,
+     453 -            len => Some(
+     454 -                self.list_state
+     455 -                    .selected()
+     456 -                    .map(|selected| selected.min(len - 1))
+     457 -                    .unwrap_or(0),
+     458 -            ),
+     459 -        };
+     460 -        self.list_state.select(selection);
+     461 -    }
+     462 -
+     463 -    pub fn handle_key(&mut self, key: KeyEvent, rt: &Runtime, serv
+          er: &str) -> bool {
+     464 -        match key.code {
+     465 -            KeyCode::Tab => {
+     466 -                self.focus = match self.focus {
+     467 -                    Focus::Prompt => Focus::RecipeList,
+     468 -                    Focus::RecipeList => Focus::Results,
+     469 -                    Focus::Results => Focus::LayerList,
+     470 -                    Focus::LayerList => Focus::Image,
+     471 -                    Focus::Image => Focus::Prompt,
+     472 -                };
+     473 -            }
+     474 -            KeyCode::Char('q') | KeyCode::Esc => return true,
+     475 -            _ => match self.focus {
+     476 -                Focus::Prompt => match key.code {
+     477 -                    KeyCode::Backspace => {
+     478 -                        self.prompt.pop();
+     479 -                    }
+     480 -                    KeyCode::Char('R') => {
+     481 -                        if !self.prompt.is_empty() {
+     482 -                            let name = format!("Recipe {}", self.r
+          ecipe_store.recipes.len() + 1);
+     483 -                            let recipe = Recipe {
+     484 -                                name,
+     485 -                                prompt: self.prompt.clone(),
+     486 -                                description: None,
+     487 -                                ui_defaults: RecipeUiDefaults {
+     488 -                                    layer: None,
+     489 -                                    head: self.selected_head,
+     490 -                                },
+     491 -                                analysis: RecipeAnalysis {
+     492 -                                    mode: "fact_probe".to_string()
+          ,
+     493 -                                    truth_span: None,
+     494 -                                    materially_false_spans: Vec::n
+          ew(),
+     495 -                                    coherence_markers: Vec::new(),
+     496 -                                    max_generated_tokens: Some(1),
+     497 -                                    ridge_dead_zone: Some(0.05),
+     498 -                                },
+     499 -                            };
+     500 -                            self.recipe_store.recipes.push(recipe)
+          ;
+     501 -                            let _ = self.recipe_store.save();
+     502 -                        }
+     503 -                    }
+     504 -                    KeyCode::Char(c) => self.prompt.push(c),
+     505 -                    KeyCode::Enter => {
+     506 -                        let prompt = self.prompt.clone();
+     507 -                        let analysis = self.active_analysis.as_ref
+          ();
+     508 -                        self.error = None;
+     509 -                        self.is_scanning = true;
+     510 -                        // In real app we draw frame here, but in
+          lib we just do the logic
+     511 -                        match rt.block_on(call_batch_dla_scan(serv
+          er, &prompt, analysis)) {
+     512 -                            Ok(res) => {
+     513 -                                self.result = Some(res);
+     514 -                                self.regenerate_heatmaps();
+     515 -                                self.focus = Focus::LayerList;
+     516 -                            }
+     517 -                            Err(e) => {
+     518 -                                self.heatmaps.clear();
+     519 -                                self.result = None;
+     520 -                                if let Err(clear_err) = self.rende
+          rer.clear_all_graphics() {
+     521 -                                    self.error = Some(format!(
+     522 -                                        "{e}; additionally failed
+          to clear stale graphics: {clear_err}"
+     523 -                                    ));
+     524 -                                } else {
+     525 -                                    self.error = Some(e);
+     526 -                                }
+     527 -                            }
+     528 -                        }
+     529 -                        self.is_scanning = false;
+     530 -                    }
+     531 -                    _ => {}
+     532 -                },
+     533 -                Focus::RecipeList => match key.code {
+     534 -                    KeyCode::Char('j') | KeyCode::Down => {
+     535 -                        let i = match self.recipe_list_state.selec
+          ted() {
+     536 -                            Some(i) => {
+     537 -                                if i >= self.recipe_store.recipes.
+          len().saturating_sub(1) {
+     538 -                                    0
+     539 -                                } else {
+     540 -                                    i + 1
+     541 -                                }
+     542 -                            }
+     543 -                            None => 0,
+     544 -                        };
+     545 -                        self.recipe_list_state.select(Some(i));
+     546 -                    }
+     547 -                    KeyCode::Char('k') | KeyCode::Up => {
+     548 -                        let i = match self.recipe_list_state.selec
+          ted() {
+     549 -                            Some(i) => {
+     550 -                                if i == 0 {
+     551 -                                    self.recipe_store.recipes.len(
+          ).saturating_sub(1)
+     552 -                                } else {
+     553 -                                    i - 1
+     554 -                                }
+     555 -                            }
+     556 -                            None => 0,
+     557 -                        };
+     558 -                        self.recipe_list_state.select(Some(i));
+     559 -                    }
+     560 -                    KeyCode::Enter => {
+     561 -                        if let Some(i) = self.recipe_list_state.se
+          lected() {
+     562 -                            if let Some(recipe) = self.recipe_stor
+          e.recipes.get(i) {
+     563 -                                self.prompt = recipe.prompt.clone(
+          );
+     564 -                                #[cfg(feature = "head-isolation")]
+     565 -                                {
+     566 -                                    self.selected_head = recipe.ui
+          _defaults.head;
+     567 -                                }
+     568 -                                self.active_analysis = Some(recipe
+          .analysis.clone());
+     569 -                                self.focus = Focus::Prompt;
+     570 -                            }
+     571 -                        }
+     572 -                    }
+     573 -                    KeyCode::Char('c') | KeyCode::Char('C') => {
+     574 -                        if let Some(i) = self.recipe_list_state.se
+          lected() {
+     575 -                            if let Some(recipe) = self.recipe_stor
+          e.recipes.get(i) {
+     576 -                                let lql = format!("EXPLAIN INFER \
+          "{}\" TOP 5;", recipe.prompt);
+     577 -                                self.last_export = Some(format!("E
+          xported LQL: {}", lql));
+     578 -                            }
+     579 -                        }
+     580 -                    }
+     581 -                    KeyCode::Char('x') => {
+     582 -                        if let Some(i) = self.recipe_list_state.se
+          lected() {
+     583 -                            if i < self.recipe_store.recipes.len()
+           {
+     584 -                                self.recipe_store.recipes.remove(i
+          );
+     585 -                                let _ = self.recipe_store.save();
+     586 -                            }
+     587 -                        }
+     588 -                    }
+     589 -                    _ => {}
+     590 -                },
+     591 -                Focus::Results => match key.code {
+     592 -                    KeyCode::Char('q') | KeyCode::Esc => return tr
+          ue,
+     593 -                    _ => {}
+     594 -                },
+     595 -                Focus::LayerList => match key.code {
+     596 -                    KeyCode::Char('j') | KeyCode::Down => {
+     597 -                        let i = match self.list_state.selected() {
+     598 -                            Some(i) => {
+     599 -                                if i >= self.heatmaps.len().satura
+          ting_sub(1) {
+     600 -                                    0
+     601 -                                } else {
+     602 -                                    i + 1
+     603 -                                }
+     604 -                            }
+     605 -                            None => 0,
+     606 -                        };
+     607 -                        self.list_state.select(Some(i));
+     608 -                    }
+     609 -                    KeyCode::Char('k') | KeyCode::Up => {
+     610 -                        let i = match self.list_state.selected() {
+     611 -                            Some(i) => {
+     612 -                                if i == 0 {
+     613 -                                    self.heatmaps.len().saturating
+          _sub(1)
+     614 -                                } else {
+     615 -                                    i - 1
+     616 -                                }
+     617 -                            }
+     618 -                            None => 0,
+     619 -                        };
+     620 -                        self.list_state.select(Some(i));
+     621 -                    }
+     622 -                    _ => {}
+     623 -                },
+     624 -                Focus::Image => match key.code {
+     625 -                    KeyCode::Char('w') => {
+     626 -                        self.offset_y = (self.offset_y - 0.1 / sel
+          f.zoom).max(0.0);
+     627 -                    }
+     628 -                    KeyCode::Char('s') => {
+     629 -                        self.offset_y = (self.offset_y + 0.1 / sel
+          f.zoom).min(1.0);
+     630 -                    }
+     631 -                    KeyCode::Char('a') => {
+     632 -                        self.offset_x = (self.offset_x - 0.1 / sel
+          f.zoom).max(0.0);
+     633 -                    }
+     634 -                    KeyCode::Char('d') => {
+     635 -                        self.offset_x = (self.offset_x + 0.1 / sel
+          f.zoom).min(1.0);
+     636 -                    }
+     637 -                    KeyCode::Up => {
+     638 -                        self.cursor_y = self.cursor_y.saturating_s
+          ub(1);
+     639 -                    }
+     640 -                    KeyCode::Down => {
+     641 -                        if let Some(selected) = self.list_state.se
+          lected() {
+     642 -                            if let Some(img) = self.heatmaps.get(s
+          elected) {
+     643 -                                self.cursor_y =
+     644 -                                    (self.cursor_y + 1).min(img.he
+          ight.saturating_sub(1));
+     645 -                            }
+     646 -                        }
+     647 -                    }
+     648 -                    KeyCode::Left => {
+     649 -                        self.cursor_x = self.cursor_x.saturating_s
+          ub(1);
+     650 -                    }
+     651 -                    KeyCode::Right => {
+     652 -                        if let Some(selected) = self.list_state.se
+          lected() {
+     653 -                            if let Some(img) = self.heatmaps.get(s
+          elected) {
+     654 -                                self.cursor_x =
+     655 -                                    (self.cursor_x + 1).min(img.wi
+          dth.saturating_sub(1));
+     656 -                            }
+     657 -                        }
+     658 -                    }
+     659 -                    KeyCode::Char('z') => {
+     660 -                        self.zoom *= 1.2;
+     661 -                    }
+     662 -                    KeyCode::Char('x') => {
+     663 -                        self.zoom = (self.zoom / 1.2).max(1.0);
+     664 -                    }
+     665 -                    KeyCode::Char('b') => {
+     666 -                        use larql_terminal_renderer::BackendType;
+     667 -                        self.renderer.backend_type = match self.re
+          nderer.backend_type {
+     668 -                            BackendType::Sixel => BackendType::Kit
+          ty,
+     669 -                            BackendType::Kitty => BackendType::ITe
+          rm2,
+     670 -                            BackendType::ITerm2 => BackendType::An
+          si,
+     671 -                            BackendType::Ansi => BackendType::Sixe
+          l,
+     672 -                        };
+     673 -                    }
+     674 -                    KeyCode::Char('l') => {
+     675 -                        self.z_index = if self.z_index == 1 { -1 }
+           else { 1 };
+     676 -                    }
+     677 -                    #[cfg(feature = "head-isolation")]
+     678 -                    KeyCode::Char('h') => {
+     679 -                        if let Some(res) = &self.result {
+     680 -                            if let Some(first_layer) = res.attenti
+          on.first() {
+     681 -                                let num_heads = first_layer.heads.
+          len();
+     682 -                                self.selected_head = match self.se
+          lected_head {
+     683 -                                    None => {
+     684 -                                        if num_heads > 0 {
+     685 -                                            Some(0)
+     686 -                                        } else {
+     687 -                                            None
+     688 -                                        }
+     689 -                                    }
+     690 -                                    Some(h) if h + 1 < num_heads =
+          > Some(h + 1),
+     691 -                                    _ => None,
+     692 -                                };
+     693 -                                self.regenerate_heatmaps();
+     694 -                            }
+     695 -                        }
+     696 -                    }
+     697 -                    #[cfg(feature = "layer-diff")]
+     698 -                    KeyCode::Char('f') => {
+     699 -                        self.diff_mode = !self.diff_mode;
+     700 -                        self.regenerate_heatmaps();
+     701 -                    }
+     702 -                    _ => {}
+     703 -                },
+     704 -            },
+     705 -        }
+     706 -        false
+     707 -    }
+     708 -}
+     709 -
+     710 -pub fn ui(frame: &mut Frame, app: &App, graphics_layer: &mut Graph
+          icsLayer) {
+     711 -    let chunks = Layout::default()
+     712 -        .direction(Direction::Vertical)
+     713 -        .constraints([
+     714 -            Constraint::Length(3), // Stats/Header
+     715 -            Constraint::Length(3), // Input
+     716 -            Constraint::Min(0),    // Content
+     717 -            Constraint::Length(3), // Status Footer
+     718 -        ])
+     719 -        .split(frame.size());
+     720 -
+     721 -    // Stats Header
+     722 -    let stats_style = if app.focus == Focus::Results {
+     723 -        Style::default()
+     724 -            .fg(Color::Yellow)
+     725 -            .add_modifier(Modifier::BOLD)
+     726 -    } else {
+     727 -        Style::default()
+     728 -    };
+     729 -    let stats_text = if let Some(res) = &app.result {
+     730 -        stats_summary_text(res)
+     731 -    } else {
+     732 -        "No scan results yet.".to_string()
+     733 -    };
+     734 -    let stats = Paragraph::new(stats_text).block(
+     735 -        Block::default()
+     736 -            .borders(Borders::ALL)
+     737 -            .title("Stats")
+     738 -            .border_style(stats_style),
+     739 -    );
+     740 -    frame.render_widget(stats, chunks[0]);
+     741 -
+     742 -    // Input
+     743 -    let input_style = if app.focus == Focus::Prompt {
+     744 -        Style::default()
+     745 -            .fg(Color::Yellow)
+     746 -            .add_modifier(Modifier::BOLD)
+     747 -    } else {
+     748 -        Style::default()
+     749 -    };
+     750 -    let input = Paragraph::new(format!("Prompt: {}", app.prompt))
+     751 -        .style(input_style)
+     752 -        .block(Block::default().borders(Borders::ALL).title("Input
+          "));
+     753 -    frame.render_widget(input, chunks[1]);
+     754 -
+     755 -    // Content area
+     756 -    if let Some(err) = &app.error {
+     757 -        let error_widget = Paragraph::new(err.as_str())
+     758 -            .block(Block::default().borders(Borders::ALL).title("E
+          rror"));
+     759 -        frame.render_widget(error_widget, chunks[2]);
+     760 -    } else if let Some(res) = &app.result {
+     761 -        let content_chunks = Layout::default()
+     762 -            .direction(Direction::Horizontal)
+     763 -            .constraints([
+     764 -                Constraint::Percentage(20), // List
+     765 -                Constraint::Percentage(55), // Image Viewport
+     766 -                Constraint::Percentage(25), // Analysis
+     767 -            ])
+     768 -            .split(chunks[2]);
+     769 -
+     770 -        // Layer List
+     771 -        let list_style = if app.focus == Focus::LayerList {
+     772 -            Style::default()
+     773 -                .fg(Color::Yellow)
+     774 -                .add_modifier(Modifier::BOLD)
+     775 -        } else {
+     776 -            Style::default()
+     777 -        };
+     778 -        let items: Vec<ListItem> = app
+     779 -            .heatmaps
+     780 -            .iter()
+     781 -            .enumerate()
+     782 -            .map(|(i, _)| {
+     783 -                let mut text = format!("Layer {}", i);
+     784 -                if let Some(logit_lens) = &res.logit_lens {
+     785 -                    if let Some(data) = logit_lens.iter().find(|d|
+           d.layer == i) {
+     786 -                        if let Some((token, prob)) = data.predicti
+          ons.first() {
+     787 -                            text.push_str(&format!(": {} ({:.2})",
+           token, prob));
+     788 -                        }
+     789 -                    }
+     790 -                }
+     791 -                ListItem::new(text)
+     792 -            })
+     793 -            .collect();
+     794 -        let list = List::new(items)
+     795 -            .block(
+     796 -                Block::default()
+     797 -                    .borders(Borders::ALL)
+     798 -                    .title("Layers")
+     799 -                    .border_style(list_style),
+     800 -            )
+     801 -            .highlight_style(Style::default().bg(Color::DarkGray))
+          ;
+     802 -
+     803 -        let mut state = app.list_state.clone();
+     804 -        frame.render_stateful_widget(list, content_chunks[0], &mut
+           state);
+     805 -
+     806 -        // Analysis Summary Pane
+     807 -        let mut analysis_text = Vec::new();
+     808 -        if let Some(summary) = &res.analysis_summary {
+     809 -            analysis_text.push(Spans::from(vec![
+     810 -                Span::styled("ANALYSIS SUMMARY", Style::default().
+          add_modifier(Modifier::BOLD)),
+     811 -            ]));
+     812 -
+     813 -            if let Some(pos) = summary.first_false_position {
+     814 -                analysis_text.push(Spans::from(vec![
+     815 -                    Span::raw("First False: "),
+     816 -                    Span::styled(format!("Pos {} ('{}')", pos, sum
+          mary.first_false_token.as_deref().unwrap_or("?")), Style::default(
+          ).fg(Color::Red)),
+     817 -                ]));
+     818 -                if let Some(origin) = &summary.first_false_origin
+          {
+     819 -                    analysis_text.push(Spans::from(vec![
+     820 -                        Span::raw(format!("Origin: L{} H{} SrcT{}"
+          , origin.layer, origin.head, origin.source_token)),
+     821 -                    ]));
+     822 -                    analysis_text.push(Spans::from(vec![
+     823 -                        Span::raw(format!("Contrib: {:.4}", origin
+          .contribution)),
+     824 -                    ]));
+     825 -                }
+     826 -            } else {
+     827 -                analysis_text.push(Spans::from(vec![
+     828 -                    Span::styled("No materially false token detect
+          ed.", Style::default().fg(Color::Green)),
+     829 -                ]));
+     830 -            }
+     831 -
+     832 -            analysis_text.push(Spans::from(""));
+     833 -            analysis_text.push(Spans::from(vec![
+     834 -                Span::styled("TOP COHERENCE HEADS", Style::default
+          ().add_modifier(Modifier::BOLD)),
+     835 -            ]));
+     836 -            for head in &summary.top_coherence_heads {
+     837 -                analysis_text.push(Spans::from(vec![
+     838 -                    Span::raw(format!("L{} H{}: {:.4}", head.layer
+          , head.head, head.contribution)),
+     839 -                ]));
+     840 -            }
+     841 -
+     842 -            analysis_text.push(Spans::from(""));
+     843 -            analysis_text.push(Spans::from(vec![
+     844 -                Span::styled("TOP FALSE CONTENT HEADS", Style::def
+          ault().add_modifier(Modifier::BOLD)),
+     845 -            ]));
+     846 -            for head in &summary.top_false_content_heads {
+     847 -                analysis_text.push(Spans::from(vec![
+     848 -                    Span::raw(format!("L{} H{}: {:.4}", head.layer
+          , head.head, head.contribution)),
+     849 -                ]));
+     850 -            }
+     851 -        } else {
+     852 -            analysis_text.push(Spans::from("No analysis block prov
+          ided."));
+     853 -        }
+     854 -
+     855 -        let analysis_block = Paragraph::new(analysis_text)
+     856 -            .block(Block::default().borders(Borders::ALL).title("A
+          nalysis"))
+     857 -            .wrap(Wrap { trim: true });
+     858 -        frame.render_widget(analysis_block, content_chunks[2]);
+     859 -
+     860 -        // Image Viewport
+     861 -        let img_style = if app.focus == Focus::Image {
+     862 -            Style::default()
+     863 -                .fg(Color::Yellow)
+     864 -                .add_modifier(Modifier::BOLD)
+     865 -        } else {
+     866 -            Style::default()
+     867 -        };
+     868 -
+     869 -        let viewport_chunks = Layout::default()
+     870 -            .direction(Direction::Vertical)
+     871 -            .constraints([
+     872 -                Constraint::Min(0),    // Image
+     873 -                Constraint::Length(1), // Cursor readout
+     874 -            ])
+     875 -            .split(content_chunks[1]);
+     876 -
+     877 -        let viewport_block = Block::default()
+     878 -            .borders(Borders::ALL)
+     879 -            .title("Image Viewport")
+     880 -            .border_style(img_style);
+     881 -        let inner_area = viewport_block.inner(viewport_chunks[0]);
+     882 -        frame.render_widget(viewport_block, viewport_chunks[0]);
+     883 -
+     884 -        if let Some(selected) = app.list_state.selected() {
+     885 -            if let Some(img) = app.heatmaps.get(selected) {
+     886 -                use larql_terminal_renderer::BackendType;
+     887 -                if app.renderer.backend_type == BackendType::Ansi
+          {
+     888 -                    #[allow(unused_mut)]
+     889 -                    let mut widget = ImageWidget::new(img, &app.re
+          nderer)
+     890 -                        .zoom(app.zoom)
+     891 -                        .offset(app.offset_x, app.offset_y)
+     892 -                        .z_index(app.z_index);
+     893 -
+     894 -                    #[cfg(feature = "token-decode")]
+     895 -                    if let Some(strs) = &res.strings {
+     896 -                        widget = widget.labels(strs);
+     897 -                    }
+     898 -
+     899 -                    frame.render_widget(widget, inner_area);
+     900 -                } else {
+     901 -                    frame.render_widget(Block::default(), inner_ar
+          ea);
+     902 -                }
+     903 -
+     904 -                graphics_layer.add_with_view(
+     905 -                    img,
+     906 -                    inner_area,
+     907 -                    app.offset_x,
+     908 -                    app.offset_y,
+     909 -                    app.zoom,
+     910 -                    app.z_index,
+     911 -                );
+     912 -
+     913 -                // Cursor readout
+     914 -                let default_rgb = Rgb::new(0, 0, 0);
+     915 -                let cursor_color = img
+     916 -                    .get(
+     917 -                        app.cursor_x.min(img.width.saturating_sub(
+          1)),
+     918 -                        app.cursor_y.min(img.height.saturating_sub
+          (1)),
+     919 -                    )
+     920 -                    .unwrap_or(&default_rgb);
+     921 -                let val_approx = cursor_color.r as f32 / 255.0; //
+           rudimentary approximation for now
+     922 -
+     923 -                let mut readout_text = format!(
+     924 -                    "Cursor: ({}, {}) | Val: {:.2} | Color: RGB({}
+          ,{},{})",
+     925 -                    app.cursor_x,
+     926 -                    app.cursor_y,
+     927 -                    val_approx,
+     928 -                    cursor_color.r,
+     929 -                    cursor_color.g,
+     930 -                    cursor_color.b
+     931 -                );
+     932 -
+     933 -                #[cfg(feature = "head-isolation")]
+     934 -                if let Some(head_idx) = app.selected_head {
+     935 -                    if let Some(_head_dla) = &res.logit_lens { //
+          We actually want to show DLA if we had it, but for now logit lens
+          is closer
+     936 -                        // In a real impl we'd show the DLA contri
+          bution here
+     937 -                        readout_text.push_str(&format!(" | DLA Hea
+          d: {}", head_idx));
+     938 -                    }
+     939 -                }
+     940 -
+     941 -                #[cfg(feature = "token-decode")]
+     942 -                if let Some(strs) = &res.strings {
+     943 -                    let src = strs
+     944 -                        .get(app.cursor_x)
+     945 -                        .cloned()
+     946 -                        .unwrap_or_else(|| "?".to_string());
+     947 -                    let dest = strs
+     948 -                        .get(app.cursor_y)
+     949 -                        .cloned()
+     950 -                        .unwrap_or_else(|| "?".to_string());
+     951 -                    readout_text.push_str(&format!(" | Attn: '{}'
+          -> '{}'", src, dest));
+     952 -                }
+     953 -
+     954 -                readout_text.push_str(" | Legend: [Low: Dark Blue
+          -> High: Bright Red]");
+     955 -
+     956 -                let readout = Paragraph::new(readout_text);
+     957 -                frame.render_widget(readout, viewport_chunks[1]);
+     958 -            }
+     959 -        }
+     960 -                        .unwrap_or_else(|| "?".to_string());
+     961 -                    readout_text.push_str(&format!(" | Attn: '{}'
+          -> '{}'", src, dest));
+     962 -                }
+     963 -
+     964 -                readout_text.push_str(" | Legend: [Low: Dark Blue
+          -> High: Bright Red]");
+     965 -
+     966 -                let readout = Paragraph::new(readout_text);
+     967 -                frame.render_widget(readout, viewport_chunks[1]);
+     968 -            }
+     969 -        }
+     970 -    } else {
+     971 -        // Show Recipe List if no result or if focused
+     972 -        let list_style = if app.focus == Focus::RecipeList {
+     973 -            Style::default()
+     974 -                .fg(Color::Yellow)
+     975 -                .add_modifier(Modifier::BOLD)
+     976 -        } else {
+     977 -            Style::default()
+     978 -        };
+     979 -
+     980 -        let items: Vec<ListItem> = app
+     981 -            .recipe_store
+     982 -            .recipes
+     983 -            .iter()
+     984 -            .map(|r| {
+     985 -                ListItem::new(format!(
+     986 -                    "{} (Prompt: {}...)",
+     987 -                    r.name,
+     988 -                    r.prompt.chars().take(20).collect::<String>()
+     989 -                ))
+     990 -            })
+     991 -            .collect();
+     992 -
+     993 -        let title = if app.recipe_store.recipes.is_empty() {
+     994 -            "No Recipes Found (Press 'R' in Input to save current)
+          "
+     995 -        } else {
+     996 -            "Saved Recipes (Enter: Load | x: Delete)"
+     997 -        };
+     998 -
+     999 -        let list = List::new(items)
+    1000 -            .block(
+    1001 -                Block::default()
+    1002 -                    .borders(Borders::ALL)
+    1003 -                    .title(title)
+    1004 -                    .border_style(list_style),
+    1005 -            )
+    1006 -            .highlight_style(Style::default().bg(Color::DarkGray))
+          ;
+    1007 -
+    1008 -        let mut state = app.recipe_list_state.clone();
+    1009 -        frame.render_stateful_widget(list, chunks[2], &mut state);
+    1010 -    }
+    1011 -
+    1012 -    // Status Footer
+    1013 -    let active_backend = format!("{:?}", app.renderer.backend_type
+          );
+    1014 -    let footer_text = match app.focus {
+    1015 -        Focus::Prompt => "Tab: Next | Enter: Scan | R: Save Recipe
+           | Q: Quit".to_string(),
+    1016 -        Focus::RecipeList => "Tab: Next | j/k: Nav | Enter: Load |
+           C: Export LQL | x: Delete | Q: Quit".to_string(),
+    1017 -        Focus::Results => "Tab: Next | Q: Quit".to_string(),
+    1018 -        Focus::LayerList => "Tab: Next | j/k: Select Layer | Q: Qu
+          it".to_string(),
+    1019 -        Focus::Image => {
+    1020 -            #[allow(unused_mut)]
+    1021 -            let mut text = format!("Tab: Next | w/a/s/d: Pan ({:.1
+          },{:.1}) | z/x: Zoom ({:.1}x) | Arrows: Cursor | b: Backend ({}) |
+           l: Z-Index ({}) | Q: Quit", app.offset_x, app.offset_y, app.zoom,
+           active_backend, app.z_index);
+    1022 -            #[cfg(feature = "head-isolation")]
+    1023 -            if let Some(h) = app.selected_head {
+    1024 -                text.push_str(&format!(" | h: Head {}", h));
+    1025 -            } else {
+    1026 -                text.push_str(" | h: Head Avg");
+    1027 -            }
+    1028 -            #[cfg(feature = "layer-diff")]
+    1029 -            if app.diff_mode {
+    1030 -                text.push_str(" | f: Diff On");
+    1031 -            } else {
+    1032 -                text.push_str(" | f: Diff Off");
+    1033 -            }
+    1034 -            text
+    1035 -        }
+    1036 -    };
+    1037 -    let scan_status = if app.is_scanning {
+    1038 -        " | Scanning..."
+    1039 -    } else {
+    1040 -        ""
+    1041 -    };
+    1042 -    let layer_index_str = if let Some(idx) = app.list_state.select
+          ed() {
+    1043 -        format!(" | Layer {}", idx)
+    1044 -    } else {
+    1045 -        "".to_string()
+    1046 -    };
+    1047 -    let error_str = if let Some(err) = &app.error {
+    1048 -        format!(" | ERR: {}", err)
+    1049 -    } else {
+    1050 -        "".to_string()
+    1051 -    };
+    1052 -    let export_str = if let Some(exp) = &app.last_export {
+    1053 -        format!(" | {}", exp)
+    1054 -    } else {
+    1055 -        "".to_string()
+    1056 -    };
+    1057 -
+    1058 -    let status_str = format!(
+    1059 -        "{}{}{}{}{}",
+    1060 -        footer_text, scan_status, layer_index_str, error_str, expo
+          rt_str
+    1061 -    );
+    1062 -    let status = Paragraph::new(status_str).block(Block::default()
+          .borders(Borders::ALL));
+    1063 -    frame.render_widget(status, chunks[3]);
+    1064 -}
+    1065 -
+    1066 -fn stats_summary_text(res: &BatchDlaResult) -> String {
+    1067 -    let mut s = format!("Layers: {} | Seq Len: {}", res.num_layers
+          , res.seq_len);
+    1068 -    if !res.predictions.is_empty() {
+    1069 -        s.push_str(" | Top Predictions: ");
+    1070 -        for (idx, (pred, prob)) in res.predictions.iter().take(3).
+          enumerate() {
+    1071 -            if idx > 0 {
+    1072 -                s.push_str(", ");
+    1073 -            }
+    1074 -            s.push_str(&format!("{}({:.2})", pred, prob));
+    1075 -        }
+    1076 -    }
+    1077 -
+    1078 -    if let Some(summary) = &res.analysis_summary {
+    1079 -        if let Some(pos) = summary.first_false_position {
+    1080 -            s.push_str(&format!(" | FALSE DETECTED at pos {}", pos
+          ));
+    1081 -            if let Some(token) = &summary.first_false_token {
+    1082 -                s.push_str(&format!(" ('{}')", token));
+    1083 -            }
+    1084 -            if let Some(origin) = &summary.first_false_origin {
+    1085 -                s.push_str(&format!(" (L{} H{})", origin.layer, or
+          igin.head));
+    1086 -            }
+    1087 -        } else if summary.materially_false_detected {
+    1088 -            s.push_str(" | FALSE DETECTED (no origin)");
+    1089 -        } else {
+    1090 -            s.push_str(" | NO FALSE DETECTED");
+    1091 -        }
+    1092 -    }
+    1093 -    s
+    1094 -}
+    1095 -
+    1096 -#[cfg(test)]
+    1097 -mod tests {
+    1098 -    use super::{stats_summary_text, App, BatchDlaResult, Attention
+          Data};
+    1099 -
+    1100 -    fn mock_result(num_layers: usize) -> BatchDlaResult {
+    1101 -        BatchDlaResult {
+    1102 -            attention: (0..num_layers)
+    1103 -                .map(|layer| AttentionData {
+    1104 -                    layer,
+    1105 -                    heads: vec![vec![0.1, 0.2]],
+    1106 -                })
+    1107 -                .collect(),
+    1108 -            logit_lens: None,
+    1109 -            head_dla: None,
+    1110 -            num_layers,
+    1111 -            predictions: vec![("tok_a".to_string(), 0.9), ("tok_b"
+          .to_string(), 0.05)],
+    1112 -            seq_len: 2,
+    1113 -            tokens: vec![1, 2],
+    1114 -            strings: None,
+    1115 -            circuits: None,
+    1116 -            generation_trace: Vec::new(),
+    1117 -            token_analysis: Vec::new(),
+    1118 -            analysis_summary: None,
+    1119 -            ridge_by_layer: Vec::new(),
+    1120 -        }
+    1121 -    }
+    1122 -
+    1123 -    #[test]
+    1124 -    fn stats_summary_keeps_predictions_visible() {
+    1125 -        let text = stats_summary_text(&mock_result(2));
+    1126 -
+    1127 -        assert!(text.contains("Layers: 2 | Seq Len: 2"));
+    1128 -        assert!(text.contains("Top Predictions: tok_a(0.90), tok_b
+          (0.05)"));
+    1129 -    }
+    1130 -
+    1131 -    #[test]
+    1132 -    fn regenerate_heatmaps_clamps_selected_layer_to_new_result() {
+    1133 -        let mut app = App::new();
+    1134 -        app.result = Some(mock_result(3));
+    1135 -        app.regenerate_heatmaps();
+    1136 -        app.list_state.select(Some(2));
+    1137 -
+    1138 -        app.result = Some(mock_result(1));
+    1139 -        app.regenerate_heatmaps();
+    1140 -
+    1141 -        assert_eq!(app.heatmaps.len(), 1);
+    1142 -        assert_eq!(app.list_state.selected(), Some(0));
+    1143 -    }
+    1144 -}

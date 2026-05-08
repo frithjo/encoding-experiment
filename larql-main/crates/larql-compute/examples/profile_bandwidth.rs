@@ -16,7 +16,8 @@ use std::time::Instant;
 use larql_core::mmap::Mmap;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let path = std::env::args().nth(1)
+    let path = std::env::args()
+        .nth(1)
         .unwrap_or_else(|| "output/gemma3-4b-v2.vindex/down_features.bin".into());
 
     let file = std::fs::File::open(&path)?;
@@ -60,7 +61,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         // Warmup
         let mut sink = 0u64;
-        for chunk in mmap.chunks(4096) { sink += chunk[0] as u64; }
+        for chunk in mmap.chunks(4096) {
+            sink += chunk[0] as u64;
+        }
         std::hint::black_box(sink);
 
         let t0 = Instant::now();
@@ -87,7 +90,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         // Full warmup: read every byte
         let mut sink: u64 = 0;
-        for &b in mmap.iter() { sink = sink.wrapping_add(b as u64); }
+        for &b in mmap.iter() {
+            sink = sink.wrapping_add(b as u64);
+        }
         std::hint::black_box(sink);
 
         let t0 = Instant::now();
@@ -98,7 +103,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let ptr = data.as_ptr();
             let len = data.len();
             for i in (0..len).step_by(64) {
-                unsafe { s = s.wrapping_add(*ptr.add(i) as u64); }
+                unsafe {
+                    s = s.wrapping_add(*ptr.add(i) as u64);
+                }
             }
             std::hint::black_box(s);
         }
@@ -149,20 +156,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let size = file_size.min(512 * 1024 * 1024); // cap at 512MB
         let mut buf = vec![0u8; size];
         // Write to force allocation
-        for i in (0..size).step_by(4096) { buf[i] = 1; }
+        for i in (0..size).step_by(4096) {
+            buf[i] = 1;
+        }
 
         let t0 = Instant::now();
         for _ in 0..n {
             let mut s: u64 = 0;
             let ptr = buf.as_ptr();
             for i in (0..size).step_by(64) {
-                unsafe { s = s.wrapping_add(*ptr.add(i) as u64); }
+                unsafe {
+                    s = s.wrapping_add(*ptr.add(i) as u64);
+                }
             }
             std::hint::black_box(s);
         }
         let ms = t0.elapsed().as_secs_f64() * 1000.0 / n as f64;
         let gbps = size as f64 / ms / 1e6;
-        println!("Malloc scan ({:.0}MB, warm):   {ms:>6.1}ms  {gbps:>6.1} GB/s", size as f64 / 1e6);
+        println!(
+            "Malloc scan ({:.0}MB, warm):   {ms:>6.1}ms  {gbps:>6.1} GB/s",
+            size as f64 / 1e6
+        );
     }
 
     println!("\n=== Done ===");

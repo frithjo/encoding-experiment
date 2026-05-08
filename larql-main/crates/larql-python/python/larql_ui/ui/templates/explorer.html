@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="page-title">Explorer</h1>
+
+<form method="post" class="task-form" id="explorer-form">
+  <label for="entity">Entity</label>
+  <input id="entity" name="entity" type="text" value="{{ form_data.entity }}" placeholder="France">
+
+  <div class="form-row">
+    <div class="form-col">
+      <label for="band">Band</label>
+      <select id="band" name="band">
+        {% for band_name in ["knowledge", "syntax", "output", "all"] %}
+        <option value="{{ band_name }}" {% if form_data.band == band_name %}selected{% endif %}>{{ band_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-col checkbox-col">
+      <div class="checkbox-row">
+        <input type="checkbox" id="explorer_verbose" name="verbose" {% if form_data.verbose %}checked{% endif %}>
+        <label for="explorer_verbose">Verbose</label>
+      </div>
+    </div>
+  </div>
+
+  <button type="submit" class="submit-button">Describe <kbd>Ctrl+Enter</kbd></button>
+</form>
+
+{% if run %}
+<section class="panel result-panel">
+  <h2>Result</h2>
+  <div class="muted">{{ run.summary }} | {{ run.duration_ms }} ms</div>
+  {% if run.raw.edges %}
+  <div class="result-list">
+    {% for edge in run.raw.edges %}
+    <article class="result-card">
+      <div class="result-main">
+        <strong>{{ edge.relation or "?" }}</strong>
+        <span class="arrow">-&gt;</span>
+        <span>{{ edge.target }}</span>
+      </div>
+      <div class="muted">score {{ edge.gate_score | round(1) }} | layer {{ edge.layer }} | feature {{ edge.feature }} | {{ edge.source }}</div>
+      {% if edge.also %}
+      <div class="muted">also: {{ edge.also|join(", ") }}</div>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p>No edges returned.</p>
+  {% endif %}
+  <details class="tty-details">
+    <summary>Raw JSON</summary>
+    <pre>{{ run.raw|to_pretty_json }}</pre>
+  </details>
+</section>
+{% endif %}
+{% endblock %}

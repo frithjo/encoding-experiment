@@ -15,3 +15,9 @@ tokenizers = { version = "0.21", optional = true }
 [features]
 default = ["hf"]
 hf = ["dep:tokenizers"]
+
+[package.metadata.product]
+zone = "core"
+role = "tokenization-contract-and-implementations"
+release_impact = "high"
+stability_target = "stable"

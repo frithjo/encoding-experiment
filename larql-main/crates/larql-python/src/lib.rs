@@ -4,18 +4,21 @@ use pyo3::types::PyDict;
 use larql_core as lq;
 use larql_inference as li;
 
-mod vindex;
 mod session;
-mod walk;
 mod trace_py;
+mod vindex;
+mod walk;
 mod workspace_inspect;
 
 use workspace_inspect::inspect_workspace_for_ui;
 
-use vindex::{PyVindex, PyFeatureMeta, PyWalkHit, PyDescribeEdge, PyRelation, PyProbeRelation};
 use session::PySession;
+use trace_py::{
+    PyAnswerWaypoint, PyBoundaryStore, PyBoundaryWriter, PyLayerSummary, PyResidualTrace,
+    PyTraceStore,
+};
+use vindex::{PyDescribeEdge, PyFeatureMeta, PyProbeRelation, PyRelation, PyVindex, PyWalkHit};
 use walk::PyWalkModel;
-use trace_py::{PyResidualTrace, PyAnswerWaypoint, PyLayerSummary, PyTraceStore, PyBoundaryStore, PyBoundaryWriter};
 
 // ── Helpers ──
 
@@ -647,7 +650,10 @@ fn weight_walk(
     top_k: usize,
     activation_floor: f32,
 ) -> PyResult<PyGraph> {
-    let config = li::WalkConfig { top_k, activation_floor };
+    let config = li::WalkConfig {
+        top_k,
+        activation_floor,
+    };
     let layers: Option<Vec<usize>> = layer.map(|l| vec![l]);
 
     let mut graph = lq::Graph::new();
@@ -691,7 +697,10 @@ fn attention_walk(
     let walker = li::AttentionWalker::load(model_path)
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
-    let config = li::WalkConfig { top_k, activation_floor };
+    let config = li::WalkConfig {
+        top_k,
+        activation_floor,
+    };
 
     let mut graph = lq::Graph::new();
     graph.metadata.insert(

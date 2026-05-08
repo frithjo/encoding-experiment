@@ -2,10 +2,10 @@
 
 use std::sync::Arc;
 
-use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
+use axum::Json;
 use serde::Deserialize;
 
 use crate::error::ServerError;
@@ -34,14 +34,22 @@ pub struct DescribeParams {
     pub mode: Option<String>,
 }
 
-fn default_band() -> String { "knowledge".into() }
-fn default_limit() -> usize { 20 }
+fn default_band() -> String {
+    "knowledge".into()
+}
+fn default_limit() -> usize {
+    20
+}
 fn default_gate_floor() -> f32 {
     larql_vindex::DESCRIBE_GATE_FLOOR_DEFAULT
 }
 
 /// EXPLAIN WALK–style lines (matches `larql_lql::exec_explain` formatting).
-fn describe_followup_explain_walk(model: &LoadedModel, prompt: &str, scan_layers: &[usize]) -> Vec<String> {
+fn describe_followup_explain_walk(
+    model: &LoadedModel,
+    prompt: &str,
+    scan_layers: &[usize],
+) -> Vec<String> {
     let encoding = match model.tokenizer.encode(prompt, true) {
         Ok(e) => e,
         Err(_) => return Vec::new(),
@@ -103,11 +111,17 @@ fn describe_entity(
 
     let hidden = model.embeddings.shape()[1];
     let query = if token_ids.len() == 1 {
-        model.embeddings.row(token_ids[0] as usize).mapv(|v| v * model.embed_scale)
+        model
+            .embeddings
+            .row(token_ids[0] as usize)
+            .mapv(|v| v * model.embed_scale)
     } else {
         let mut avg = larql_vindex::ndarray::Array1::<f32>::zeros(hidden);
         for &tok in &token_ids {
-            avg += &model.embeddings.row(tok as usize).mapv(|v| v * model.embed_scale);
+            avg += &model
+                .embeddings
+                .row(tok as usize)
+                .mapv(|v| v * model.embed_scale);
         }
         avg /= token_ids.len() as f32;
         avg
@@ -156,16 +170,16 @@ fn describe_entity(
         }
     };
 
-    let trace = patched.walk(
-        &query,
-        &scan_layers,
-        larql_vindex::DESCRIBE_WALK_TOP_K,
-    );
+    let trace = patched.walk(&query, &scan_layers, larql_vindex::DESCRIBE_WALK_TOP_K);
 
     let mut ranked =
         larql_vindex::collect_describe_edges_from_trace(&trace, &params.entity, params.gate_floor);
     if params.relations_only {
-        ranked.retain(|e| model.probe_labels.contains_key(&(e.best_layer, e.best_feature)));
+        ranked.retain(|e| {
+            model
+                .probe_labels
+                .contains_key(&(e.best_layer, e.best_feature))
+        });
     }
     ranked.truncate(params.limit);
 
@@ -188,7 +202,10 @@ fn describe_entity(
 
             // Probe-confirmed relation label (skip in raw mode).
             if !is_raw {
-                if let Some(label) = model.probe_labels.get(&(info.best_layer, info.best_feature)) {
+                if let Some(label) = model
+                    .probe_labels
+                    .get(&(info.best_layer, info.best_feature))
+                {
                     edge["relation"] = serde_json::json!(label);
                     edge["source"] = serde_json::json!("probe");
                 }
@@ -224,8 +241,11 @@ fn describe_entity(
              Below: same probe with EXPLAIN WALK (vindex-only, last token) and \
              EXPLAIN INFER (forward pass; needs inference-level vindex)."
         );
-        root["followup_walk"] =
-            serde_json::json!(describe_followup_explain_walk(model, &params.entity, &scan_layers));
+        root["followup_walk"] = serde_json::json!(describe_followup_explain_walk(
+            model,
+            &params.entity,
+            &scan_layers
+        ));
         let inf_req = explain_followup_request(&params.entity, params.band.as_str());
         match explain_infer(model, &inf_req) {
             Ok(j) => {
@@ -265,10 +285,7 @@ async fn describe_with_cache(
             let etag = crate::etag::compute_etag(&cached);
             let if_none_match = headers.get("if-none-match").and_then(|v| v.to_str().ok());
             if crate::etag::matches_etag(if_none_match, &etag) {
-                return Ok((
-                    axum::http::StatusCode::NOT_MODIFIED,
-                    [("etag", etag)],
-                ).into_response());
+                return Ok((axum::http::StatusCode::NOT_MODIFIED, [("etag", etag)]).into_response());
             }
             return Ok((
                 [
@@ -276,7 +293,8 @@ async fn describe_with_cache(
                     ("cache-control", "public, max-age=86400".into()),
                 ],
                 Json(cached),
-            ).into_response());
+            )
+                .into_response());
         }
         Some(key)
     } else {
@@ -300,7 +318,8 @@ async fn describe_with_cache(
             ("cache-control", "public, max-age=86400".into()),
         ],
         Json(result),
-    ).into_response())
+    )
+        .into_response())
 }
 
 pub async fn handle_describe(

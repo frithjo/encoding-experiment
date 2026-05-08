@@ -1,7 +1,7 @@
 use std::time::Instant;
 
-use larql_inference::forward::predict_with_temperature;
 use clap::Args;
+use larql_inference::forward::predict_with_temperature;
 use larql_inference::{
     calibrate_scalar_gains, predict, predict_with_ffn, predict_with_router, predict_with_strategy,
     FfnBackend, GateIndex, GraphFfn, InferenceModel, LayerFfnRouter, LayerMode, RouteFfn,
@@ -117,7 +117,13 @@ fn run_single(
     if ffn_spec == "weights" {
         eprintln!("FFN: weights (dense)");
         let start = Instant::now();
-        let result = predict_with_temperature(weights, model.tokenizer(), token_ids, top_k, args.temperature);
+        let result = predict_with_temperature(
+            weights,
+            model.tokenizer(),
+            token_ids,
+            top_k,
+            args.temperature,
+        );
         eprintln!("  Forward pass: {:.1}s", start.elapsed().as_secs_f64());
         print_predictions("weights", &result.predictions);
     } else if let Some(k_str) = ffn_spec.strip_prefix("sparse:") {
@@ -159,12 +165,14 @@ fn run_single(
         let routes_path = args.routes.as_ref().ok_or(
             "--routes required for --ffn routes. Build with: larql extract-routes <model> -o routes.json",
         )?;
-        let relation = args.relation.as_deref().ok_or(
-            "--relation required for --ffn routes (e.g., --relation capital-of)",
-        )?;
-        let entity = args.entity.as_deref().ok_or(
-            "--entity required for --ffn routes (e.g., --entity France)",
-        )?;
+        let relation = args
+            .relation
+            .as_deref()
+            .ok_or("--relation required for --ffn routes (e.g., --relation capital-of)")?;
+        let entity = args
+            .entity
+            .as_deref()
+            .ok_or("--entity required for --ffn routes (e.g., --entity France)")?;
 
         eprintln!("Loading route table: {}", routes_path.display());
         let load_start = Instant::now();
@@ -232,13 +240,17 @@ fn run_single(
 
             let label = format!(
                 "weights:0-{},guided:{}-{}",
-                switch_layer - 1, switch_layer, num_layers - 1
+                switch_layer - 1,
+                switch_layer,
+                num_layers - 1
             );
             let start = Instant::now();
             let result = predict_with_router(weights, model.tokenizer(), token_ids, top_k, &router);
             let elapsed = start.elapsed();
 
-            let top1 = result.predictions.first()
+            let top1 = result
+                .predictions
+                .first()
                 .map(|(t, p)| format!("{t} ({:.1}%)", p * 100.0))
                 .unwrap_or_default();
             eprintln!("  {label}: {top1} [{:.1}s]", elapsed.as_secs_f64());
@@ -359,7 +371,11 @@ fn run_with_mode(
         } else if name == "scalar" {
             BackendKind::Scalar
         } else if let Some(k_str) = name.strip_prefix("sparse") {
-            let k: usize = if k_str.is_empty() { 100 } else { k_str.parse()? };
+            let k: usize = if k_str.is_empty() {
+                100
+            } else {
+                k_str.parse()?
+            };
             BackendKind::Sparse(k)
         } else {
             return Err(format!("unknown mode: {name}. Use dense, scalar, sparse<K>").into());
@@ -388,7 +404,13 @@ fn run_with_mode(
         let scalar_layers: Vec<usize> = layer_kinds
             .iter()
             .enumerate()
-            .filter_map(|(l, k)| if matches!(k, BackendKind::Scalar) { Some(l) } else { None })
+            .filter_map(|(l, k)| {
+                if matches!(k, BackendKind::Scalar) {
+                    Some(l)
+                } else {
+                    None
+                }
+            })
             .collect();
         eprintln!("  Scalar layers: {:?}", scalar_layers);
         for &l in &scalar_layers {
@@ -401,7 +423,10 @@ fn run_with_mode(
             .iter()
             .filter_map(|k| {
                 if let BackendKind::Sparse(top_k) = k {
-                    Some(SparseFfn { weights, top_k: *top_k })
+                    Some(SparseFfn {
+                        weights,
+                        top_k: *top_k,
+                    })
                 } else {
                     None
                 }
@@ -456,7 +481,10 @@ fn run_with_mode(
             .iter()
             .filter_map(|k| {
                 if let BackendKind::Sparse(top_k) = k {
-                    Some(SparseFfn { weights, top_k: *top_k })
+                    Some(SparseFfn {
+                        weights,
+                        top_k: *top_k,
+                    })
                 } else {
                     None
                 }

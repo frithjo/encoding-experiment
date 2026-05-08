@@ -1,0 +1,22 @@
+[package]
+name = "larql-governance"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Governed machine policy, receipts, and code minting primitives for LARQL"
+
+[dependencies]
+larql-core = { path = "../larql-core", default-features = false }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+sha2 = "0.10"
+syn = { version = "2", features = ["full"] }
+toml = "0.8"
+
+[package.metadata.product]
+zone = "core"
+role = "governed-machine-policy-and-receipts"
+release_impact = "high"
+stability_target = "managed"

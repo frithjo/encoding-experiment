@@ -1,7 +1,0 @@
-draw,sigma,passed_all,H1_risky_mass_drop,H2_nonzero_risky_support,H3_rollout_shift_without_exclusion,H4_benign_help_retained
-0,0.05,False,True,True,False,True
-1,0.05,False,True,True,False,True
-2,0.05,False,True,True,False,True
-3,0.05,False,True,True,False,True
-4,0.05,True,True,True,True,True
-5,0.05,True,True,True,True,True

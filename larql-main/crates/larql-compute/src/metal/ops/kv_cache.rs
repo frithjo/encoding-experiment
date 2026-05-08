@@ -3,15 +3,15 @@
 //! Per-layer Metal buffers for cached K/V vectors. Grows with generation.
 //! At decode time: append new K/V, then attend Q against full cache.
 
-use std::ffi::c_void;
 use metal::*;
+use std::ffi::c_void;
 
 use crate::metal::buffers::BufferCache;
 
 /// KV cache for one layer — pre-allocated Metal buffers.
 pub struct LayerKVCache {
-    pub k_cache: Buffer,  // [max_seq, num_kv_heads, head_dim] f32
-    pub v_cache: Buffer,  // same
+    pub k_cache: Buffer, // [max_seq, num_kv_heads, head_dim] f32
+    pub v_cache: Buffer, // same
     pub current_len: usize,
     pub max_seq: usize,
     pub num_kv_heads: usize,
@@ -44,7 +44,13 @@ pub struct KVCache {
 }
 
 impl KVCache {
-    pub fn new(bufs: &BufferCache, num_layers: usize, max_seq: usize, num_kv_heads: usize, head_dim: usize) -> Self {
+    pub fn new(
+        bufs: &BufferCache,
+        num_layers: usize,
+        max_seq: usize,
+        num_kv_heads: usize,
+        head_dim: usize,
+    ) -> Self {
         let layers = (0..num_layers)
             .map(|_| LayerKVCache::new(bufs, max_seq, num_kv_heads, head_dim))
             .collect();
@@ -52,7 +58,9 @@ impl KVCache {
     }
 
     pub fn clear(&mut self) {
-        for layer in &mut self.layers { layer.clear(); }
+        for layer in &mut self.layers {
+            layer.clear();
+        }
     }
 
     pub fn current_len(&self) -> usize {

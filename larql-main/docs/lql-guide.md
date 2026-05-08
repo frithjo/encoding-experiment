@@ -43,7 +43,7 @@ STATS;
 -- Or point directly at model weights (no extraction needed)
 USE MODEL "google/gemma-3-4b-it";
 STATS;
--- Supports: INFER, EXPLAIN INFER, STATS
+-- Supports: INFER, EXPLAIN INFER, ANALYZE INFER, STATS
 -- For WALK/DESCRIBE/SELECT/INSERT: extract into a vindex first
 ```
 
@@ -90,7 +90,21 @@ INFER "The capital of France is" TOP 5 COMPARE;
 
 -- Full inference trace
 EXPLAIN INFER "The capital of France is" TOP 5;
+
+-- Scientific attribution with explicit annotations
+ANALYZE INFER "The capital of Freedonia is"
+    MODE FACT_PROBE
+    TRUTH_SPANS ("Markov")
+    FALSE_SPANS ("Paris", "London")
+    COHERENCE_MARKERS ("The", "capital", "of", "is")
+    MAX_GENERATED_TOKENS 1
+    RIDGE_DEAD_ZONE 0.05
+    TOP 5;
 ```
+
+`ANALYZE INFER` uses the structured analysis engine in `larql-inference`.
+The server `/v1/analyze-infer` endpoint is the canonical transport adapter.
+UIs should prefer executing LQL directly when they can.
 
 ### 5. Edit knowledge
 
@@ -303,7 +317,7 @@ Bands are model-specific — computed automatically during EXTRACT from known ar
 |----------|-----------|
 | Lifecycle | EXTRACT, COMPILE, DIFF, USE |
 | Browse | WALK, DESCRIBE, SELECT, EXPLAIN WALK |
-| Inference | INFER, EXPLAIN INFER |
+| Inference | INFER, EXPLAIN INFER, ANALYZE INFER |
 | Trace | TRACE (with FOR, DECOMPOSE, LAYERS, POSITIONS, SAVE) |
 | Mutation | INSERT, DELETE, UPDATE, MERGE |
 | Patches | BEGIN PATCH, SAVE PATCH, APPLY PATCH, SHOW PATCHES, REMOVE PATCH |

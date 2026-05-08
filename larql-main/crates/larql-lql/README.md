@@ -1,5 +1,12 @@
 # larql-lql
 
+## Crate Role
+
+- Role: Query language parser/executor and REPL runtime
+- Zone: core
+- Release impact: high
+- Stability target: stable
+
 The LQL parser, executor, and REPL — SQL-like queries against vindexes.
 
 ## What is LQL?
@@ -237,3 +244,9 @@ pub use repl::{run_batch, run_repl, run_statement};
 
 The lexer, parser internals, and executor backend types are
 `pub(crate)` — only the four entry points above are stable surface.
+
+## Public vs Internal Surface
+
+- Public: parser/repl entrypoints and statement execution contracts listed above.
+- Internal: lexer details, parser internals, and backend orchestration are free
+  to change as long as statement semantics remain compatible.

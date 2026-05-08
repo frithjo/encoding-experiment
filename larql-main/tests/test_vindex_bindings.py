@@ -14,7 +14,7 @@ import numpy as np
 import larql
 
 VINDEX_PATH = os.environ.get(
-    "VINDEX_PATH",
+    "LARQL_VINDEX__PATH",
     os.path.join(os.path.dirname(__file__), "..", "output", "gemma3-4b-v2.vindex")
 )
 

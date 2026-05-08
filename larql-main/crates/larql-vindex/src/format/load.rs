@@ -4,11 +4,11 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
-use ndarray::Array2;
 use larql_core::mmap::Mmap;
+use ndarray::Array2;
 
-use crate::error::VindexError;
 use crate::config::VindexConfig;
+use crate::error::VindexError;
 use crate::index::{IndexLoadCallbacks, VectorIndex};
 
 impl VectorIndex {
@@ -23,14 +23,17 @@ impl VectorIndex {
         // Read config
         let config_path = dir.join("index.json");
         let config_text = std::fs::read_to_string(&config_path)?;
-        let config: VindexConfig = serde_json::from_str(&config_text)
-            .map_err(|e| VindexError::Parse(e.to_string()))?;
+        let config: VindexConfig =
+            serde_json::from_str(&config_text).map_err(|e| VindexError::Parse(e.to_string()))?;
 
         let num_layers = config.num_layers;
         let hidden_size = config.hidden_size;
 
         // Load gate vectors from binary
-        callbacks.on_file_start("gate_vectors", &dir.join("gate_vectors.bin").display().to_string());
+        callbacks.on_file_start(
+            "gate_vectors",
+            &dir.join("gate_vectors.bin").display().to_string(),
+        );
         let start = std::time::Instant::now();
 
         let gate_path = dir.join("gate_vectors.bin");
@@ -65,12 +68,19 @@ impl VectorIndex {
         let down_meta_mmap = if crate::format::down_meta::has_binary(dir) {
             match load_vindex_tokenizer(dir) {
                 Ok(tokenizer) => {
-                    callbacks.on_file_start("down_meta", &dir.join("down_meta.bin").display().to_string());
+                    callbacks.on_file_start(
+                        "down_meta",
+                        &dir.join("down_meta.bin").display().to_string(),
+                    );
                     // `load_vindex_tokenizer` already returns `Arc<dyn Tokenizer>`.
                     match crate::format::down_meta::mmap_binary(dir, tokenizer) {
                         Ok(dm) => {
                             let count = dm.total_features();
-                            callbacks.on_file_done("down_meta", count, start.elapsed().as_secs_f64() * 1000.0);
+                            callbacks.on_file_done(
+                                "down_meta",
+                                count,
+                                start.elapsed().as_secs_f64() * 1000.0,
+                            );
                             Some(dm)
                         }
                         Err(_) => None,
@@ -82,15 +92,51 @@ impl VectorIndex {
             None
         };
 
-        Ok(VectorIndex::new_mmap(gate_mmap, gate_slices, config.dtype, down_meta_mmap, num_layers, hidden_size))
+        // Load cached residuals if available (Inference level only)
+        let cache_store = if config.extract_level >= crate::config::types::ExtractLevel::Inference {
+            let cache_path = dir.join("cached_residuals.bin");
+            if cache_path.exists() {
+                callbacks.on_file_start("cached_residuals", &cache_path.display().to_string());
+                let start = std::time::Instant::now();
+                match crate::cache_residuals::CacheStore::open(&cache_path) {
+                    Ok(store) => {
+                        callbacks.on_file_done(
+                            "cached_residuals",
+                            store.template_count(),
+                            start.elapsed().as_secs_f64() * 1000.0,
+                        );
+                        Some(store)
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: Failed to load cached_residuals.bin: {}", e);
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let mut index = VectorIndex::new_mmap(
+            gate_mmap,
+            gate_slices,
+            config.dtype,
+            down_meta_mmap,
+            num_layers,
+            hidden_size,
+        );
+        index.cache_store = cache_store;
+        Ok(index)
     }
 }
 
 /// Load embeddings from a .vindex directory.
 pub fn load_vindex_embeddings(dir: &Path) -> Result<(Array2<f32>, f32), VindexError> {
     let config_text = std::fs::read_to_string(dir.join("index.json"))?;
-    let config: VindexConfig = serde_json::from_str(&config_text)
-        .map_err(|e| VindexError::Parse(e.to_string()))?;
+    let config: VindexConfig =
+        serde_json::from_str(&config_text).map_err(|e| VindexError::Parse(e.to_string()))?;
 
     let embed_file = std::fs::File::open(dir.join("embeddings.bin"))?;
     let embed_mmap = unsafe { Mmap::map(&embed_file)? };

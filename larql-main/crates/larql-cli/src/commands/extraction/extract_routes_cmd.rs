@@ -258,7 +258,10 @@ pub fn run(args: ExtractRoutesArgs) -> Result<(), Box<dyn std::error::Error>> {
             .iter()
             .filter(|r| r.relation == relation)
             .collect();
-        let predicted = rel_routes.iter().filter(|r| !r.prediction.is_empty()).count();
+        let predicted = rel_routes
+            .iter()
+            .filter(|r| !r.prediction.is_empty())
+            .count();
         let total_feats: usize = rel_routes.iter().map(|r| r.features.len()).sum();
         eprintln!(
             "  {relation:20}  {predicted}/{} predicted  {total_feats} features",
@@ -269,7 +272,10 @@ pub fn run(args: ExtractRoutesArgs) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn parse_layer_spec(spec: &str, num_layers: usize) -> Result<Vec<usize>, Box<dyn std::error::Error>> {
+fn parse_layer_spec(
+    spec: &str,
+    num_layers: usize,
+) -> Result<Vec<usize>, Box<dyn std::error::Error>> {
     let mut layers = Vec::new();
     for part in spec.split(',') {
         let part = part.trim();

@@ -31,3 +31,9 @@ harness = false
 [[bench]]
 name = "compile"
 harness = false
+
+[package.metadata.product]
+zone = "core"
+role = "query-language-parser-executor-and-repl"
+release_impact = "high"
+stability_target = "stable"

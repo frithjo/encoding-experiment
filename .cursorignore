@@ -1,0 +1,5 @@
+.windsurf/
+.codex
+larql-main/target/
+larql-main/output/
+node_modules/

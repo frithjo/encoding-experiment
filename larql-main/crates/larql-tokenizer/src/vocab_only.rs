@@ -76,7 +76,10 @@ impl VocabOnlyTokenizer {
             }
         }
 
-        Ok(Self { id_to_token, token_to_id })
+        Ok(Self {
+            id_to_token,
+            token_to_id,
+        })
     }
 
     /// Strip byte-level BPE piece markers (`Ġ`, `▁`) and emit readable text.

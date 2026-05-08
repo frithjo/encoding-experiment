@@ -1,0 +1,34 @@
+[package]
+name = "larql-terminal-batch-dla"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "larql-terminal-batch-dla"
+path = "src/main.rs"
+required-features = ["ratatui", "crossterm"]
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tokio = { version = "1", features = ["full"] }
+ratatui = { version = "0.26", optional = true }
+crossterm = { version = "0.27", optional = true }
+larql-lql = { path = "../larql-lql" }
+larql-terminal-renderer = { path = "../larql-terminal-renderer" }
+larql-inference = { path = "../larql-inference" }
+
+[features]
+default = ["ratatui", "crossterm"]
+head-isolation = []
+token-decode = []
+layer-diff = []
+logit-lens = []
+circuit-detect = []
+
+[package.metadata.product]
+zone = "interface"
+role = "terminal-batch-dla-interface"
+release_impact = "medium"
+stability_target = "iterative"

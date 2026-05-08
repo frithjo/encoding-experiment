@@ -13,8 +13,16 @@ fn make_meta(token: &str, id: u32, score: f32) -> FeatureMeta {
         top_token_id: id,
         c_score: score,
         top_k: vec![
-            larql_models::TopKEntry { token: token.to_string(), token_id: id, logit: score },
-            larql_models::TopKEntry { token: "also".to_string(), token_id: id + 1, logit: score * 0.5 },
+            larql_models::TopKEntry {
+                token: token.to_string(),
+                token_id: id,
+                logit: score,
+            },
+            larql_models::TopKEntry {
+                token: "also".to_string(),
+                token_id: id + 1,
+                logit: score * 0.5,
+            },
         ],
     }
 }
@@ -87,7 +95,10 @@ fn main() {
 
     let start = Instant::now();
     let index = bench_index();
-    println!("  Built in {:.0}ms\n", start.elapsed().as_secs_f64() * 1000.0);
+    println!(
+        "  Built in {:.0}ms\n",
+        start.elapsed().as_secs_f64() * 1000.0
+    );
 
     let patched = PatchedVindex::new(index);
 
@@ -261,9 +272,11 @@ fn main() {
         description: None,
         author: None,
         tags: vec![],
-        operations: vec![
-            larql_vindex::PatchOp::Delete { layer: 0, feature: 0, reason: None },
-        ],
+        operations: vec![larql_vindex::PatchOp::Delete {
+            layer: 0,
+            feature: 0,
+            reason: None,
+        }],
     };
     // Measure apply+remove on a fresh PatchedVindex (reuses existing base via clone).
     // Note: clone cost dominates in debug builds. Run with --release for accurate numbers.
@@ -308,8 +321,16 @@ fn main() {
             author: None,
             tags: vec![],
             operations: vec![
-                larql_vindex::PatchOp::Delete { layer: 0, feature: 0, reason: None },
-                larql_vindex::PatchOp::Delete { layer: 1, feature: 1, reason: None },
+                larql_vindex::PatchOp::Delete {
+                    layer: 0,
+                    feature: 0,
+                    reason: None,
+                },
+                larql_vindex::PatchOp::Delete {
+                    layer: 1,
+                    feature: 1,
+                    reason: None,
+                },
             ],
         };
         session.apply_patch(patch);
@@ -342,7 +363,13 @@ fn main() {
 
     println!("\n── Summary ──");
     let total_features: usize = all_layers.iter().map(|l| patched.num_features(*l)).sum();
-    println!("  Index: {} layers, {} features/layer, {} total, hidden={}", all_layers.len(), 1024, total_features, hidden);
+    println!(
+        "  Index: {} layers, {} features/layer, {} total, hidden={}",
+        all_layers.len(),
+        1024,
+        total_features,
+        hidden
+    );
     println!("  All times include full operation (KNN + sort + truncate + metadata)");
     println!("\n  Expected server latency = operation time + serialization + network RTT");
 }

@@ -12,7 +12,11 @@ categories = ["data-structures", "science"]
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+sha2 = "0.10"
 libc = "0.2"
+config = "0.14"
+dotenvy = "0.15"
+dirs = "5.0"
 
 # HTTP provider — optional so pure graph usage has zero network deps
 reqwest = { version = "0.12", features = ["blocking", "json"], optional = true }
@@ -33,3 +37,9 @@ msgpack = ["dep:rmp-serde"]
 [dev-dependencies]
 assert_approx_eq = "1"
 tempfile = "3"
+
+[package.metadata.product]
+zone = "core"
+role = "shared-graph-and-io-primitives"
+release_impact = "high"
+stability_target = "stable"

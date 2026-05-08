@@ -1,3 +1,0 @@
-H3_rollout_shift_without_exclusion,n_rows,mean_n_admissible_edges,mean_outdeg_risky,mean_outdeg_boundary,mean_safe_count_risky,mean_safe_count_boundary,mean_total_safe_count_assessment
-False,23,43.91304347826087,3.608695652173913,5.217391304347826,2.608695652173913,4.0,13.26086956521739
-True,9,43.333333333333336,3.2222222222222223,5.333333333333333,2.2222222222222223,4.0,12.333333333333334
