@@ -49,6 +49,12 @@ larql extract-index google/gemma-3-4b-it -o gemma3-4b.vindex --level inference -
 # Or convert from GGUF
 larql convert gguf-to-vindex model.gguf -o model.vindex --f16
 
+# Or extract and prove raw GGUF attention tensors without tokenizer/dequantization
+larql convert gguf-attention-proof model.gguf -o attention-proof --attention-scope all
+
+# Or prove separated attention runtime over TCP with a real GGUF tensor graph
+larql attention-runtime proof --gguf model.gguf --seq-len 2 -o separated-attention-gguf-layer-proof.json
+
 # Or download from HuggingFace
 larql hf download chrishayuk/gemma-3-4b-it-vindex
 
