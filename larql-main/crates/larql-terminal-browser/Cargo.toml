@@ -25,5 +25,5 @@ serde = { version = "1.0", features = ["derive"] }
 [package.metadata.product]
 zone = "interface"
 role = "terminal-workbench-ux-surface"
-release_impact = "medium"
-stability_target = "iterative"
+release_impact = "high"
+stability_target = "stable"

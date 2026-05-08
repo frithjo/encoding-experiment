@@ -33,3 +33,9 @@ decode-png = ["dep:image"]
 decode-jpeg = ["dep:image"]
 ratatui = ["dep:ratatui"]
 crossterm = ["dep:crossterm"]
+
+[package.metadata.product]
+zone = "interface"
+role = "terminal-rendering-primitives"
+release_impact = "medium"
+stability_target = "iterative"

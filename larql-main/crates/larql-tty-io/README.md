@@ -1,5 +1,12 @@
 # larql-tty-io
 
+## Crate Role
+
+- Role: TTY input and mode
+- Zone: interface
+- Release impact: medium
+- Stability target: iterative
+
 TTY input decoding and terminal mode management for terminal-embedded UIs.
 
 ## Purpose

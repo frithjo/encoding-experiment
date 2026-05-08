@@ -26,3 +26,9 @@ token-decode = []
 layer-diff = []
 logit-lens = []
 circuit-detect = []
+
+[package.metadata.product]
+zone = "interface"
+role = "terminal-batch-dla-interface"
+release_impact = "medium"
+stability_target = "iterative"

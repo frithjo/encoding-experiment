@@ -1,5 +1,12 @@
 # larql-leptos
 
+## Crate Role
+
+- Role: Rust WASM workbench frontend
+- Zone: interface
+- Release impact: medium
+- Stability target: iterative
+
 Leptos frontend (Rust/WASM) for model-specific tools with larql-server backend.
 
 ## Status
