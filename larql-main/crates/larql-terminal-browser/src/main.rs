@@ -1,24 +1,30 @@
 //! First-party terminal browser launcher for the LARQL workbench.
 //!
-//! This delegates rendering to Carbonyl (Chromium in terminal).
+//! Hybrid approach: Ratatui for layout/navigation/keyboard handling,
+//! Carbonyl for rich content rendering (HTML/CSS/JS, images, video).
 
 use clap::Parser;
 use larql_tty_io::{is_tty, query_graphics_capabilities};
 use std::{
-    env,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
     process::{Command, ExitCode},
+    sync::{mpsc, Arc, Mutex},
 };
+
+mod bridge;
+mod ratatui;
+
+use bridge::{BridgeState, RenderCoordinator};
 
 #[derive(Parser, Debug)]
 #[command(
     name = "larql-terminal-browser",
-    about = "Terminal browser client for the LARQL workbench (Carbonyl-backed)"
+    about = "Hybrid terminal browser for the LARQL workbench (Ratatui + Carbonyl)"
 )]
 struct Args {
     /// Workbench base URL (served by `larql-ui`).
-    #[arg(default_value = "http://127.0.0.1:8000")]
+    #[arg(long, default_value = "http://127.0.0.1:8000")]
     url: String,
 
     /// Optional absolute path to Carbonyl binary.
@@ -29,21 +35,9 @@ struct Args {
     #[arg(long)]
     carbonyl_bin: Option<PathBuf>,
 
-    /// Enable fullscreen mode (default).
-    #[arg(long, default_value_t = true)]
-    fullscreen: bool,
-
-    /// Disable fullscreen mode.
+    /// Disable hybrid mode (use Carbonyl only).
     #[arg(long)]
-    no_fullscreen: bool,
-
-    /// Hide Carbonyl navigation UI/chrome (default).
-    #[arg(long, default_value_t = true)]
-    hide_ui: bool,
-
-    /// Show Carbonyl navigation UI/chrome.
-    #[arg(long)]
-    show_ui: bool,
+    no_hybrid: bool,
 
     /// Extra arguments forwarded directly to Carbonyl.
     /// Repeat for multiple flags, e.g.:
@@ -57,8 +51,14 @@ fn check_carbonyl_health(bin: &Path) -> Result<(), String> {
     let output = Command::new(bin).arg("--help").output();
     match output {
         Ok(output) if output.status.success() => Ok(()),
-        Ok(_) => Err(format!("Carbonyl binary exists but is not executable: {:?}", bin)),
-        Err(e) => Err(format!("Failed to execute Carbonyl binary {:?}: {}", bin, e)),
+        Ok(_) => Err(format!(
+            "Carbonyl binary exists but is not executable: {:?}",
+            bin
+        )),
+        Err(e) => Err(format!(
+            "Failed to execute Carbonyl binary {:?}: {}",
+            bin, e
+        )),
     }
 }
 
@@ -68,12 +68,19 @@ async fn check_workbench_health(url: &str) -> Result<(), String> {
         .timeout(std::time::Duration::from_secs(5))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
-    
+
     let response = client.get(&health_url).send().await;
     match response {
         Ok(resp) if resp.status().is_success() => Ok(()),
-        Ok(resp) => Err(format!("Workbench returned status {}: {}", resp.status(), health_url)),
-        Err(e) => Err(format!("Failed to connect to workbench at {}: {}", health_url, e)),
+        Ok(resp) => Err(format!(
+            "Workbench returned status {}: {}",
+            resp.status(),
+            health_url
+        )),
+        Err(e) => Err(format!(
+            "Failed to connect to workbench at {}: {}",
+            health_url, e
+        )),
     }
 }
 
@@ -85,8 +92,8 @@ fn resolve_carbonyl_bin(args: &Args) -> PathBuf {
         return bin;
     }
     // Prefer the in-repo component runtime binary when available.
-    let repo_runtime = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../apps/terminal-runtime/bin/carbonyl");
+    let repo_runtime =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps/terminal-runtime/bin/carbonyl");
     if repo_runtime.exists() {
         return repo_runtime;
     }
@@ -99,7 +106,7 @@ fn check_first_run() -> bool {
     let config_dir = dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from(env::var("HOME").unwrap_or_else(|_| ".".to_string())))
         .join("larql");
-    
+
     let marker_file = config_dir.join(".terminal-browser-setup-complete");
     !marker_file.exists()
 }
@@ -109,9 +116,12 @@ fn mark_first_run_complete() -> Result<(), std::io::Error> {
     let config_dir = dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from(env::var("HOME").unwrap_or_else(|_| ".".to_string())))
         .join("larql");
-    
+
     fs::create_dir_all(&config_dir)?;
-    fs::write(config_dir.join(".terminal-browser-setup-complete"), "setup-complete")
+    fs::write(
+        config_dir.join(".terminal-browser-setup-complete"),
+        "setup-complete",
+    )
 }
 
 /// Run first-run setup wizard.
@@ -152,10 +162,7 @@ fn run_first_run_setup() -> Result<(), String> {
     let carbonyl = resolve_carbonyl_bin(&Args {
         url: String::new(),
         carbonyl_bin: None,
-        fullscreen: true,
-        no_fullscreen: false,
-        hide_ui: true,
-        show_ui: false,
+        no_hybrid: false,
         carbonyl_arg: vec![],
     });
 
@@ -193,7 +200,10 @@ fn run_first_run_setup() -> Result<(), String> {
 #[tokio::main]
 async fn main() -> ExitCode {
     let args = Args::parse();
-    
+
+    // Determine if hybrid mode should be used
+    let use_hybrid = !args.no_hybrid;
+
     // First-run setup
     if check_first_run() {
         if let Err(err) = run_first_run_setup() {
@@ -206,8 +216,8 @@ async fn main() -> ExitCode {
         io::stdout().flush().unwrap();
         io::stdin().read_line(&mut String::new()).unwrap();
     }
-    
-    // Workbench health check before launching Carbonyl
+
+    // Workbench health check
     if let Err(err) = check_workbench_health(&args.url).await {
         eprintln!("Error: Workbench health check failed");
         eprintln!("Details: {}", err);
@@ -219,10 +229,9 @@ async fn main() -> ExitCode {
         eprintln!("  4. Use --url flag to specify different workbench URL");
         return ExitCode::from(1);
     }
-    
-    let carbonyl = resolve_carbonyl_bin(&args);
 
-    // Health check before launching Carbonyl
+    // Check Carbonyl health
+    let carbonyl = resolve_carbonyl_bin(&args);
     if let Err(err) = check_carbonyl_health(&carbonyl) {
         eprintln!("larql-terminal-browser: {}", err);
         eprintln!();
@@ -234,9 +243,66 @@ async fn main() -> ExitCode {
         return ExitCode::from(1);
     }
 
-    // Wrap Carbonyl launch with TtyGuard for cleanup on failure or exit.
-    // The guard ensures the terminal is restored to its original state if
-    // Carbonyl fails to launch or exits abnormally.
+    // Choose mode based on arguments
+    if use_hybrid {
+        run_hybrid_mode(args, carbonyl).await
+    } else {
+        run_carbonyl_only_mode(args, carbonyl)
+    }
+}
+
+/// Run in hybrid mode (Ratatui + Carbonyl).
+async fn run_hybrid_mode(args: Args, carbonyl: PathBuf) -> ExitCode {
+    // Set up TTY guard
+    let _guard = if is_tty() {
+        Some(larql_tty_io::TtyGuard::new())
+    } else {
+        None
+    };
+
+    // Create keyboard event channel
+    let (keyboard_tx, keyboard_rx) = mpsc::channel();
+
+    // Initialize bridge state
+    let bridge_state = BridgeState {
+        workbench_url: args.url.clone(),
+        carbonyl_path: Some(carbonyl),
+        ..Default::default()
+    };
+
+    let ratatui_state = Arc::new(Mutex::new(ratatui::AppState::default()));
+    let (tui_control_tx, tui_control_rx) = mpsc::channel();
+
+    // Spawn Ratatui TUI loop in a separate thread
+    let ratatui_state_for_tui = Arc::clone(&ratatui_state);
+    let tui_handle = std::thread::spawn(move || {
+        if let Err(err) = ratatui::run_tui_loop(keyboard_tx, ratatui_state_for_tui, tui_control_rx)
+        {
+            eprintln!("Ratatui TUI loop error: {}", err);
+        }
+    });
+
+    // Create and run render coordinator
+    let mut coordinator = RenderCoordinator::new(
+        bridge_state,
+        keyboard_rx,
+        ratatui_state,
+        tui_control_tx,
+        tui_handle,
+    );
+
+    match coordinator.run() {
+        Ok(_) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("Render coordinator error: {}", err);
+            ExitCode::from(1)
+        }
+    }
+}
+
+/// Run in Carbonyl-only mode (legacy behavior).
+fn run_carbonyl_only_mode(args: Args, carbonyl: PathBuf) -> ExitCode {
+    // Wrap Carbonyl launch with TtyGuard for cleanup on failure or exit
     let _guard = if is_tty() {
         Some(larql_tty_io::TtyGuard::new())
     } else {
@@ -244,21 +310,8 @@ async fn main() -> ExitCode {
     };
 
     let mut cmd = Command::new(&carbonyl);
-    // Terminal runtime remains mandatory; display behavior stays user-configurable.
-    let fullscreen = if args.no_fullscreen {
-        false
-    } else {
-        args.fullscreen
-    };
-    let hide_ui = if args.show_ui { false } else { args.hide_ui };
 
-    if fullscreen {
-        cmd.arg("--fullscreen");
-        cmd.env("CARBONYL_ENV_FULLSCREEN", "1");
-    }
-    if hide_ui {
-        cmd.arg("--hide-ui");
-    }
+    // Add Carbonyl arguments
     if !args.carbonyl_arg.is_empty() {
         cmd.args(&args.carbonyl_arg);
     }

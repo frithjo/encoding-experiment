@@ -14,11 +14,11 @@
 //!   a dedicated Linux thread that reads the pipe.
 
 use libc::{tcsetattr, termios, TCSANOW};
+use std::env;
 use std::io::{self, Read, Write};
 use std::os::unix::io::FromRawFd;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
-use std::env;
 
 /// Enter-sequence escape string emitted by [`TtyGuard::new`]. Exposed for tests.
 pub const ENTER_SEQ: &str = concat!(
@@ -108,7 +108,6 @@ pub fn query_graphics_capabilities() -> Option<GraphicsCapabilities> {
 
     // Read response with timeout
     let mut stdin = io::stdin();
-    let mut buf = [0u8; 64];
     let mut response = Vec::new();
     let start = std::time::Instant::now();
 
@@ -184,10 +183,7 @@ impl TtyGuard {
         let mut term: termios = unsafe { std::mem::zeroed() };
         unsafe {
             if libc::tcgetattr(libc::STDIN_FILENO, &mut term) != 0 {
-                return Err(format!(
-                    "tcgetattr failed: {}",
-                    io::Error::last_os_error()
-                ));
+                return Err(format!("tcgetattr failed: {}", io::Error::last_os_error()));
             }
         }
         let original = term;
@@ -202,21 +198,14 @@ impl TtyGuard {
             | libc::ICRNL
             | libc::IXON);
         term.c_oflag &= !libc::OPOST;
-        term.c_lflag &= !(libc::ECHO
-            | libc::ECHONL
-            | libc::ICANON
-            | libc::ISIG
-            | libc::IEXTEN);
+        term.c_lflag &= !(libc::ECHO | libc::ECHONL | libc::ICANON | libc::ISIG | libc::IEXTEN);
         term.c_cflag &= !(libc::CSIZE | libc::PARENB);
         term.c_cflag |= libc::CS8;
         term.c_cc[libc::VMIN] = 1;
         term.c_cc[libc::VTIME] = 0;
         unsafe {
             if tcsetattr(libc::STDIN_FILENO, TCSANOW, &term) != 0 {
-                return Err(format!(
-                    "tcsetattr failed: {}",
-                    io::Error::last_os_error()
-                ));
+                return Err(format!("tcsetattr failed: {}", io::Error::last_os_error()));
             }
         }
 
@@ -229,8 +218,8 @@ impl TtyGuard {
 
         // Install SIGWINCH self-pipe + reader thread.
         let (tx, rx) = mpsc::channel::<(u16, u16)>();
-        let (writer_fd, thread_handle) = install_sigwinch(tx)
-            .map_err(|e| format!("sigwinch install failed: {}", e))?;
+        let (writer_fd, thread_handle) =
+            install_sigwinch(tx).map_err(|e| format!("sigwinch install failed: {}", e))?;
 
         Ok(Self {
             original_termios: Some(original),
@@ -293,9 +282,7 @@ extern "C" fn sigwinch_handler(_sig: libc::c_int) {
     }
 }
 
-fn install_sigwinch(
-    tx: Sender<(u16, u16)>,
-) -> io::Result<(libc::c_int, thread::JoinHandle<()>)> {
+fn install_sigwinch(tx: Sender<(u16, u16)>) -> io::Result<(libc::c_int, thread::JoinHandle<()>)> {
     // Self-pipe.
     let mut fds = [0i32; 2];
     let rc = unsafe { libc::pipe(fds.as_mut_ptr()) };
@@ -315,7 +302,7 @@ fn install_sigwinch(
 
     // Install handler.
     let mut sa: libc::sigaction = unsafe { std::mem::zeroed() };
-    sa.sa_sigaction = sigwinch_handler as usize;
+    sa.sa_sigaction = sigwinch_handler as *const () as usize;
     unsafe {
         libc::sigemptyset(&mut sa.sa_mask);
     }
@@ -341,7 +328,7 @@ fn install_sigwinch(
         }
         loop {
             match f.read(&mut buf) {
-                Ok(0) => break,         // pipe closed — guard dropped
+                Ok(0) => break, // pipe closed — guard dropped
                 Err(_) => break,
                 Ok(_) => {
                     if let Some(sz) = winsize() {
@@ -400,26 +387,20 @@ mod tests {
             })
             .expect("openpty");
 
-        let mut master = pair.master;
+        let master = pair.master;
         let slave = pair.slave;
 
         // Spawn a minimal child that echoes back escape sequences.
         let mut cmd = CommandBuilder::new("cat");
         cmd.env("TERM", "xterm-256color");
-        let mut child = slave
-            .spawn_command(cmd)
-            .expect("spawn cat");
+        let mut child = slave.spawn_command(cmd).expect("spawn cat");
 
         // Write enter sequence via the writer handle.
         let mut writer = master.take_writer().expect("writer");
-        writer
-            .write_all(ENTER_SEQ.as_bytes())
-            .expect("write enter");
+        writer.write_all(ENTER_SEQ.as_bytes()).expect("write enter");
 
         // Write exit sequence.
-        writer
-            .write_all(EXIT_SEQ.as_bytes())
-            .expect("write exit");
+        writer.write_all(EXIT_SEQ.as_bytes()).expect("write exit");
 
         // Close the writer to signal EOF to cat.
         drop(writer);
@@ -452,7 +433,7 @@ mod tests {
 
         // Simulate guard creation and panic.
         let result = catch_unwind(AssertUnwindSafe(|| {
-            let mut master = master;
+            let master = master;
             let mut writer = master.take_writer().expect("writer");
             writer.write_all(ENTER_SEQ.as_bytes()).expect("write");
             panic!("simulated panic");
