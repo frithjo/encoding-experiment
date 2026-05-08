@@ -61,8 +61,8 @@ fn BatchDlaScan() -> impl IntoView {
                 "truth_spans": [],
                 "materially_false_spans": [],
                 "coherence_markers": [],
-                "max_generated_tokens": None,
-                "ridge_dead_zone": None
+                "max_generated_tokens": serde_json::Value::Null,
+                "ridge_dead_zone": serde_json::Value::Null
             });
 
             match gloo_net::http::Request::post("http://localhost:8080/v1/analyze-infer")
@@ -75,19 +75,27 @@ fn BatchDlaScan() -> impl IntoView {
                                 match response.json::<serde_json::Value>().await {
                                     Ok(result) => {
                                         // Parse the attention data from the response
-                                        if let Some(attention) = result.get("attention").and_then(|v| v.as_array()) {
+                                        if let Some(attention) =
+                                            result.get("attention").and_then(|v| v.as_array())
+                                        {
                                             let parsed_attention: Vec<AttentionData> = attention
                                                 .iter()
-                                                .filter_map(|v| serde_json::from_value(v.clone()).ok())
+                                                .filter_map(|v| {
+                                                    serde_json::from_value(v.clone()).ok()
+                                                })
                                                 .collect();
 
                                             set_attention_data.set(Some(parsed_attention));
 
-                                            if let Some(layers) = result.get("num_layers").and_then(|v| v.as_u64()) {
+                                            if let Some(layers) =
+                                                result.get("num_layers").and_then(|v| v.as_u64())
+                                            {
                                                 set_num_layers.set(layers as usize);
                                             }
 
-                                            if let Some(tokens_array) = result.get("tokens").and_then(|v| v.as_array()) {
+                                            if let Some(tokens_array) =
+                                                result.get("tokens").and_then(|v| v.as_array())
+                                            {
                                                 let parsed_tokens: Vec<usize> = tokens_array
                                                     .iter()
                                                     .filter_map(|v| v.as_u64().map(|u| u as usize))
@@ -99,12 +107,14 @@ fn BatchDlaScan() -> impl IntoView {
                                     }
                                     Err(e) => {
                                         set_loading.set(false);
-                                        set_error.set(Some(format!("Failed to parse response: {}", e)));
+                                        set_error
+                                            .set(Some(format!("Failed to parse response: {}", e)));
                                     }
                                 }
                             } else {
                                 set_loading.set(false);
-                                set_error.set(Some(format!("Server error: {}", response.status_text())));
+                                set_error
+                                    .set(Some(format!("Server error: {}", response.status_text())));
                             }
                         }
                         Err(e) => {
@@ -124,7 +134,7 @@ fn BatchDlaScan() -> impl IntoView {
     view! {
         <div class="batch-dla-scan">
             <h1>"Batch DLA Scan"</h1>
-            
+
             <div class="input-section">
                 <label>"Prompt:"</label>
                 <textarea
