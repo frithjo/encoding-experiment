@@ -10,6 +10,7 @@ pub mod block;
 pub mod gpu;
 pub mod gqa;
 pub mod rope;
+pub mod separated;
 
 use ndarray::Array2;
 
@@ -35,3 +36,15 @@ pub use gpu::{
 };
 pub use gqa::{gqa_attention, gqa_attention_with_weights};
 pub use rope::{apply_rope, apply_rope_partial};
+pub use separated::{
+    bind_separated_attention_listener, request_separated_attention,
+    run_attention_block_via_separated_runtime, run_separated_attention_capture,
+    run_separated_attention_request, separated_attention_request_capture,
+    separated_attention_request_wire_bytes, serve_separated_attention, AttentionTensor2,
+    SeparatedAttentionBlockOutput, SeparatedAttentionReady, SeparatedAttentionRequest,
+    SeparatedAttentionResponse, SeparatedAttentionRuntimeError,
+    SEPARATED_ATTENTION_ERROR_CAPSULE_KIND, SEPARATED_ATTENTION_ERROR_CAPTURE_KIND,
+    SEPARATED_ATTENTION_READY_CAPSULE_KIND, SEPARATED_ATTENTION_READY_CAPTURE_KIND,
+    SEPARATED_ATTENTION_REQUEST_CAPTURE_KIND, SEPARATED_ATTENTION_RESPONSE_CAPSULE_KIND,
+    SEPARATED_ATTENTION_RESPONSE_CAPTURE_KIND, SEPARATED_ATTENTION_RUNTIME_PRODUCER,
+};

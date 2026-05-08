@@ -197,7 +197,11 @@ pub fn analyze_infer(
     let strings: Vec<String> = tokens
         .ids
         .iter()
-        .map(|&id| tokenizer.decode(&[id], true).unwrap_or_else(|_| "?".to_string()))
+        .map(|&id| {
+            tokenizer
+                .decode(&[id], true)
+                .unwrap_or_else(|_| "?".to_string())
+        })
         .collect();
 
     let ffn = WeightFfn { weights };
@@ -325,7 +329,9 @@ pub fn analyze_infer(
 
         Some(AnalysisSummary {
             first_false_position: first_false_origin.as_ref().map(|origin| origin.position),
-            first_false_token: first_false_origin.as_ref().map(|origin| origin.token.clone()),
+            first_false_token: first_false_origin
+                .as_ref()
+                .map(|origin| origin.token.clone()),
             first_false_origin,
             top_coherence_heads,
             top_false_content_heads: top_false_heads,
@@ -425,9 +431,12 @@ fn generated_tokens_complete_span(
         return true;
     }
 
-    let max_window = generated_token_ids
-        .len()
-        .min(span.token_ids.len().saturating_mul(4).max(span.token_ids.len()));
+    let max_window = generated_token_ids.len().min(
+        span.token_ids
+            .len()
+            .saturating_mul(4)
+            .max(span.token_ids.len()),
+    );
     (1..=max_window).any(|window_len| {
         tokenizer
             .decode(
@@ -914,8 +923,12 @@ fn branch_probability(
         } else {
             let parent_prefix = &branch_token_ids[..step.saturating_sub(1)];
             let parent_state = state_cache.get(parent_prefix)?.clone();
-            let next_state =
-                incremental_forward_append_token(weights, &parent_state, branch_token_ids[step - 1], ffn)?;
+            let next_state = incremental_forward_append_token(
+                weights,
+                &parent_state,
+                branch_token_ids[step - 1],
+                ffn,
+            )?;
             let hidden = next_state.final_hidden().to_vec();
             state_cache.insert(prefix.to_vec(), next_state);
             hidden
@@ -978,11 +991,7 @@ mod tests {
     }
 
     impl Tokenizer for FakeTokenizer {
-        fn encode(
-            &self,
-            text: &str,
-            _add_special_tokens: bool,
-        ) -> Result<Encoded, TokenizerError> {
+        fn encode(&self, text: &str, _add_special_tokens: bool) -> Result<Encoded, TokenizerError> {
             self.encode_map
                 .get(text)
                 .cloned()
@@ -996,7 +1005,11 @@ mod tests {
                 .ok_or_else(|| TokenizerError::Parse("missing".to_string()))
         }
 
-        fn decode(&self, ids: &[u32], _skip_special_tokens: bool) -> Result<String, TokenizerError> {
+        fn decode(
+            &self,
+            ids: &[u32],
+            _skip_special_tokens: bool,
+        ) -> Result<String, TokenizerError> {
             if let Some(text) = self.decode_map.get(ids) {
                 return Ok(text.clone());
             }
@@ -1038,7 +1051,11 @@ mod tests {
     fn generated_tokens_complete_any_span_accepts_alternate_segmentation() {
         let tokenizer = FakeTokenizer::new();
         let spans = encode_spans(&tokenizer, &[String::from("Birnin Zana")]).unwrap();
-        assert!(generated_tokens_complete_any_span(&tokenizer, &[8, 9], &spans));
+        assert!(generated_tokens_complete_any_span(
+            &tokenizer,
+            &[8, 9],
+            &spans
+        ));
         assert!(generated_tokens_complete_any_span(&tokenizer, &[7], &spans));
     }
 
@@ -1047,17 +1064,26 @@ mod tests {
         let tokenizer = FakeTokenizer::new();
         let spans = encode_spans(&tokenizer, &[String::from("Birnin Zana")]).unwrap();
         let candidates = normalized_token_candidates(&tokenizer, &spans);
-        let resolution = exact_span_resolution(&tokenizer, &[], &spans, &candidates, |branch| {
-            match branch {
-                [7] => Some(0.3),
-                [8, 9] => Some(0.4),
-                _ => None,
-            }
-        });
+        let resolution =
+            exact_span_resolution(
+                &tokenizer,
+                &[],
+                &spans,
+                &candidates,
+                |branch| match branch {
+                    [7] => Some(0.3),
+                    [8, 9] => Some(0.4),
+                    _ => None,
+                },
+            );
 
         assert!((resolution.total_probability - 0.7).abs() < 1e-9);
         assert_eq!(
-            resolution.best_completion.as_ref().unwrap().branch_token_ids,
+            resolution
+                .best_completion
+                .as_ref()
+                .unwrap()
+                .branch_token_ids,
             vec![8, 9]
         );
     }

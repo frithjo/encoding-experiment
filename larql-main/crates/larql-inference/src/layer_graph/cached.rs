@@ -67,22 +67,33 @@ impl CachedLayerGraph {
         layer_range: std::ops::RangeInclusive<usize>,
         seq_len: usize,
     ) -> Result<Self, String> {
-        let cache_store = vindex.cache_store()
-            .ok_or_else(|| "No cache_store available in vindex (extract level < Inference?)".to_string())?;
+        let cache_store = vindex.cache_store().ok_or_else(|| {
+            "No cache_store available in vindex (extract level < Inference?)".to_string()
+        })?;
 
         let mut cache = std::collections::HashMap::new();
 
         for layer in layer_range {
             let residual_vec = cache_store
                 .get_residual_f32(template_id, layer, seq_len)
-                .ok_or_else(|| format!("No residual found for template {} layer {}", template_id, layer))?;
+                .ok_or_else(|| {
+                    format!(
+                        "No residual found for template {} layer {}",
+                        template_id, layer
+                    )
+                })?;
 
             // Convert to Array2 [seq_len, hidden_size]
             let hidden_size = residual_vec.len() / seq_len;
             if residual_vec.len() != seq_len * hidden_size {
                 return Err(format!(
                     "Residual size mismatch for template {} layer {}: expected {} ({}x{}), got {}",
-                    template_id, layer, seq_len * hidden_size, seq_len, hidden_size, residual_vec.len()
+                    template_id,
+                    layer,
+                    seq_len * hidden_size,
+                    seq_len,
+                    hidden_size,
+                    residual_vec.len()
                 ));
             }
 
@@ -97,6 +108,10 @@ impl CachedLayerGraph {
 
     pub fn has_layer(&self, layer: usize) -> bool {
         self.cache.contains_key(&layer)
+    }
+
+    pub fn residual(&self, layer: usize) -> Option<&Array2<f32>> {
+        self.cache.get(&layer)
     }
 
     pub fn num_cached(&self) -> usize {

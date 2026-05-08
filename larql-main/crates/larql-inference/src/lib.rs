@@ -31,12 +31,12 @@ pub use larql_compute::{
 };
 
 // Re-export essentials at crate root.
-pub use attention::AttentionWeights;
 pub use analysis::{
     analyze_infer, AnalysisMode, AnalysisRequest, AnalysisResult, AnalysisSummary, AttentionLayer,
     FirstFalseOrigin, GeneratedStep, HeadContribution, HeadDlaLayer, LayerRidge, LogitLensLayer,
     StepTopHeadSummary, TokenAnalysis,
 };
+pub use attention::AttentionWeights;
 pub use capture::{
     CaptureCallbacks, CaptureConfig, InferenceModel, TopKEntry, VectorFileHeader, VectorRecord,
 };
