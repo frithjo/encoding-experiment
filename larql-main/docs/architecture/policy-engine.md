@@ -12,6 +12,7 @@ Active policy lives in:
 - included `governance/policies/*.toml` packs;
 - `governance/profiles/*.toml`;
 - `governance/flows/*.toml`;
+- `governance/recipes/*.toml`;
 - `governance/tests/*_cases.toml` policy tests.
 
 The authored files are not the engine. They are loaded into a
@@ -21,16 +22,18 @@ runtime state is represented by `ActivePolicy`, an immutable `Arc<PolicyEngine>`
 plus policy hash and generation.
 
 ```text
-authored config/packs/profiles/flows
+authored config/packs/profiles/flows/recipes
 -> validated PolicyRegistry
 -> CompiledPolicyPlan
 -> immutable PolicyEngine
 -> decisions / receipts / capabilities / activation
 ```
 
-The config selects active packs, profiles, flows, and mode. It does not contain
-executable policy logic. Rules remain in policy packs. Profiles attach rule sets
-to artifact classes. Flows define lawful transition paths.
+The config selects active packs, profiles, flows, recipes, and mode. It does
+not contain executable policy logic. Rules remain in policy packs. Profiles
+attach rule sets to artifact classes. Flows define lawful transition paths.
+Recipes collect structured questions, factoids, derived facts, and required
+outputs for governed work; they do not decide authority.
 
 The engine accepts facts and emits decisions:
 
@@ -111,6 +114,10 @@ Policy flows are first-class config:
 - `governance/flows/patch_application.toml`;
 - `governance/flows/capability_minting.toml`;
 - `governance/flows/replay_closure.toml`.
+
+Policy recipes are first-class config:
+
+- `governance/recipes/struct_minting.toml`.
 
 Decision surface:
 

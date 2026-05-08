@@ -47,6 +47,9 @@ Machine governance also has a first-class rule profile:
 `governance/profiles/machine.toml`. That profile attaches the active machine
 rule sets to the `machine` artifact class and selects
 `governance/flows/machine_creation.toml` as the lawful default flow.
+Structured machine work may also use a recipe, such as
+`governance/recipes/struct_minting.toml`, to collect factoids and outputs
+before the engine evaluates authority.
 
 ## Non-Machine
 

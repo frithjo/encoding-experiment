@@ -53,8 +53,9 @@ pub use rules_engine::{
     apply_policy_update, draft_rule_proposal_from_intent, load_policy_registry,
     load_policy_registry_from_material, mint_policy_update_capability,
     validate_policy_apply_request, validate_policy_update_ceremony_trace,
-    validate_policy_weakening_evidence, ActivePolicy, ArtifactClass, CompiledPolicyPlan, Condition,
-    ConditionBlock, ConflictResolutionMode, DecisionKind, FactValue, FactView, FlowStep,
+    validate_policy_weakening_evidence, ActivePolicy, AnswerKind, ArtifactClass,
+    CompiledPolicyPlan, Condition, ConditionBlock, ConflictResolutionMode, DecisionKind,
+    DerivedFactRule, EntryCondition, FactValue, FactView, FactoidSpec, FlowStep, PatchTemplateRef,
     PolicyApplyReceipt, PolicyApplyRequest, PolicyApproval, PolicyCapability, PolicyClass,
     PolicyCompileReport, PolicyConflict, PolicyConflictAnalysis, PolicyEngine,
     PolicyEngineDecision, PolicyEvaluationFinding, PolicyFact, PolicyFlow, PolicyInput,
@@ -63,8 +64,9 @@ pub use rules_engine::{
     PolicyShadowEvalReport, PolicyShadowEvalSummary, PolicyTestCase, PolicyTestExpectation,
     PolicyTestReport, PolicyTestSuite, PolicyUpdateCeremonyEvent, PolicyUpdateCeremonyReport,
     PolicyUpdateCeremonyTrace, PolicyUpdateType, PolicyWeakeningEvidence, ProsePolicyConcern,
-    RuleIndex, RuleProfile, RuleProposal, RuleSet, ShadowEvalRecommendation, ShadowEvalResult,
-    UnknownFactMode, UnknownRuleMode,
+    Question, Recipe, RecipeKind, RecipeRunner, RequiredOutput, RuleIndex, RuleProfile,
+    RuleProposal, RuleSet, ShadowEvalRecommendation, ShadowEvalResult, UnknownFactMode,
+    UnknownRuleMode,
 };
 pub use struct_minter::{
     mint_struct, mint_struct_with_profile, verify_struct_spec, verify_struct_spec_with_profile,
