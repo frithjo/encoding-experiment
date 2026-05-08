@@ -7,7 +7,8 @@ cd "$repo_root"
 mkdir -p target/governance
 rm -f \
   target/governance/invariant-registry-receipt.json \
-  target/governance/policy-decisions.jsonl
+  target/governance/policy-decisions.jsonl \
+  target/governance/policy-shadow-eval-report.json
 cargo run -q -p larql-cli --bin larql -- machine rules verify \
   --registry governance/invariants/registry.json \
   --out target/governance/invariant-registry-receipt.json >/dev/null
@@ -22,6 +23,11 @@ for cases in governance/policies/*_cases.toml; do
     --cases "$cases" \
     --policy governance/policies/index.toml >/dev/null
 done
+cargo run -q -p larql-cli --bin larql -- machine rules shadow-eval \
+  --proposal governance/proposals/policy_shadow_eval_fixture.json \
+  --cases governance/proposals/policy_shadow_eval_fixture_cases.toml \
+  --policy governance/policies/index.toml \
+  > target/governance/policy-shadow-eval-report.json
 cargo run -q -p larql-cli --bin larql -- machine decision-surface validate \
   --registry governance/decision_surface/registry.toml \
   --budgets governance/ceremonies/budgets.toml \

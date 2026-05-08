@@ -1,12 +1,12 @@
 use clap::{Args, Subcommand};
 use larql_governance::{
-    draft_rule_proposal_from_intent, hash_text, load_policy_registry,
-    mint_policy_update_capability, validate_invariant_registry, validate_policy_apply_request,
+    apply_policy_update, draft_rule_proposal_from_intent, hash_text, load_policy_registry,
+    mint_policy_update_capability, validate_invariant_registry,
     validate_policy_update_ceremony_trace, ConditionBlock, DecisionKind,
-    GovernanceInvariantRegistry, PolicyApplyReceipt, PolicyApplyRequest, PolicyApproval,
-    PolicyCapability, PolicyClass, PolicyEngine, PolicyEngineDecision, PolicyInput, PolicyIntent,
-    PolicyIntentExtraction, PolicyRegistry, PolicyRule, PolicyTestReport, PolicyTestSuite,
-    PolicyUpdateCeremonyTrace, PolicyUpdateType, ProsePolicyConcern, RuleProposal,
+    GovernanceInvariantRegistry, PolicyApplyRequest, PolicyApproval, PolicyCapability, PolicyClass,
+    PolicyEngine, PolicyEngineDecision, PolicyInput, PolicyIntent, PolicyIntentExtraction,
+    PolicyRegistry, PolicyTestReport, PolicyTestSuite, PolicyUpdateCeremonyTrace, PolicyUpdateType,
+    ProsePolicyConcern, RuleProposal,
 };
 use serde::Serialize;
 use std::error::Error;
@@ -50,7 +50,9 @@ enum RulesCommand {
         #[arg(long)]
         proposal: PathBuf,
         #[arg(long)]
-        facts: PathBuf,
+        facts: Option<PathBuf>,
+        #[arg(long)]
+        cases: Option<PathBuf>,
         #[arg(long)]
         policy: PathBuf,
     },
@@ -157,8 +159,9 @@ pub fn run(args: RulesArgs) -> Result<(), Box<dyn Error>> {
         RulesCommand::ShadowEval {
             proposal,
             facts,
+            cases,
             policy,
-        } => run_shadow_eval(&proposal, &facts, &policy),
+        } => run_shadow_eval(&proposal, facts.as_deref(), cases.as_deref(), &policy),
         RulesCommand::ConflictCheck { proposal, policy } => run_conflict_check(&proposal, &policy),
         RulesCommand::Propose {
             from_prose,
@@ -327,13 +330,28 @@ fn run_test(cases: &Path, policy: &Path) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn run_shadow_eval(proposal: &Path, facts: &Path, policy: &Path) -> Result<(), Box<dyn Error>> {
+fn run_shadow_eval(
+    proposal: &Path,
+    facts: Option<&Path>,
+    cases: Option<&Path>,
+    policy: &Path,
+) -> Result<(), Box<dyn Error>> {
     let registry = load_policy_registry(policy)?;
     let engine = PolicyEngine::new(registry)?;
     let proposal: RuleProposal = serde_json::from_str(&fs::read_to_string(proposal)?)?;
-    let input: PolicyInput = serde_json::from_str(&fs::read_to_string(facts)?)?;
-    let result = engine.shadow_eval(proposal, &input)?;
-    write_json_or_print(None, &result)
+    match (facts, cases) {
+        (Some(facts), None) => {
+            let input: PolicyInput = serde_json::from_str(&fs::read_to_string(facts)?)?;
+            let result = engine.shadow_eval(proposal, &input)?;
+            write_json_or_print(None, &result)
+        }
+        (None, Some(cases)) => {
+            let suite: PolicyTestSuite = toml::from_str(&fs::read_to_string(cases)?)?;
+            let result = engine.shadow_eval_suite(proposal, &suite)?;
+            write_json_or_print(None, &result)
+        }
+        _ => Err("shadow-eval requires exactly one of --facts or --cases".into()),
+    }
 }
 
 fn run_conflict_check(proposal: &Path, policy: &Path) -> Result<(), Box<dyn Error>> {
@@ -452,31 +470,8 @@ fn run_mint_capability(
 }
 
 fn run_apply(request: &Path, policy: &Path) -> Result<(), Box<dyn Error>> {
-    let registry = load_policy_registry(policy)?;
     let request: PolicyApplyRequest = serde_json::from_str(&fs::read_to_string(request)?)?;
-    validate_policy_apply_request(&registry, &request)?;
-    let policy_file = PathBuf::from(&request.target_policy_file);
-    ensure_repo_relative_path(&policy_file)?;
-    let mut file = OpenOptions::new()
-        .create(false)
-        .append(true)
-        .open(&policy_file)?;
-    writeln!(file)?;
-    writeln!(file, "{}", rule_as_toml(&request.proposal.proposed_rule)?)?;
-    drop(file);
-
-    let new_registry = load_policy_registry(policy)?;
-    let receipt = PolicyApplyReceipt {
-        schema_version: "larql.governance.policy_apply_receipt.v1".to_string(),
-        event_type: "PolicyFileUpdated".to_string(),
-        rule_id: request.proposal.proposed_rule.id,
-        policy_file: request.target_policy_file,
-        prior_policy_hash: registry.policy_hash,
-        new_policy_hash: new_registry.policy_hash,
-        prior_state_hash: request.capability.prior_state_hash,
-        applied_by_capability: request.capability.capability_type,
-        required_checks: request.capability.required_checks,
-    };
+    let receipt = apply_policy_update(policy, &request)?;
     write_json_or_print(None, &receipt)
 }
 
@@ -491,18 +486,6 @@ fn append_ledger(path: &Path, decision: &PolicyEngineDecision) -> Result<(), Box
     serde_json::to_writer(&mut file, decision)?;
     writeln!(file)?;
     Ok(())
-}
-
-fn rule_as_toml(rule: &PolicyRule) -> Result<String, Box<dyn Error>> {
-    #[derive(Serialize)]
-    struct RuleAppend<'a> {
-        rule: Vec<&'a PolicyRule>,
-    }
-    let mut text = toml::to_string_pretty(&RuleAppend { rule: vec![rule] })?;
-    if !text.ends_with('\n') {
-        text.push('\n');
-    }
-    Ok(text)
 }
 
 fn write_json_or_print<T: Serialize>(path: Option<&Path>, value: &T) -> Result<(), Box<dyn Error>> {
