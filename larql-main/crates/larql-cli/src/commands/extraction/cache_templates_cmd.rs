@@ -8,8 +8,8 @@ use std::path::PathBuf;
 use clap::Parser;
 
 use larql_inference::layer_graph::CachedLayerGraph;
+use larql_inference::WeightFfn;
 use larql_models::load_model_dir;
-use larql_tokenizer::Tokenizer;
 
 /// Cache template residuals for fast inference.
 #[derive(Parser, Debug)]
@@ -60,7 +60,7 @@ impl CacheTemplatesCmd {
 
         // Load vindex
         let mut callbacks = larql_vindex::SilentLoadCallbacks;
-        let vindex = larql_vindex::VectorIndex::load_vindex(&self.vindex, &mut callbacks)?;
+        let _vindex = larql_vindex::VectorIndex::load_vindex(&self.vindex, &mut callbacks)?;
 
         // Check extract level
         let config = larql_vindex::load_vindex_config(&self.vindex)?;
@@ -76,14 +76,20 @@ impl CacheTemplatesCmd {
 
         // Get templates
         let templates = if self.num_templates > 0 {
-            &larql_vindex::extract::DEFAULT_TEMPLATES[..self.num_templates.min(larql_vindex::extract::DEFAULT_TEMPLATES.len())]
+            &larql_vindex::extract::DEFAULT_TEMPLATES[..self
+                .num_templates
+                .min(larql_vindex::extract::DEFAULT_TEMPLATES.len())]
         } else {
             larql_vindex::extract::DEFAULT_TEMPLATES
         };
 
         let layer_range = self.layer_range.clone().unwrap_or(0..=12);
 
-        eprintln!("Caching {} templates with layer range {:?}", templates.len(), layer_range);
+        eprintln!(
+            "Caching {} templates with layer range {:?}",
+            templates.len(),
+            layer_range
+        );
 
         // Create cache writer
         let cache_path = self.vindex.join("cached_residuals.bin");
@@ -103,7 +109,10 @@ impl CacheTemplatesCmd {
 
         // Compute residuals for each template
         for (template_id, template_def) in templates.iter().enumerate() {
-            eprintln!("Computing residuals for template {}: {}", template_id, template_def.name);
+            eprintln!(
+                "Computing residuals for template {}: {}",
+                template_id, template_def.name
+            );
 
             // Tokenize template
             let prompt = template_def.pattern;
@@ -112,19 +121,15 @@ impl CacheTemplatesCmd {
 
             // Build cached residuals using CachedLayerGraph
             let cached_layers: Vec<usize> = layer_range.clone().collect();
-            let cache = CachedLayerGraph::build(
-                &weights,
-                &token_ids,
-                &cached_layers,
-                &larql_inference::ffn::DenseFfn,
-            );
+            let dense_ffn = WeightFfn { weights: &weights };
+            let cache = CachedLayerGraph::build(&weights, &token_ids, &cached_layers, &dense_ffn);
 
             // Convert to storage format
             let mut residuals = Vec::new();
             for layer in layer_range.clone() {
-                if let Some(residual) = cache.cache.get(&layer) {
+                if let Some(residual) = cache.residual(layer) {
                     // Convert Array2 to Vec<f32>
-                    let residual_vec = residual.as_slice().to_vec();
+                    let residual_vec = residual.iter().copied().collect();
                     residuals.push((layer, residual_vec));
                 }
             }
@@ -138,15 +143,24 @@ impl CacheTemplatesCmd {
                 &residuals,
             )?;
 
-            eprintln!("  Cached {} layers for template {}", residuals.len(), template_def.name);
+            eprintln!(
+                "  Cached {} layers for template {}",
+                residuals.len(),
+                template_def.name
+            );
         }
 
         // Finish writing
+        let total_templates = cache_writer.n_templates();
         cache_writer.finish()?;
 
         eprintln!("Cached residuals written to: {}", cache_path.display());
-        eprintln!("Total templates cached: {}", cache_writer.n_templates());
+        eprintln!("Total templates cached: {}", total_templates);
 
         Ok(())
     }
+}
+
+pub fn run(args: CacheTemplatesCmd) -> Result<(), Box<dyn std::error::Error>> {
+    args.run()
 }

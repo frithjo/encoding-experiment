@@ -6,6 +6,7 @@ mod utils;
 
 use commands::extraction::*;
 use commands::query::*;
+use larql_core::config::{load_config, AppConfig};
 
 #[derive(Parser)]
 #[command(
@@ -47,6 +48,9 @@ enum Commands {
 
     /// Capture and compare attention patterns across prompts.
     AttentionCapture(attention_capture_cmd::AttentionCaptureArgs),
+
+    /// Run or prove separated attention over TCP with Q/K/V payloads only.
+    AttentionRuntime(attention_runtime_cmd::AttentionRuntimeArgs),
 
     /// Extract attention template circuits from QK weight decomposition.
     QkTemplates(qk_templates_cmd::QkTemplatesArgs),
@@ -218,7 +222,7 @@ struct ServeArgs {
 fn main() {
     // Load configuration at startup
     // This loads from config/default.toml, config/local.toml, .env, and LARQL__ env vars
-    let _config = match larql_core::load_config() {
+    let _config = match load_config() {
         Ok(cfg) => {
             // Config loaded successfully - environment variables are now available
             cfg
@@ -227,7 +231,7 @@ fn main() {
             // Config loading failed - log warning but continue with defaults
             eprintln!("Warning: Failed to load configuration: {e}");
             eprintln!("Using default values and environment variables");
-            larql_core::AppConfig::default()
+            AppConfig::default()
         }
     };
 
@@ -242,6 +246,7 @@ fn main() {
         Commands::Predict(args) => predict_cmd::run(args),
         Commands::IndexGates(args) => index_gates_cmd::run(args),
         Commands::AttentionCapture(args) => attention_capture_cmd::run(args),
+        Commands::AttentionRuntime(args) => attention_runtime_cmd::run(args),
         Commands::QkTemplates(args) => qk_templates_cmd::run(args),
         Commands::QkRank(args) => qk_rank_cmd::run(args),
         Commands::QkModes(args) => qk_modes_cmd::run(args),
