@@ -96,10 +96,7 @@ impl VectorIndex {
         let cache_store = if config.extract_level >= crate::config::types::ExtractLevel::Inference {
             let cache_path = dir.join("cached_residuals.bin");
             if cache_path.exists() {
-                callbacks.on_file_start(
-                    "cached_residuals",
-                    &cache_path.display().to_string(),
-                );
+                callbacks.on_file_start("cached_residuals", &cache_path.display().to_string());
                 let start = std::time::Instant::now();
                 match crate::cache_residuals::CacheStore::open(&cache_path) {
                     Ok(store) => {

@@ -310,7 +310,8 @@ impl VectorIndex {
         }
 
         let q4k_data = &mmap[start..end];
-        let floats = larql_models::quant::ggml::dequantize_q4_k(q4k_data, floats_per_matrix).ok()?;
+        let floats =
+            larql_models::quant::ggml::dequantize_q4_k(q4k_data, floats_per_matrix).ok()?;
         ndarray::Array2::from_shape_vec((intermediate, self.hidden_size), floats).ok()
     }
 

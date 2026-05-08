@@ -11,4 +11,4 @@ pub use build::build_vindex_resume;
 pub use build_from_vectors::build_vindex_from_vectors;
 pub use callbacks::{IndexBuildCallbacks, SilentBuildCallbacks};
 pub use streaming::build_vindex_streaming;
-pub use template_cache::{DEFAULT_TEMPLATES, TemplateDef};
+pub use template_cache::{TemplateDef, DEFAULT_TEMPLATES};

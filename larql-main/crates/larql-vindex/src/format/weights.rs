@@ -26,8 +26,8 @@ use crate::extract::callbacks::IndexBuildCallbacks;
 use crate::format::load::load_vindex_config;
 use crate::index::core::IndexLoadCallbacks;
 
-use larql_models::ModelWeights;
 use larql_compute::cpu::ops::q4_common::{quantize_q4_k, quantize_q6_k};
+use larql_models::ModelWeights;
 
 #[derive(Serialize, Deserialize)]
 struct WeightEntry {
@@ -498,7 +498,7 @@ pub fn write_interleaved_q4k(
             let q = quantize_q6_k(&data);
             out.write_all(&q)?;
         }
-        
+
         callbacks.on_layer_done("interleaved_q4k", layer, 0.0);
     }
     out.flush()?;

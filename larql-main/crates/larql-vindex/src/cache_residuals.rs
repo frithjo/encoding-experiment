@@ -212,7 +212,12 @@ impl CacheStore {
     }
 
     /// Get residual as f32 array (decodes from f16 if needed).
-    pub fn get_residual_f32(&self, template_id: usize, layer: usize, _seq_len: usize) -> Option<Vec<f32>> {
+    pub fn get_residual_f32(
+        &self,
+        template_id: usize,
+        layer: usize,
+        _seq_len: usize,
+    ) -> Option<Vec<f32>> {
         let bytes = self.get_residual_bytes(template_id, layer)?;
         let _dtype = self.dtype();
         let _hidden_size = self.hidden_size();
@@ -221,20 +226,14 @@ impl CacheStore {
             CacheDtype::F16 => {
                 // Decode f16 to f32
                 let f16_data: &[u16] = unsafe {
-                    std::slice::from_raw_parts(
-                        bytes.as_ptr() as *const u16,
-                        bytes.len() / 2,
-                    )
+                    std::slice::from_raw_parts(bytes.as_ptr() as *const u16, bytes.len() / 2)
                 };
                 Some(f16_data.iter().map(|&v| f16::to_f32(v)).collect())
             }
             CacheDtype::F32 => {
                 // Direct f32
                 let f32_data: &[f32] = unsafe {
-                    std::slice::from_raw_parts(
-                        bytes.as_ptr() as *const f32,
-                        bytes.len() / 4,
-                    )
+                    std::slice::from_raw_parts(bytes.as_ptr() as *const f32, bytes.len() / 4)
                 };
                 Some(f32_data.to_vec())
             }
@@ -331,13 +330,20 @@ impl CacheWriter {
             if *layer < layer_start || *layer > layer_end {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
-                    format!("layer {} outside range {}-{}", layer, layer_start, layer_end),
+                    format!(
+                        "layer {} outside range {}-{}",
+                        layer, layer_start, layer_end
+                    ),
                 ));
             }
             if residual.len() != hidden {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
-                    format!("residual size mismatch: expected {}, got {}", hidden, residual.len()),
+                    format!(
+                        "residual size mismatch: expected {}, got {}",
+                        hidden,
+                        residual.len()
+                    ),
                 ));
             }
 
@@ -458,9 +464,7 @@ mod tests {
         let residuals: Vec<(usize, Vec<f32>)> = (0..=12)
             .map(|layer| (layer, vec![0.5f32; hidden_size]))
             .collect();
-        writer
-            .append_template(0, 10, 0, 12, &residuals)
-            .unwrap();
+        writer.append_template(0, 10, 0, 12, &residuals).unwrap();
 
         // Template 1: cache layers 0-8
         let residuals: Vec<(usize, Vec<f32>)> = (0..=8)

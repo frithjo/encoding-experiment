@@ -34,8 +34,10 @@ pub async fn download_vindex(repo_id: &str, cache_dir: &Path) -> Result<PathBuf,
     // Return the cache directory path where HF stores the repo
     // HF Hub stores repos in: cache_dir/hub/models--<org>--<repo>
     let repo_cache_name = repo_id.replace('/', "--");
-    let repo_path = cache_dir.join("hub").join(format!("models--{}", repo_cache_name));
-    
+    let repo_path = cache_dir
+        .join("hub")
+        .join(format!("models--{}", repo_cache_name));
+
     // Check if the repo was actually downloaded/cached
     if !repo_path.exists() {
         return Err(VindexError::Download(format!(
@@ -74,7 +76,7 @@ pub async fn resolve_hf_path(path: &str) -> Result<PathBuf, VindexError> {
         .or_else(|_| std::env::var("HOME"))
         .or_else(|_| std::env::var("USERPROFILE"))
         .map_err(|_| VindexError::Parse("Cannot determine home directory".to_string()))?;
-    
+
     let cache_dir = PathBuf::from(home_dir).join(".cache").join("larql");
     download_vindex(repo_id, &cache_dir).await
 }
@@ -103,6 +105,9 @@ mod tests {
         // Test that hf:// prefix is correctly stripped
         let path = "hf://larql-org/gemma-4b-vindex";
         assert!(path.starts_with("hf://"));
-        assert_eq!(path.strip_prefix("hf://").unwrap(), "larql-org/gemma-4b-vindex");
+        assert_eq!(
+            path.strip_prefix("hf://").unwrap(),
+            "larql-org/gemma-4b-vindex"
+        );
     }
 }
