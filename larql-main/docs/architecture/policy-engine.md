@@ -33,7 +33,13 @@ The config selects active packs, profiles, flows, recipes, and mode. It does
 not contain executable policy logic. Rules remain in policy packs. Profiles
 attach rule sets to artifact classes. Flows define lawful transition paths.
 Recipes collect structured questions, factoids, derived facts, and required
-outputs for governed work; they do not decide authority.
+outputs for governed work.
+
+**Key Invariant: Recipes gather, Policies authorize.**
+Recipes are responsible for structuring the evidence and facts required for a
+given intent. They do not decide authority. Final admissibility is always
+determined by the policy engine evaluating the gathered facts against the
+active rule set.
 
 The engine accepts facts and emits decisions:
 

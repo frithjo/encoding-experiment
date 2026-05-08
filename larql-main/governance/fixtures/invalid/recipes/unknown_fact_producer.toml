@@ -1,0 +1,16 @@
+schema_version = "larql.governance.recipe.v1"
+
+[recipe]
+id = "unknown_fact_producer"
+kind = "proposal_recipe"
+
+[[recipe.questions]]
+id = "q1"
+prompt = "p1"
+answer_kind = "text"
+produces = ["unknown_fact"]
+
+[[recipe.factoids]]
+id = "f1"
+kind = "text"
+required = true

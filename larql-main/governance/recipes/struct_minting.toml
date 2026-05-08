@@ -48,9 +48,19 @@ kind = "path"
 required = true
 
 [[recipe.factoids]]
+id = "type.visibility"
+kind = "bool"
+required = true
+
+[[recipe.factoids]]
 id = "type.fields"
 kind = "text"
 required = true
+
+[[recipe.factoids]]
+id = "type.serialization_required"
+kind = "bool"
+required = false
 
 [[recipe.required_outputs]]
 id = "struct_spec"

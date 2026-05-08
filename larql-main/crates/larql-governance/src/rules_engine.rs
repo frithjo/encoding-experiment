@@ -318,6 +318,18 @@ pub enum FactValue {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FactSource {
+    HumanAnswer,
+    LlmExtraction,
+    RepoScan,
+    PolicyDecision,
+    CompilerDiagnostic,
+    TestResult,
+    PriorReceipt,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PolicyFact {
     pub fact_type: String,
     pub value: FactValue,
@@ -325,8 +337,7 @@ pub struct PolicyFact {
     pub subject: Option<String>,
     #[serde(default)]
     pub evidence: Vec<String>,
-    #[serde(default)]
-    pub source: Option<String>,
+    pub source: FactSource,
     #[serde(default)]
     pub state_hash: Option<String>,
 }
@@ -1006,6 +1017,15 @@ pub struct PolicyEngine {
 pub struct FactStore {
     #[serde(default)]
     pub facts: BTreeMap<String, PolicyFact>,
+    #[serde(default)]
+    pub conflicts: Vec<FactConflict>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FactConflict {
+    pub fact_type: String,
+    pub existing: PolicyFact,
+    pub rejected: PolicyFact,
 }
 
 impl FactStore {
@@ -1014,7 +1034,17 @@ impl FactStore {
     }
 
     pub fn insert(&mut self, fact: PolicyFact) {
-        self.facts.insert(fact.fact_type.clone(), fact);
+        if let Some(existing) = self.facts.get(&fact.fact_type) {
+            if existing != &fact {
+                self.conflicts.push(FactConflict {
+                    fact_type: fact.fact_type.clone(),
+                    existing: existing.clone(),
+                    rejected: fact,
+                });
+            }
+        } else {
+            self.facts.insert(fact.fact_type.clone(), fact);
+        }
     }
 
     pub fn get(&self, fact_type: &str) -> Option<&PolicyFact> {
@@ -1044,13 +1074,11 @@ impl RecipeRunner {
         recipe
             .questions
             .iter()
-            .filter(|q| {
-                // Skip if all produced facts already exist
-                if q.produces.iter().all(|f| facts.has_fact(f)) {
+            .filter(|question| {
+                if question.produces.iter().all(|fact| facts.has_fact(fact)) {
                     return false;
                 }
-                // Check if required_when condition is met
-                if let Some(when) = &q.required_when {
+                if let Some(when) = &question.required_when {
                     evaluate_recipe_condition_block(when, facts)
                 } else {
                     true
@@ -1066,12 +1094,11 @@ impl RecipeRunner {
             None => return false,
         };
 
-        // Check if all required factoids are present
         recipe
             .factoids
             .iter()
-            .filter(|f| f.required)
-            .all(|f| facts.has_fact(&f.id))
+            .filter(|factoid| factoid.required)
+            .all(|factoid| facts.has_fact(&factoid.id))
     }
 }
 
@@ -1080,7 +1107,7 @@ fn evaluate_recipe_condition_block(block: &ConditionBlock, facts: &FactStore) ->
         && !block
             .all
             .iter()
-            .all(|c| evaluate_recipe_condition(c, facts))
+            .all(|condition| evaluate_recipe_condition(condition, facts))
     {
         return false;
     }
@@ -1088,7 +1115,7 @@ fn evaluate_recipe_condition_block(block: &ConditionBlock, facts: &FactStore) ->
         && !block
             .any
             .iter()
-            .any(|c| evaluate_recipe_condition(c, facts))
+            .any(|condition| evaluate_recipe_condition(condition, facts))
     {
         return false;
     }
@@ -1096,7 +1123,7 @@ fn evaluate_recipe_condition_block(block: &ConditionBlock, facts: &FactStore) ->
         && block
             .not_conditions
             .iter()
-            .any(|c| evaluate_recipe_condition(c, facts))
+            .any(|condition| evaluate_recipe_condition(condition, facts))
     {
         return false;
     }
@@ -1106,7 +1133,7 @@ fn evaluate_recipe_condition_block(block: &ConditionBlock, facts: &FactStore) ->
 fn evaluate_recipe_condition(condition: &Condition, facts: &FactStore) -> bool {
     if let Some(fact_type) = &condition.fact {
         let fact = match facts.get(fact_type) {
-            Some(f) => f,
+            Some(fact) => fact,
             None => return condition.present == Some(false),
         };
 
@@ -1120,7 +1147,6 @@ fn evaluate_recipe_condition(condition: &Condition, facts: &FactStore) -> bool {
             return false;
         }
     }
-    // Other condition types (action, path_matches, risk_gte) are not yet supported for recipes
     true
 }
 
@@ -1359,8 +1385,10 @@ fn load_profiles(
     hash_material: &mut String,
 ) -> Result<BTreeMap<String, RuleProfile>, PolicyLoadError> {
     let mut profiles = BTreeMap::new();
-    for profile_id in profile_ids {
-        validate_policy_component_id("profile", profile_id)?;
+    let mut sorted_ids = profile_ids.to_vec();
+    sorted_ids.sort();
+    for profile_id in sorted_ids {
+        validate_policy_component_id("profile", &profile_id)?;
         let path = governance_root
             .join("profiles")
             .join(format!("{profile_id}.toml"));
@@ -1395,8 +1423,10 @@ fn load_flows(
     hash_material: &mut String,
 ) -> Result<BTreeMap<String, PolicyFlow>, PolicyLoadError> {
     let mut flows = BTreeMap::new();
-    for flow_id in flow_ids {
-        validate_policy_component_id("flow", flow_id)?;
+    let mut sorted_ids = flow_ids.to_vec();
+    sorted_ids.sort();
+    for flow_id in sorted_ids {
+        validate_policy_component_id("flow", &flow_id)?;
         let path = governance_root
             .join("flows")
             .join(format!("{flow_id}.toml"));
@@ -1432,8 +1462,10 @@ fn load_recipes(
     hash_material: &mut String,
 ) -> Result<BTreeMap<String, Recipe>, PolicyLoadError> {
     let mut recipes = BTreeMap::new();
-    for recipe_id in recipe_ids {
-        validate_policy_component_id("recipe", recipe_id)?;
+    let mut sorted_ids = recipe_ids.to_vec();
+    sorted_ids.sort();
+    for recipe_id in sorted_ids {
+        validate_policy_component_id("recipe", &recipe_id)?;
         let path = governance_root
             .join("recipes")
             .join(format!("{recipe_id}.toml"));
@@ -2478,6 +2510,62 @@ fn validate_registry_references(registry: &PolicyRegistry) -> Result<(), PolicyL
     for flow in registry.flows.values() {
         validate_flow(flow)?;
     }
+    for recipe in registry.recipes.values() {
+        validate_recipe(recipe, registry)?;
+    }
+    Ok(())
+}
+
+fn validate_recipe(recipe: &Recipe, _registry: &PolicyRegistry) -> Result<(), PolicyLoadError> {
+    if recipe.id.trim().is_empty() {
+        return Err(PolicyLoadError::Invalid("recipe requires id".to_string()));
+    }
+
+    let mut question_ids = BTreeSet::new();
+    for question in &recipe.questions {
+        if question.id.trim().is_empty() {
+            return Err(PolicyLoadError::Invalid(format!(
+                "recipe {} has empty question id",
+                recipe.id
+            )));
+        }
+        if !question_ids.insert(question.id.clone()) {
+            return Err(PolicyLoadError::Invalid(format!(
+                "recipe {} has duplicate question id {}",
+                recipe.id, question.id
+            )));
+        }
+    }
+
+    let mut factoid_ids = BTreeSet::new();
+    for factoid in &recipe.factoids {
+        if factoid.id.trim().is_empty() {
+            return Err(PolicyLoadError::Invalid(format!(
+                "recipe {} has empty factoid id",
+                recipe.id
+            )));
+        }
+        if !factoid_ids.insert(factoid.id.clone()) {
+            return Err(PolicyLoadError::Invalid(format!(
+                "recipe {} has duplicate factoid id {}",
+                recipe.id, factoid.id
+            )));
+        }
+    }
+
+    // Ensure questions produce facts that are defined in factoids (or at least known)
+    for question in &recipe.questions {
+        for fact_type in &question.produces {
+            if !factoid_ids.contains(fact_type) {
+                // This is a warning in some systems, but let's be strict
+                return Err(PolicyLoadError::Invalid(format!(
+                    "recipe {} question {} produces unknown fact type {}",
+                    recipe.id, question.id, fact_type
+                )));
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -2619,7 +2707,7 @@ fn policy_input_from_test_case(case: &PolicyTestCase) -> PolicyInput {
                 value: value.clone(),
                 subject: None,
                 evidence: Vec::new(),
-                source: Some("policy-test".to_string()),
+                source: FactSource::TestResult,
                 state_hash: None,
             })
             .collect(),
@@ -2735,7 +2823,7 @@ pub(crate) fn evaluate_block(
     };
 
     for condition in &block.all {
-        let condition_outcome = evaluate_policy_condition(condition, input, facts);
+        let condition_outcome = evaluate_condition(condition, input, facts);
         merge_outcome(&mut outcome, &condition_outcome);
         outcome.matched &= condition_outcome.matched;
     }
@@ -2743,7 +2831,7 @@ pub(crate) fn evaluate_block(
     if !block.any.is_empty() {
         let mut any_matched = false;
         for condition in &block.any {
-            let condition_outcome = evaluate_policy_condition(condition, input, facts);
+            let condition_outcome = evaluate_condition(condition, input, facts);
             merge_outcome(&mut outcome, &condition_outcome);
             any_matched |= condition_outcome.matched;
         }
@@ -2751,7 +2839,7 @@ pub(crate) fn evaluate_block(
     }
 
     for condition in &block.not_conditions {
-        let condition_outcome = evaluate_policy_condition(condition, input, facts);
+        let condition_outcome = evaluate_condition(condition, input, facts);
         merge_outcome(&mut outcome, &condition_outcome);
         outcome.matched &= !condition_outcome.matched;
     }
@@ -2759,7 +2847,7 @@ pub(crate) fn evaluate_block(
     outcome
 }
 
-fn evaluate_policy_condition(
+fn evaluate_condition(
     condition: &Condition,
     input: &PolicyInput,
     facts: &FactView<'_>,
@@ -3679,7 +3767,7 @@ conflict_resolution = "most_restrictive"
                 value: FactValue::Integer(1),
                 subject: None,
                 evidence: Vec::new(),
-                source: None,
+                source: FactSource::TestResult,
                 state_hash: None,
             },
             PolicyFact {
@@ -3687,7 +3775,7 @@ conflict_resolution = "most_restrictive"
                 value: FactValue::Integer(2),
                 subject: None,
                 evidence: Vec::new(),
-                source: None,
+                source: FactSource::TestResult,
                 state_hash: None,
             },
         ];
@@ -3703,7 +3791,7 @@ conflict_resolution = "most_restrictive"
                 value: FactValue::Integer(1),
                 subject: None,
                 evidence: Vec::new(),
-                source: None,
+                source: FactSource::TestResult,
                 state_hash: None,
             },
             PolicyFact {
@@ -3711,7 +3799,7 @@ conflict_resolution = "most_restrictive"
                 value: FactValue::Integer(1),
                 subject: None,
                 evidence: Vec::new(),
-                source: None,
+                source: FactSource::TestResult,
                 state_hash: None,
             },
         ];
@@ -3818,7 +3906,7 @@ conflict_resolution = "most_restrictive"
                             value: FactValue::Bool(true),
                             subject: None,
                             evidence: Vec::new(),
-                            source: Some("soundness-grid".into()),
+                            source: FactSource::TestResult,
                             state_hash: None,
                         }]
                     } else {
@@ -3894,7 +3982,7 @@ conflict_resolution = "most_restrictive"
                     value: FactValue::Bool(true),
                     subject: None,
                     evidence: Vec::new(),
-                    source: None,
+                    source: FactSource::TestResult,
                     state_hash: None,
                 }],
             },
@@ -3974,7 +4062,7 @@ conflict_resolution = "most_restrictive"
             value: FactValue::Bool(true), // Use bool for the condition to match
             subject: None,
             evidence: Vec::new(),
-            source: None,
+            source: FactSource::HumanAnswer,
             state_hash: None,
         });
 
@@ -3988,12 +4076,102 @@ conflict_resolution = "most_restrictive"
             value: FactValue::Bool(true),
             subject: None,
             evidence: Vec::new(),
-            source: None,
+            source: FactSource::HumanAnswer,
             state_hash: None,
         });
 
         let questions = runner.next_questions("test_recipe", &facts);
         assert!(questions.is_empty());
         assert!(runner.is_ready("test_recipe", &facts));
+    }
+
+    #[test]
+    fn fact_store_records_conflicts_without_overwriting() {
+        let mut store = FactStore::new();
+        let f1 = PolicyFact {
+            fact_type: "t1".into(),
+            value: FactValue::Bool(true),
+            subject: None,
+            evidence: Vec::new(),
+            source: FactSource::HumanAnswer,
+            state_hash: None,
+        };
+        let f2 = PolicyFact {
+            fact_type: "t1".into(),
+            value: FactValue::Bool(false),
+            subject: None,
+            evidence: Vec::new(),
+            source: FactSource::LlmExtraction,
+            state_hash: None,
+        };
+
+        store.insert(f1.clone());
+        store.insert(f2.clone());
+
+        assert_eq!(store.facts.len(), 1);
+        assert_eq!(store.facts.get("t1").unwrap().value, FactValue::Bool(true));
+        assert_eq!(store.conflicts.len(), 1);
+        assert_eq!(store.conflicts[0].rejected, f2);
+    }
+
+    #[test]
+    fn validate_recipe_rejects_duplicates_and_missing_refs() {
+        let registry = PolicyRegistry {
+            schema_version: "v1".into(),
+            active_policy_set: PolicySet {
+                id: "t".into(),
+                version: "1".into(),
+                includes: Vec::new(),
+            },
+            policy_hash: "h".into(),
+            mode: PolicyMode {
+                unknown_rule: UnknownRuleMode::Deny,
+                unknown_fact: UnknownFactMode::Warn,
+                conflict_resolution: ConflictResolutionMode::MostRestrictive,
+            },
+            rule_sets: BTreeMap::new(),
+            profiles: BTreeMap::new(),
+            flows: BTreeMap::new(),
+            recipes: BTreeMap::new(),
+            rules: Vec::new(),
+        };
+
+        let mut r1 = Recipe {
+            id: "r1".into(),
+            kind: RecipeKind::ProposalRecipe,
+            entry_conditions: Vec::new(),
+            questions: vec![
+                Question {
+                    id: "q1".into(),
+                    prompt: "p".into(),
+                    answer_kind: AnswerKind::Bool,
+                    produces: vec!["f1".into()],
+                    required_when: None,
+                },
+                Question {
+                    id: "q1".into(), // Duplicate
+                    prompt: "p".into(),
+                    answer_kind: AnswerKind::Bool,
+                    produces: vec!["f1".into()],
+                    required_when: None,
+                },
+            ],
+            factoids: vec![FactoidSpec {
+                id: "f1".into(),
+                kind: "bool".into(),
+                required: true,
+            }],
+            derives: Vec::new(),
+            required_outputs: Vec::new(),
+            patch_templates: Vec::new(),
+        };
+
+        assert!(validate_recipe(&r1, &registry).is_err());
+
+        r1.questions.pop(); // Remove duplicate
+        assert!(validate_recipe(&r1, &registry).is_ok());
+
+        r1.questions[0].produces.push("unknown_fact".into());
+        assert!(validate_recipe(&r1, &registry).is_err());
     }
 }
