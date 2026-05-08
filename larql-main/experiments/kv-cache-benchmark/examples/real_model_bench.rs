@@ -70,7 +70,11 @@ fn main() {
         .collect();
 
     let json = serde_json::to_string_pretty(&all_results).unwrap();
-    std::fs::write("experiments/kv-cache-benchmark/results/real_model.json", &json).ok();
+    std::fs::write(
+        "experiments/kv-cache-benchmark/results/real_model.json",
+        &json,
+    )
+    .ok();
     println!("Results written to results/real_model.json");
 }
 
