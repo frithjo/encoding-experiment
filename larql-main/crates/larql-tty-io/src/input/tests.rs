@@ -11,7 +11,10 @@ fn decode_no_kitty(bytes: &[u8]) -> Vec<Event> {
 }
 
 fn key(k: Key) -> Event {
-    Event::Key(KeyEvent { key: k, mods: KeyMods::NONE })
+    Event::Key(KeyEvent {
+        key: k,
+        mods: KeyMods::NONE,
+    })
 }
 
 fn key_mods(k: Key, mods: KeyMods) -> Event {
@@ -52,7 +55,13 @@ fn backspace_del() {
 fn ctrl_a() {
     assert_eq!(
         decode(&[0x01]),
-        vec![key_mods(Key::Char('a'), KeyMods { ctrl: true, ..KeyMods::NONE })]
+        vec![key_mods(
+            Key::Char('a'),
+            KeyMods {
+                ctrl: true,
+                ..KeyMods::NONE
+            }
+        )]
     );
 }
 
@@ -60,7 +69,13 @@ fn ctrl_a() {
 fn ctrl_z() {
     assert_eq!(
         decode(&[0x1a]),
-        vec![key_mods(Key::Char('z'), KeyMods { ctrl: true, ..KeyMods::NONE })]
+        vec![key_mods(
+            Key::Char('z'),
+            KeyMods {
+                ctrl: true,
+                ..KeyMods::NONE
+            }
+        )]
     );
 }
 
@@ -101,7 +116,13 @@ fn csi_shift_up() {
     // CSI 1;2 A = Shift+Up
     assert_eq!(
         decode(b"\x1b[1;2A"),
-        vec![key_mods(Key::Up, KeyMods { shift: true, ..KeyMods::NONE })]
+        vec![key_mods(
+            Key::Up,
+            KeyMods {
+                shift: true,
+                ..KeyMods::NONE
+            }
+        )]
     );
 }
 
@@ -110,7 +131,13 @@ fn csi_ctrl_right() {
     // CSI 1;5 C = Ctrl+Right
     assert_eq!(
         decode(b"\x1b[1;5C"),
-        vec![key_mods(Key::Right, KeyMods { ctrl: true, ..KeyMods::NONE })]
+        vec![key_mods(
+            Key::Right,
+            KeyMods {
+                ctrl: true,
+                ..KeyMods::NONE
+            }
+        )]
     );
 }
 
@@ -121,7 +148,11 @@ fn csi_alt_ctrl_left() {
         decode(b"\x1b[1;7D"),
         vec![key_mods(
             Key::Left,
-            KeyMods { alt: true, ctrl: true, ..KeyMods::NONE }
+            KeyMods {
+                alt: true,
+                ctrl: true,
+                ..KeyMods::NONE
+            }
         )]
     );
 }
@@ -163,7 +194,13 @@ fn csi_f6_with_shift() {
     // CSI 17;2 ~ = Shift+F6
     assert_eq!(
         decode(b"\x1b[17;2~"),
-        vec![key_mods(Key::F(6), KeyMods { shift: true, ..KeyMods::NONE })]
+        vec![key_mods(
+            Key::F(6),
+            KeyMods {
+                shift: true,
+                ..KeyMods::NONE
+            }
+        )]
     );
 }
 
@@ -251,7 +288,10 @@ fn mouse_sgr_with_shift() {
         evs,
         vec![Event::Mouse(MouseEvent {
             button: MouseButton::Left,
-            mods: KeyMods { shift: true, ..KeyMods::NONE },
+            mods: KeyMods {
+                shift: true,
+                ..KeyMods::NONE
+            },
             x: 1,
             y: 1,
             press: true,
@@ -290,7 +330,13 @@ fn kitty_ctrl_a() {
     // CSI 97;5 u => Ctrl+a
     assert_eq!(
         decode(b"\x1b[97;5u"),
-        vec![key_mods(Key::Char('a'), KeyMods { ctrl: true, ..KeyMods::NONE })]
+        vec![key_mods(
+            Key::Char('a'),
+            KeyMods {
+                ctrl: true,
+                ..KeyMods::NONE
+            }
+        )]
     );
 }
 
@@ -315,7 +361,13 @@ fn kitty_named_f5() {
 fn alt_a() {
     assert_eq!(
         decode(b"\x1ba"),
-        vec![key_mods(Key::Char('a'), KeyMods { alt: true, ..KeyMods::NONE })]
+        vec![key_mods(
+            Key::Char('a'),
+            KeyMods {
+                alt: true,
+                ..KeyMods::NONE
+            }
+        )]
     );
 }
 
@@ -325,7 +377,13 @@ fn alt_a() {
 fn shift_tab() {
     assert_eq!(
         decode(b"\x1b[Z"),
-        vec![key_mods(Key::Tab, KeyMods { shift: true, ..KeyMods::NONE })]
+        vec![key_mods(
+            Key::Tab,
+            KeyMods {
+                shift: true,
+                ..KeyMods::NONE
+            }
+        )]
     );
 }
 

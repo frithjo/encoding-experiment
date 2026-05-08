@@ -299,7 +299,10 @@ impl Decoder {
         // Parameter prefix byte (private mode introducer) appears as first byte
         // after CSI. Common cases: '<' (SGR mouse), '?' (DEC private),
         // '>' (secondary DA), '=' (tertiary).
-        if self.params.is_empty() && self.csi_prefix.is_none() && matches!(byte, b'<' | b'?' | b'>' | b'=') {
+        if self.params.is_empty()
+            && self.csi_prefix.is_none()
+            && matches!(byte, b'<' | b'?' | b'>' | b'=')
+        {
             self.csi_prefix = Some(byte);
             return;
         }
