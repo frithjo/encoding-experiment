@@ -3,16 +3,25 @@ use leptos::*;
 use leptos_meta::*;
 use leptos_router::*;
 
+mod policy_snapshot;
+use policy_snapshot::{PolicyEngineSnapshotPage};
+
 #[component]
 pub fn App() -> impl IntoView {
     provide_meta_context();
 
     view! {
-        <Title text="LARQL Leptos - Batch DLA Scan"/>
+        <Title text="LARQL Leptos Workbench"/>
         <Router>
             <main class="container">
+                <nav class="app-nav">
+                    <a href="/">"Factoid board"</a>
+                    <span>{" · "}</span>
+                    <a href="/policy-engine">"Policy engine snapshot"</a>
+                </nav>
                 <Routes>
                     <Route path="/" view=FactoidBoard/>
+                    <Route path="/policy-engine" view=PolicyEngineSnapshotPage/>
                 </Routes>
             </main>
         </Router>

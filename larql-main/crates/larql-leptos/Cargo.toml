@@ -25,6 +25,7 @@ log = "0.4"
 console_log = "1.0"
 console_error_panic_hook = "0.1"
 larql-factboard = { path = "../larql-factboard" }
+larql-policy-engine-projection = { path = "../larql-policy-engine-projection" }
 
 [package.metadata.product]
 zone = "interface"

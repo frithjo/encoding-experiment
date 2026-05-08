@@ -1,0 +1,37 @@
+schema_version = "larql.governance.policy_pack.v1"
+
+[[rule]]
+id = "machine_creation.requires_overlap_check"
+class = "ceremony_policy"
+severity = "deny"
+description = "New machine proposals require evidence that existing machines cannot already satisfy the responsibility."
+when = { all = [{ action = "create_machine" }] }
+require = { all = [{ evidence = "existing_machine_overlap_check", present = true }, { evidence = "machine_responsibility_boundary", present = true }] }
+decision = { on_missing = "deny", message = "Machine creation requires overlap analysis and responsibility-boundary evidence.", required_actions = ["attach existing machine overlap check", "attach machine responsibility boundary"] }
+
+[[rule]]
+id = "machine.create.requires_accept_reject_evidence"
+class = "runtime_policy"
+severity = "deny"
+description = "Machine creation requires valid-input and malformed-input evidence."
+when = { all = [{ action = "create_machine" }] }
+require = { all = [{ evidence = "machine_accepts_valid_input_test", present = true }, { evidence = "machine_rejects_malformed_input_test", present = true }] }
+decision = { on_missing = "deny", message = "Machine creation lacks acceptance/rejection evidence.", required_actions = ["capture valid input test evidence", "capture malformed input rejection evidence"] }
+
+[[rule]]
+id = "non_machine.governed_transition.requires_capability"
+class = "capability_policy"
+severity = "review_required"
+description = "Non-machine actors need explicit capability evidence for governed transitions."
+when = { all = [{ action = "non_machine_governed_transition" }] }
+require = { all = [{ evidence = "non_machine_transition_capability", present = true }] }
+decision = { on_missing = "require_review", message = "Non-machine governed transition lacks capability evidence.", required_actions = ["obtain capability grant", "record review receipt"] }
+
+[[rule]]
+id = "runtime.mutation.requires_policy_hash"
+class = "runtime_policy"
+severity = "fatal"
+description = "Runtime mutation must carry active policy-set evidence."
+when = { all = [{ action = "runtime_mutation" }] }
+require = { all = [{ evidence = "active_policy_set_hash_recorded", present = true }] }
+decision = { on_missing = "fatal", message = "Runtime mutation lacks active policy hash evidence.", required_actions = ["record policy_hash in decision event"] }

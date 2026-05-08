@@ -1,0 +1,16 @@
+schema_version = "larql.governance.policy_index.v1"
+
+[active_policy_set]
+id = "repo-governance"
+version = "2026-05-08"
+includes = [
+  "ci.toml",
+  "machine-profile.toml",
+  "machine-runtime.toml",
+  "rule-admission.toml",
+]
+
+[mode]
+unknown_rule = "deny"
+unknown_fact = "warn"
+conflict_resolution = "most_restrictive"

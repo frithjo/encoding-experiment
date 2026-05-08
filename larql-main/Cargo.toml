@@ -20,6 +20,7 @@ members = [
     "crates/larql-terminal-renderer",
     "crates/larql-tty-io",
     "crates/larql-factboard",
+    "crates/larql-policy-engine-projection",
 ]
 default-members = [
     "crates/larql-models",

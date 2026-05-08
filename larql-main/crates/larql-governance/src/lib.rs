@@ -3,6 +3,7 @@ pub mod ceremony;
 pub mod hash;
 pub mod patch_pipeline;
 pub mod policy;
+pub mod rules_engine;
 pub mod receipt;
 pub mod struct_minter;
 
@@ -19,6 +20,20 @@ pub use patch_pipeline::{
 pub use policy::{
     validate_machine_profile, MachinePolicyEngine, MachineRuleProfile, PolicyDecision, PolicyError,
     StructClassifications,
+};
+pub use rules_engine::{
+    draft_rule_proposal_from_intent, load_policy_registry, load_policy_registry_from_material,
+    mint_policy_update_capability, validate_policy_apply_request,
+    validate_policy_update_ceremony_trace, validate_policy_weakening_evidence, Condition,
+    ConditionBlock, ConflictResolutionMode, DecisionKind, FactValue, PolicyApplyReceipt,
+    PolicyApplyRequest, PolicyApproval, PolicyCapability, PolicyClass, PolicyConflict,
+    PolicyConflictAnalysis, PolicyEngine, PolicyEngineDecision, PolicyEvaluationFinding,
+    PolicyFact, PolicyInput, PolicyIntent, PolicyIntentExtraction, PolicyLoadError, PolicyMode,
+    PolicyRegistry, PolicyRule, PolicyRuleExample, PolicyRuleExampleKind, PolicySeverity,
+    PolicyTestCase, PolicyTestExpectation, PolicyTestReport, PolicyTestSuite,
+    PolicyUpdateCeremonyEvent, PolicyUpdateCeremonyReport, PolicyUpdateCeremonyTrace,
+    PolicyUpdateType, PolicyWeakeningEvidence, ProsePolicyConcern, RuleProposal,
+    ShadowEvalResult, UnknownFactMode, UnknownRuleMode,
 };
 pub use receipt::{
     make_denial_capsule, make_mint_receipt_capsule, make_patch_envelope_capsule,

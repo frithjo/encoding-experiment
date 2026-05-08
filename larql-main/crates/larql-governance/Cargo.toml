@@ -13,6 +13,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 sha2 = "0.10"
 syn = { version = "2", features = ["full"] }
+toml = "0.8"
 
 [package.metadata.product]
 zone = "core"

@@ -1,0 +1,28 @@
+schema_version = "larql.governance.policy_pack.v1"
+
+[[rule]]
+id = "ci.invariant_registry.required"
+class = "ci_policy"
+severity = "deny"
+description = "CI governance result is not authoritative without invariant registry evidence."
+when = { all = [{ action = "ci_governance_check" }] }
+require = { all = [{ evidence = "invariant_registry_verified", present = true }] }
+decision = { on_missing = "deny", message = "CI must evaluate admitted invariant registry through policy engine.", required_actions = ["verify governance/invariants/registry.json", "record policy decision event"] }
+
+[[rule]]
+id = "ci.public_api_change.requires_tests"
+class = "ci_policy"
+severity = "deny"
+description = "Public API changes require test-change facts in CI policy input."
+when = { all = [{ fact = "public_api_changed", equals = true }] }
+require = { all = [{ fact = "tests_changed", equals = true }] }
+decision = { on_missing = "deny", message = "Public API change lacks tests_changed fact.", required_actions = ["add focused tests or record anomaly"] }
+
+[[rule]]
+id = "ci.decision_surface.required"
+class = "ci_policy"
+severity = "deny"
+description = "CI governance result is not authoritative without decision-surface validation."
+when = { all = [{ action = "ci_governance_check" }] }
+require = { all = [{ evidence = "decision_surface_validated", present = true }] }
+decision = { on_missing = "deny", message = "CI must validate recurring LLM decision-surface debt.", required_actions = ["run larql machine decision-surface validate", "record decision-surface validation evidence"] }
