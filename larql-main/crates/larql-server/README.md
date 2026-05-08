@@ -1,5 +1,20 @@
 # larql-server
 
+## Crate Role
+
+- Role: User-facing network API service for querying/inference
+- Zone: interface
+- Release impact: critical
+- Stability target: stable
+
+## Public Contract
+
+- HTTP/gRPC endpoint behavior is a release-facing contract.
+- Breaking changes to request/response shape, status codes, or auth semantics
+  require migration notes and explicit release callouts.
+- Server should depend on core/runtime crates; core crates must not depend on
+  server interfaces.
+
 HTTP server for vindex knowledge queries and inference. Loads a vindex and serves it over the network. No GPU, no ML framework, no Python. One binary.
 
 ```bash
@@ -110,6 +125,8 @@ Feature scan — which features fire for a prompt.
 GET /v1/walk?prompt=The+capital+of+France+is&top=5
 GET /v1/walk?prompt=Einstein&top=10&layers=24-33
 ```
+
+`top` must be `<= 1000`; larger values are rejected with `400 Bad Request` instead of being silently truncated.
 
 ```json
 {

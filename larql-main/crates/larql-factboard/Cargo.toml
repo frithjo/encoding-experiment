@@ -1,0 +1,17 @@
+[package]
+name = "larql-factboard"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[package.metadata.product]
+zone = "interface"
+role = "factoid-board-projection"
+release_impact = "medium"
+stability_target = "iterative"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }

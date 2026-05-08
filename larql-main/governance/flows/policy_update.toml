@@ -1,0 +1,19 @@
+schema_version = "larql.governance.policy_flow.v1"
+
+[flow]
+id = "policy_update"
+actions = ["add_policy_rule", "activate_policy_set"]
+steps = [
+  { id = "prose_policy_concern_submitted", next = ["policy_intent_extracted"] },
+  { id = "policy_intent_extracted", next = ["rule_candidate_drafted"] },
+  { id = "rule_candidate_drafted", next = ["rule_examples_attached"] },
+  { id = "rule_examples_attached", next = ["conflict_analysis_completed"] },
+  { id = "conflict_analysis_completed", next = ["shadow_evaluation_completed"] },
+  { id = "shadow_evaluation_completed", next = ["policy_change_approved"] },
+  { id = "policy_change_approved", next = ["policy_capability_minted"] },
+  { id = "policy_capability_minted", next = ["policy_file_updated"] },
+  { id = "policy_file_updated", next = ["policy_hash_advanced"] },
+  { id = "policy_hash_advanced", next = ["replay_verified"] },
+  { id = "replay_verified", next = ["policy_update_closed"] },
+  { id = "policy_update_closed", next = [] },
+]

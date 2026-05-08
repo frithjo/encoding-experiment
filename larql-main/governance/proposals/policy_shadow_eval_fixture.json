@@ -1,0 +1,49 @@
+{
+  "schema_version": "larql.governance.rule_proposal.v1",
+  "policy_update_type": "new_rule",
+  "proposer": "policy-clerk",
+  "rationale": "CI fixture for proving corpus shadow evaluation runs proposed rules through the policy engine before activation.",
+  "approval_capability": null,
+  "examples": [
+    {
+      "kind": "deny",
+      "description": "A machine proposal lacks shadow-fixture evidence and the candidate rule blocks it during shadow evaluation."
+    },
+    {
+      "kind": "allow",
+      "description": "A machine proposal includes shadow-fixture evidence and the candidate rule does not block it."
+    },
+    {
+      "kind": "review_required",
+      "description": "A machine proposal has partial evidence and shadow evaluation records the changed decision for review."
+    }
+  ],
+  "proposed_rule": {
+    "id": "machine_creation.shadow_eval_fixture_requires_evidence",
+    "class": "ceremony_policy",
+    "severity": "deny",
+    "description": "Fixture rule used by CI to exercise corpus shadow evaluation without activating policy.",
+    "when": {
+      "all": [
+        {
+          "action": "create_machine"
+        }
+      ]
+    },
+    "require": {
+      "all": [
+        {
+          "evidence": "machine_shadow_eval_fixture_evidence",
+          "present": true
+        }
+      ]
+    },
+    "decision": {
+      "on_missing": "deny",
+      "message": "Shadow-eval fixture evidence is missing.",
+      "required_actions": [
+        "record shadow-eval fixture evidence"
+      ]
+    }
+  }
+}

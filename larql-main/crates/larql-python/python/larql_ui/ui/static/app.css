@@ -1,0 +1,845 @@
+/*
+ * LARQL Workbench — terminal-browser first (larql-terminal-browser).
+ * Viewport is resizable (compact → generous); default layout stays readable in narrow TTY panes.
+ * Palette: dark ground, bright fg, cyan accents — high contrast for keyboard-first use.
+ */
+html.terminal-workbench {
+  color-scheme: dark;
+  /* Tweakable tokens (Carbonyl / TTY–adjacent) */
+  --tty-bg: #0d0d0d;
+  --tty-surface: #141414;
+  --tty-raised: #1a1a1a;
+  --tty-border: #3d3d3d;
+  --tty-border-strong: #6a9fd4;
+  --tty-fg: #ececec;
+  --tty-muted: #b8b8b8;
+  --tty-dim: #8a8a8a;
+  --tty-accent: #8dc7ff;
+  --tty-accent-dim: #5a8fc4;
+  --tty-ok: #7ecf9a;
+  --tty-warn-bg: #2a1f0d;
+  --tty-line: 1.65;
+  --tty-ch: 1ch;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0 auto;
+  /* Narrow terminals remain comfortable; wide panes can use more line length (docs/ui/terminal-browser-spec.md). */
+  max-width: min(140ch, calc(100vw - 1.5rem));
+  padding: 1rem;
+  background: var(--tty-bg);
+  color: var(--tty-fg);
+  font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 15px;
+  line-height: var(--tty-line);
+  text-rendering: optimizeSpeed;
+  scrollbar-gutter: stable;
+}
+
+/* Skip link: off-screen until focused (keyboard / SR) */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0.5rem;
+  z-index: 100;
+  padding: 0.5rem 1rem;
+  background: var(--tty-raised);
+  border: 2px solid var(--tty-border-strong);
+  color: var(--tty-fg);
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  left: 0.5rem;
+}
+
+a {
+  color: var(--tty-accent);
+  text-underline-offset: 0.15em;
+}
+
+a:hover {
+  color: #b8dcff;
+}
+
+kbd {
+  display: inline-block;
+  padding: 0.1em 0.45em;
+  min-width: 1.5em;
+  text-align: center;
+  font-family: inherit;
+  font-size: 0.88em;
+  line-height: 1.3;
+  color: var(--tty-fg);
+  background: var(--tty-bg);
+  border: 1px solid var(--tty-border);
+  border-bottom-width: 2px;
+  border-radius: 2px;
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.35);
+}
+
+code,
+pre,
+textarea,
+input,
+select,
+button {
+  font: inherit;
+}
+
+pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+
+.site-header,
+.site-nav,
+.workspace-strip,
+.panel {
+  border: 1px solid var(--tty-border);
+  background: var(--tty-raised);
+}
+
+.site-header,
+.workspace-strip,
+.panel {
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.panel > h2:first-child {
+  margin-top: 0;
+}
+
+/* Lead copy under panel title — label-above-field rhythm (docs/ui/terminal-browser-spec.md) */
+.panel-lead {
+  margin: 0 0 1rem;
+  color: var(--tty-muted);
+  max-width: 88ch;
+  line-height: var(--tty-line);
+}
+
+.panel-lead:last-child {
+  margin-bottom: 0;
+}
+
+.site-title {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.site-subtitle,
+.muted,
+.shortcut-hint {
+  color: var(--tty-muted);
+}
+
+/* Minimal header for task switcher layout */
+.site-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--tty-border);
+}
+
+.task-switcher {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.task-switcher-label {
+  color: var(--tty-muted);
+  font-size: 0.85em;
+  margin-right: 0.25rem;
+}
+
+.task-link {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--tty-border);
+  background: var(--tty-bg);
+  color: var(--tty-fg);
+  text-decoration: none;
+  border-radius: 2px;
+  font-size: 0.85em;
+}
+
+.task-link:hover {
+  border-color: var(--tty-accent);
+  color: var(--tty-accent);
+}
+
+.task-link.active {
+  border-color: var(--tty-accent);
+  background: var(--tty-surface);
+  color: var(--tty-accent);
+  font-weight: bold;
+}
+
+.keyboard-hints {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.hint {
+  padding: 0.15rem 0.4rem;
+  border: 1px solid var(--tty-border);
+  background: var(--tty-bg);
+  color: var(--tty-dim);
+  font-size: 0.8em;
+  border-radius: 2px;
+}
+
+/* Compact header for small terminals */
+@media (max-width: 60ch) {
+  .site-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    margin-bottom: 1rem;
+  }
+  
+  .keyboard-hints {
+    align-self: flex-end;
+  }
+  
+  .task-switcher {
+    gap: 0.25rem;
+  }
+  
+  .task-link {
+    padding: 0.2rem 0.4rem;
+    font-size: 0.8em;
+  }
+}
+
+/* Minimal task layout */
+.page-title {
+  margin: 0 0 1.5rem;
+  font-size: 1.35rem;
+  font-weight: normal;
+  color: var(--tty-fg);
+}
+
+.task-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.task-form label {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--tty-fg);
+  font-weight: normal;
+}
+
+.task-form input,
+.task-form select,
+.task-form textarea {
+  width: 100%;
+  padding: 0.4rem;
+  background: var(--tty-bg);
+  border: 1px solid var(--tty-border);
+  color: var(--tty-fg);
+  border-radius: 2px;
+}
+
+.task-form input:focus,
+.task-form select:focus,
+.task-form textarea:focus {
+  outline: none;
+  border-color: var(--tty-accent);
+}
+
+.form-row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.form-col {
+  flex: 1;
+  min-width: 6rem;
+}
+
+.checkbox-col {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+}
+
+.submit-button {
+  padding: 0.6rem 1.2rem;
+  background: var(--tty-accent);
+  color: #0d0d0d;
+  border: none;
+  border-radius: 2px;
+  font-size: 0.95em;
+  font-weight: bold;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.submit-button:hover {
+  background: var(--tty-accent-dim);
+}
+
+.submit-button kbd {
+  margin-left: 0.5rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Compact forms for small terminals */
+@media (max-width: 60ch) {
+  .page-title {
+    margin: 0 0 1rem;
+    font-size: 1.2rem;
+  }
+  
+  .task-form {
+    gap: 0.75rem;
+  }
+  
+  .task-form label {
+    margin-bottom: 0.25rem;
+  }
+  
+  .form-row {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .form-col {
+    min-width: auto;
+  }
+  
+  .submit-button {
+    width: 100%;
+    align-self: stretch;
+  }
+}
+
+@media (min-width: 70ch) {
+  .site-header {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+}
+
+.shortcut-hint {
+  font-size: 0.92em;
+  line-height: 1.5;
+  max-width: 65ch;
+  padding: 0.5rem 0.65rem;
+  border: 1px dashed var(--tty-border);
+  background: var(--tty-surface);
+}
+
+.site-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.nav-link {
+  text-decoration: none;
+  padding: 0.4rem 0.65rem;
+  min-height: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--tty-border);
+  background: var(--tty-surface);
+  color: var(--tty-accent);
+}
+
+/* Terminal-first: visible state without relying only on hover (keyboard users get .active / aria-current). */
+.nav-link:hover {
+  border-color: var(--tty-accent-dim);
+  background: var(--tty-raised);
+}
+
+.nav-link.active,
+.nav-link[aria-current="page"] {
+  border-color: var(--tty-border-strong);
+  color: var(--tty-fg);
+  background: var(--tty-bg);
+  box-shadow: inset 0 0 0 1px var(--tty-accent);
+}
+
+.nav-link:focus-visible {
+  outline: 2px solid var(--tty-border-strong);
+  outline-offset: 2px;
+}
+
+.banner {
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--tty-border);
+}
+
+.banner.notice {
+  background: #13261a;
+  border-color: #2f6d3f;
+}
+
+.banner.error {
+  background: #351616;
+  border-color: #8a3c3c;
+}
+
+.workspace-fetch-alert[hidden] {
+  display: none !important;
+}
+
+.workspace-strip-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.5rem;
+}
+
+.btn-refresh {
+  border: 1px solid var(--tty-border);
+  background: var(--tty-surface);
+  color: var(--tty-fg);
+  padding: 0.45rem 0.75rem;
+  min-height: 2.5rem;
+  cursor: pointer;
+}
+
+.btn-refresh:hover {
+  border-color: var(--tty-accent-dim);
+}
+
+.btn-refresh:focus-visible {
+  outline: 2px solid var(--tty-border-strong);
+  outline-offset: 2px;
+}
+
+.btn-refresh:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.workspace-strip-main,
+.panel-header,
+.result-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: baseline;
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--tty-border);
+  font-size: 0.92em;
+}
+
+.badge.ok {
+  border-color: #2f6d3f;
+  color: var(--tty-ok);
+}
+
+.warnings {
+  margin: 0.75rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.relation-label-sources {
+  margin-top: 0.75rem;
+}
+
+.relation-label-sources > summary {
+  cursor: pointer;
+  color: var(--tty-muted);
+  padding: 0.35rem 0;
+  list-style: none;
+}
+
+.relation-label-sources > summary::-webkit-details-marker {
+  display: none;
+}
+
+.relation-label-sources > summary::before {
+  content: "[+] ";
+  color: var(--tty-dim);
+}
+
+.relation-label-sources[open] > summary::before {
+  content: "[−] ";
+}
+
+.relation-label-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+  font-size: 0.92em;
+}
+
+.relation-label-table th,
+.relation-label-table td {
+  border: 1px solid #3a3a3a;
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.relation-label-table th {
+  color: #bdbdbd;
+  font-weight: normal;
+}
+
+.relation-label-chips code {
+  font-size: 0.92em;
+}
+
+.page-shell {
+  display: grid;
+  gap: 1rem;
+}
+
+.stack-form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+/* Label-above-control (docs/ui/terminal-browser-spec.md): explicit labels, not placeholder-only */
+.stack-form > label:not(.checkbox-row),
+.stack-form fieldset.stack-fieldset > label {
+  font-weight: 600;
+  color: var(--tty-fg);
+  font-size: 0.92em;
+  letter-spacing: 0.02em;
+}
+
+/* label-above-control: explicit grid rows (already stack-form); group variables / options */
+.stack-form fieldset.stack-fieldset {
+  border: 1px solid var(--tty-border);
+  padding: 0.75rem 1rem 1rem;
+  margin: 0;
+  background: var(--tty-bg);
+  display: grid;
+  gap: 0.75rem;
+}
+
+.stack-form fieldset.stack-fieldset legend {
+  padding: 0 0.4rem;
+  color: var(--tty-muted);
+  font-size: 0.95em;
+}
+
+.inline-form {
+  margin-top: 1rem;
+}
+
+input,
+textarea,
+select,
+button {
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--tty-border);
+  background: var(--tty-bg);
+  color: inherit;
+}
+
+button {
+  width: auto;
+  min-height: 2.5rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  cursor: pointer;
+}
+
+button.secondary {
+  border-color: #6b6b6b;
+  color: #d0d0d0;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.button-row button {
+  width: auto;
+}
+
+.button-row .inline-form {
+  margin-top: 0;
+}
+
+ul.predictions {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+ul.predictions li {
+  margin-bottom: 0.35rem;
+}
+
+button:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.danger {
+  border-color: #8a3c3c;
+  color: #ffb5b5;
+}
+
+.checkbox-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.checkbox-row input {
+  width: auto;
+  min-width: 1.15rem;
+  min-height: 1.15rem;
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+}
+
+.checkbox-row label {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--tty-fg);
+  font-size: 0.92em;
+}
+
+.result-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.result-card {
+  border: 1px solid #323232;
+  padding: 0.75rem;
+  background: #141414;
+}
+
+.arrow {
+  color: #7fb1ff;
+}
+
+.kv-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.4rem 1rem;
+}
+
+.kv-grid dt {
+  color: #bdbdbd;
+}
+
+/* Terminal panes are always “narrow”; stack kv on tight viewports only */
+@media (max-width: 55ch) {
+  body {
+    padding: 0.75rem;
+  }
+
+  .kv-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Keyboard help panel (base.html) */
+.keyboard-help {
+  margin-bottom: 1rem;
+  border: 1px solid var(--tty-border);
+  background: var(--tty-surface);
+  padding: 0;
+}
+
+.keyboard-help > summary {
+  cursor: pointer;
+  padding: 0.5rem 0.75rem;
+  color: var(--tty-muted);
+  font-size: 0.95em;
+  list-style: none;
+}
+
+.keyboard-help > summary::-webkit-details-marker {
+  display: none;
+}
+
+.keyboard-help > summary::before {
+  content: "? ";
+  color: var(--tty-accent);
+  font-weight: bold;
+}
+
+.keyboard-help[open] > summary {
+  border-bottom: 1px solid var(--tty-border);
+}
+
+.keyboard-help .keyboard-help-body {
+  padding: 0.75rem 1rem 1rem;
+  font-size: 0.92em;
+  line-height: 1.55;
+}
+
+.keyboard-help dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 1rem;
+}
+
+.keyboard-help dt {
+  color: var(--tty-dim);
+  white-space: nowrap;
+}
+
+.keyboard-help dd {
+  margin: 0;
+}
+
+.keyboard-help > summary:focus-visible {
+  outline-offset: 1px;
+}
+
+/* Trace / wide tables — horizontal scroll on narrow viewports */
+.table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+  margin-top: 0.75rem;
+}
+
+.data-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.92em;
+}
+
+.data-table th,
+.data-table td {
+  border: 1px solid var(--tty-border);
+  padding: 0.35rem 0.55rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.data-table th {
+  background: var(--tty-raised);
+  color: var(--tty-muted);
+  font-weight: 600;
+}
+
+/* Runs list: table on wide viewports, stacked cards when narrow (docs/ui/terminal-browser-spec.md) */
+.runs-cards {
+  display: none;
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+  gap: 0.5rem;
+}
+
+.runs-cards .result-card {
+  margin-bottom: 0.5rem;
+}
+
+@media (max-width: 52rem) {
+  .partial-runs-table .runs-table {
+    display: none;
+  }
+
+  .partial-runs-table .runs-cards {
+    display: flex;
+    flex-direction: column;
+  }
+}
+
+.tag-row .tag {
+  display: inline-block;
+  margin-right: 0.35rem;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--tty-border);
+  border-radius: 2px;
+  font-size: 0.85em;
+}
+
+.engine-chip-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.25rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.engine-chip-list .ok {
+  color: var(--tty-ok);
+}
+
+.engine-chip-list .dim {
+  color: var(--tty-dim);
+}
+
+.panel-inline {
+  margin: 0.5rem 0;
+  padding: 0.75rem;
+  border: 1px dashed var(--tty-border);
+  background: var(--tty-surface);
+}
+
+.trace-async-panel {
+  margin-top: 0.75rem;
+}
+
+/* === Focus-visible audit: every interactive control (terminal / keyboard-first) ===
+   Links, buttons, fields, <select>, <summary>, skip link — same ring token. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+summary:focus-visible,
+.skip-link:focus-visible {
+  outline: 2px solid var(--tty-border-strong);
+  outline-offset: 2px;
+}
+
+summary:focus:not(:focus-visible) {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .nav-link:hover,
+  .btn-refresh:hover {
+    transition: none;
+  }
+}

@@ -1,0 +1,11 @@
+schema_version = "larql.governance.rule_profile.v1"
+
+[profile]
+id = "policy_file"
+applies_to = "policy_file"
+rule_sets = [
+  "rule_admission",
+  "machine_runtime",
+]
+required_facts = []
+default_flow = "policy_update"

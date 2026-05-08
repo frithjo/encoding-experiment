@@ -5,7 +5,10 @@ mod formatting;
 mod utils;
 
 use commands::extraction::*;
+use commands::machine_cmd;
+use commands::policy_rules_cmd;
 use commands::query::*;
+use larql_core::config::{load_config, AppConfig};
 
 #[derive(Parser)]
 #[command(
@@ -48,6 +51,9 @@ enum Commands {
     /// Capture and compare attention patterns across prompts.
     AttentionCapture(attention_capture_cmd::AttentionCaptureArgs),
 
+    /// Run or prove separated attention over TCP with Q/K/V payloads only.
+    AttentionRuntime(attention_runtime_cmd::AttentionRuntimeArgs),
+
     /// Extract attention template circuits from QK weight decomposition.
     QkTemplates(qk_templates_cmd::QkTemplatesArgs),
 
@@ -84,6 +90,9 @@ enum Commands {
     /// Build a .vindex — the model decompiled to a standalone vector index.
     ExtractIndex(extract_index_cmd::ExtractIndexArgs),
 
+    /// Cache template residuals for fast inference (Inference level only).
+    CacheTemplates(cache_templates_cmd::CacheTemplatesCmd),
+
     /// Build a custom model from a Vindexfile (declarative: FROM + PATCH + INSERT).
     Build(build_cmd::BuildArgs),
 
@@ -96,13 +105,20 @@ enum Commands {
     /// Verify vindex file integrity (SHA256 checksums).
     Verify(verify_cmd::VerifyArgs),
 
-    // GraphWalk removed — used deprecated FeatureListFfn
+    /// Governed machine policy, minting, and receipt commands.
+    Machine(machine_cmd::MachineArgs),
 
+    /// Governance policy evaluator and update ceremony commands.
+    Policy(policy_rules_cmd::RulesArgs),
+
+    /// Replay policy decision ledgers.
+    Replay(policy_rules_cmd::ReplayArgs),
+
+    // GraphWalk removed — used deprecated FeatureListFfn
     /// Trace residual stream trajectories on the sphere across layers.
     TrajectoryTrace(trajectory_trace_cmd::TrajectoryTraceArgs),
 
     // VindexBench removed — used deprecated DownClusteredFfn
-
     /// Test rank-k projection: replace L0→L_inject with a linear map, run the rest dense.
     ProjectionTest(projection_test_cmd::ProjectionTestArgs),
 
@@ -214,7 +230,22 @@ struct ServeArgs {
     log_level: String,
 }
 
-fn main() {
+pub fn main() {
+    // Load configuration at startup
+    // This loads from config/default.toml, config/local.toml, .env, and LARQL__ env vars
+    let _config = match load_config() {
+        Ok(cfg) => {
+            // Config loaded successfully - environment variables are now available
+            cfg
+        }
+        Err(e) => {
+            // Config loading failed - log warning but continue with defaults
+            eprintln!("Warning: Failed to load configuration: {e}");
+            eprintln!("Using default values and environment variables");
+            AppConfig::default()
+        }
+    };
+
     let cli = Cli::parse();
 
     let result = match cli.command {
@@ -226,6 +257,7 @@ fn main() {
         Commands::Predict(args) => predict_cmd::run(args),
         Commands::IndexGates(args) => index_gates_cmd::run(args),
         Commands::AttentionCapture(args) => attention_capture_cmd::run(args),
+        Commands::AttentionRuntime(args) => attention_runtime_cmd::run(args),
         Commands::QkTemplates(args) => qk_templates_cmd::run(args),
         Commands::QkRank(args) => qk_rank_cmd::run(args),
         Commands::QkModes(args) => qk_modes_cmd::run(args),
@@ -240,10 +272,14 @@ fn main() {
         Commands::KgBench(args) => kg_bench_cmd::run(args),
         Commands::FfnThroughput(args) => ffn_throughput_cmd::run(args),
         Commands::ExtractIndex(args) => extract_index_cmd::run(args),
+        Commands::CacheTemplates(args) => cache_templates_cmd::run(args),
         Commands::Build(args) => build_cmd::run(args),
         Commands::Convert(args) => convert_cmd::run(args),
         Commands::Hf(args) => hf_cmd::run(args),
         Commands::Verify(args) => verify_cmd::run(args),
+        Commands::Machine(args) => machine_cmd::run(args),
+        Commands::Policy(args) => policy_rules_cmd::run(args),
+        Commands::Replay(args) => policy_rules_cmd::run_replay(args),
         // Commands::GraphWalk removed
         Commands::TrajectoryTrace(args) => trajectory_trace_cmd::run(args),
         // Commands::VindexBench removed
@@ -264,17 +300,15 @@ fn main() {
             larql_lql::run_repl();
             Ok(())
         }
-        Commands::Lql(args) => {
-            match larql_lql::run_batch(&args.statement) {
-                Ok(lines) => {
-                    for line in &lines {
-                        println!("{line}");
-                    }
-                    Ok(())
+        Commands::Lql(args) => match larql_lql::run_batch(&args.statement) {
+            Ok(lines) => {
+                for line in &lines {
+                    println!("{line}");
                 }
-                Err(e) => Err(e),
+                Ok(())
             }
-        }
+            Err(e) => Err(e),
+        },
         Commands::Serve(args) => {
             // Build the argument list and exec larql-server.
             let mut cmd_args = Vec::new();
@@ -336,9 +370,7 @@ fn main() {
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_else(|| "larql-server".into());
 
-            let status = std::process::Command::new(&bin)
-                .args(&cmd_args)
-                .status();
+            let status = std::process::Command::new(&bin).args(&cmd_args).status();
 
             match status {
                 Ok(s) if s.success() => Ok(()),

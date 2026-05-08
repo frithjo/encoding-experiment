@@ -1,0 +1,20 @@
+{
+  "schema_version": "larql.governance.machine_creation_fixture.v1",
+  "case_id": "denied_stale_state_hash",
+  "decision": "deny",
+  "action": "create_machine",
+  "proposal": {
+    "machine_name": "stateful_runtime_editor",
+    "responsibility_boundary": "Applies runtime edits.",
+    "overlap_analysis": "Claims no overlap but cites stale state.",
+    "required_tests": [
+      "machine_accepts_valid_input_test",
+      "machine_rejects_malformed_input_test"
+    ],
+    "risk": "high"
+  },
+  "missing_evidence": [
+    "active_policy_set_hash_recorded"
+  ]
+}
+

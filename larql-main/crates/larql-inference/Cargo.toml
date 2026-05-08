@@ -33,3 +33,9 @@ metal = ["larql-compute/metal"]
 [dev-dependencies]
 assert_approx_eq = "1"
 tempfile = "3"
+
+[package.metadata.product]
+zone = "core"
+role = "transformer-inference-and-trace-runtime"
+release_impact = "high"
+stability_target = "managed"

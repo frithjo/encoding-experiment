@@ -1,0 +1,31 @@
+schema_version = "larql.governance.ceremony.v1"
+id = "capability_minting"
+name = "CapabilityMintingCeremony"
+max_open_llm_decisions = 0
+
+phases = [
+  "CapabilityRequestSubmitted",
+  "AuthorityBoundaryChecked",
+  "PriorPolicyHashChecked",
+  "PriorStateHashChecked",
+  "RequiredChecksBound",
+  "ExpirationBound",
+  "HumanApprovalRecorded",
+  "CapabilityMinted",
+  "CapabilityReceiptRecorded",
+]
+
+required_evidence = [
+  "authority_boundary",
+  "prior_policy_hash",
+  "prior_state_hash",
+  "required_checks",
+  "expires_at",
+  "human_approval",
+]
+
+[authority]
+llm_may_grant = false
+llm_may_expand_scope = false
+requires_zero_open_llm_decisions = true
+requires_ledger_receipt = true

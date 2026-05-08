@@ -103,7 +103,9 @@ impl<'a> SafeTensorsFile<'a> {
             return Err("File too small for header length".into());
         }
 
-        let header_len = u64::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7]]) as usize;
+        let header_len = u64::from_le_bytes([
+            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+        ]) as usize;
 
         if bytes.len() < 8 + header_len {
             return Err("File truncated: header extends beyond file".into());
@@ -151,14 +153,16 @@ impl<'a> SafeTensorsFile<'a> {
 
     /// Iterator over all tensors.
     pub fn tensors(&self) -> impl Iterator<Item = (&str, TensorView<'a>)> {
-        self.names().into_iter().filter_map(move |name| {
-            self.tensor(name).map(|view| (name, view))
-        })
+        self.names()
+            .into_iter()
+            .filter_map(move |name| self.tensor(name).map(|view| (name, view)))
     }
 }
 
 fn header_len(bytes: &[u8]) -> usize {
-    u64::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7]]) as usize
+    u64::from_le_bytes([
+        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+    ]) as usize
 }
 
 #[cfg(test)]
@@ -190,7 +194,8 @@ mod tests {
 
     #[test]
     fn test_deserialize_minimal() {
-        let header_json = r#"{"tensor1": {"dtype": "F32", "shape": [2, 3], "data_offsets": [0, 24]}}"#;
+        let header_json =
+            r#"{"tensor1": {"dtype": "F32", "shape": [2, 3], "data_offsets": [0, 24]}}"#;
         let header_len = header_json.len();
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&(header_len as u64).to_le_bytes());

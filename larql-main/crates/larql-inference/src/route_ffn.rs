@@ -174,11 +174,7 @@ impl<'a> FfnBackend for RouteFfn<'a> {
         }
     }
 
-    fn forward_with_activation(
-        &self,
-        layer: usize,
-        x: &Array2<f32>,
-    ) -> (Array2<f32>, Array2<f32>) {
+    fn forward_with_activation(&self, layer: usize, x: &Array2<f32>) -> (Array2<f32>, Array2<f32>) {
         let out = self.forward(layer, x);
         let intermediate = self
             .weights
@@ -229,11 +225,7 @@ impl<'a> FfnBackend for RouteGuidedFfn<'a> {
         }
     }
 
-    fn forward_with_activation(
-        &self,
-        layer: usize,
-        x: &Array2<f32>,
-    ) -> (Array2<f32>, Array2<f32>) {
+    fn forward_with_activation(&self, layer: usize, x: &Array2<f32>) -> (Array2<f32>, Array2<f32>) {
         let out = self.forward(layer, x);
         let intermediate = self
             .weights
@@ -287,9 +279,9 @@ fn route_ffn_forward_prerecorded(
 /// Eliminates the full gate matmul but keeps accurate activations.
 fn route_ffn_forward_guided(
     x: &Array2<f32>,
-    w_gate: &ndarray::ArrayBase<impl ndarray::Data<Elem = f32>, ndarray::Ix2>,    // (intermediate, hidden)
-    w_up: &ndarray::ArrayBase<impl ndarray::Data<Elem = f32>, ndarray::Ix2>,      // (intermediate, hidden)
-    w_down: &ndarray::ArrayBase<impl ndarray::Data<Elem = f32>, ndarray::Ix2>,    // (hidden, intermediate)
+    w_gate: &ndarray::ArrayBase<impl ndarray::Data<Elem = f32>, ndarray::Ix2>, // (intermediate, hidden)
+    w_up: &ndarray::ArrayBase<impl ndarray::Data<Elem = f32>, ndarray::Ix2>, // (intermediate, hidden)
+    w_down: &ndarray::ArrayBase<impl ndarray::Data<Elem = f32>, ndarray::Ix2>, // (hidden, intermediate)
     feature_indices: &[usize],
 ) -> Array2<f32> {
     let seq_len = x.shape()[0];

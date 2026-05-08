@@ -85,7 +85,10 @@ impl InferenceModel {
         let model_path = resolve_model_path(model)?;
         let mut weights = load_model_dir(&model_path)?;
         let freed = weights.drop_ffn_weights();
-        eprintln!("[walk-only] Dropped FFN weights: {:.1} GB freed", freed as f64 / 1e9);
+        eprintln!(
+            "[walk-only] Dropped FFN weights: {:.1} GB freed",
+            freed as f64 / 1e9
+        );
         let tokenizer = load_tokenizer(&model_path)?;
         Ok(Self {
             weights,
@@ -178,7 +181,8 @@ impl InferenceModel {
 
             // Write residuals
             for (layer, vector) in &trace.residuals {
-                let top_k = project_to_vocab(&self.weights.embed, vector, 10, self.tokenizer.as_ref());
+                let top_k =
+                    project_to_vocab(&self.weights.embed, vector, 10, self.tokenizer.as_ref());
 
                 let (top_token, top_token_id, c_score) = if let Some(first) = top_k.first() {
                     (first.token.clone(), first.token_id, first.logit)

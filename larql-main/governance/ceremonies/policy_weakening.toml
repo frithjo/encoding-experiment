@@ -1,0 +1,37 @@
+schema_version = "larql.governance.ceremony.v1"
+id = "policy_weakening"
+name = "PolicyWeakeningCeremony"
+max_open_llm_decisions = 1
+
+phases = [
+  "PolicyWeakeningConcernSubmitted",
+  "AuthorityReductionIdentified",
+  "FalsePositiveExamplesAttached",
+  "HostilePathRegressionTestAttached",
+  "RollbackPathAttached",
+  "ConflictAnalysisCompleted",
+  "ShadowEvaluationCompleted",
+  "HumanApprovalRecorded",
+  "PolicyCapabilityMinted",
+  "PolicyFileUpdated",
+  "PolicyHashAdvanced",
+  "ReplayVerified",
+  "PolicyWeakeningClosed",
+]
+
+required_evidence = [
+  "authority_reduced",
+  "too_strict_rationale_hash",
+  "false_positive_example_hashes",
+  "hostile_path_regression_test_hash",
+  "rollback_path_hash",
+  "human_approval_hash",
+]
+
+[authority]
+llm_may_approve = false
+llm_may_activate = false
+efficiency_claim_is_sufficient = false
+activation_requires_capability = true
+activation_requires_policy_hash_advance = true
+activation_requires_replay = true

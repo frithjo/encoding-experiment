@@ -1,0 +1,17 @@
+[[case]]
+name = "candidate_catches_known_bad_machine_creation"
+action = "create_machine"
+
+[case.facts]
+machine_proposal_present = true
+
+[case.evidence]
+existing_machine_overlap_check = true
+machine_responsibility_boundary = true
+machine_accepts_valid_input_test = true
+machine_rejects_malformed_input_test = true
+machine_shadow_eval_fixture_evidence = false
+
+[case.expect]
+decision = "deny"
+rule_id = "machine_creation.shadow_eval_fixture_requires_evidence"

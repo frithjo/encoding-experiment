@@ -12,18 +12,18 @@
 //! - `trace`: Residual/activation capture and calibration
 
 pub mod embed;
-pub mod ple;
 pub mod layer;
+pub mod memit;
+pub mod ple;
 pub mod predict;
 pub mod trace;
-pub mod memit;
 
-use ndarray::Array2;
 use crate::attention::AttentionWeights;
 use crate::ffn::FfnBackend;
 use crate::model::ModelWeights;
-use larql_models::NormType;
 use crate::residual::rms_norm;
+use larql_models::NormType;
+use ndarray::Array2;
 
 // ── Types ──
 
@@ -45,6 +45,13 @@ pub struct PredictResult {
     pub predictions: Vec<(String, f64)>,
 }
 
+#[derive(Clone, Debug)]
+pub struct TokenPrediction {
+    pub token_id: u32,
+    pub text: String,
+    pub probability: f64,
+}
+
 /// Prediction result with per-layer residual capture.
 pub struct PredictResultWithResiduals {
     pub predictions: Vec<(String, f64)>,
@@ -56,6 +63,9 @@ pub struct PredictResultWithAttention {
     pub predictions: Vec<(String, f64)>,
     pub attention: Vec<LayerAttentionCapture>,
     pub residuals: Vec<(usize, Vec<f32>)>,
+    pub logit_lens: Vec<(usize, Vec<(String, f64)>)>,
+    pub head_dla: Vec<(usize, Vec<Vec<f32>>)>, // (layer, head_index -> DLA_vector)
+    pub final_hidden: Vec<f32>,
 }
 
 /// Per-layer computation strategy.
@@ -88,7 +98,10 @@ pub fn apply_norm(
 }
 
 /// Compute x @ w.T via BLAS.
-pub fn dot_proj(x: &ndarray::ArrayBase<impl ndarray::Data<Elem = f32>, ndarray::Ix2>, w: &ndarray::ArrayBase<impl ndarray::Data<Elem = f32>, ndarray::Ix2>) -> Array2<f32> {
+pub fn dot_proj(
+    x: &ndarray::ArrayBase<impl ndarray::Data<Elem = f32>, ndarray::Ix2>,
+    w: &ndarray::ArrayBase<impl ndarray::Data<Elem = f32>, ndarray::Ix2>,
+) -> Array2<f32> {
     x.dot(&w.t())
 }
 
@@ -106,16 +119,17 @@ pub fn add_bias(x: &mut Array2<f32>, bias: &[f32]) {
 // ── Re-exports: preserve all `crate::forward::*` paths ──
 
 pub use embed::embed_tokens_pub;
-pub use layer::{run_ffn, run_attention_public};
+pub use layer::{run_attention_public, run_ffn};
+pub use memit::{run_memit, MemitFact, MemitFactResult, MemitResult};
 pub use predict::{
-    predict, predict_with_temperature, predict_with_ffn, predict_with_ffn_attention, predict_with_ffn_trace,
-    predict_with_router, predict_with_strategy, predict_from_hidden, predict_from_hidden_with_ffn,
-    logits_to_predictions_pub, logit_lens_top1,
+    hidden_vec_to_token_predictions, hidden_vec_token_probability,
+    incremental_forward_append_token, logit_lens_top1, logits_to_predictions_pub, predict,
+    predict_from_hidden, predict_from_hidden_with_ffn, predict_with_ffn,
+    predict_with_ffn_attention, predict_with_ffn_trace, predict_with_router, predict_with_strategy,
+    predict_with_temperature, prepare_incremental_forward_state, IncrementalForwardState,
 };
 pub use trace::{
-    forward_to_layer, capture_residuals, capture_decoy_residuals,
-    capture_ffn_activation_matrix, estimate_ffn_covariance,
-    trace_forward, trace_forward_with_ffn, trace_forward_full,
-    calibrate_scalar_gains,
+    calibrate_scalar_gains, capture_decoy_residuals, capture_ffn_activation_matrix,
+    capture_residuals, estimate_ffn_covariance, forward_to_layer, trace_forward,
+    trace_forward_full, trace_forward_with_ffn,
 };
-pub use memit::{run_memit, MemitFact, MemitResult, MemitFactResult};

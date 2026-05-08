@@ -18,7 +18,7 @@ extern crate blas_src;
 #[cfg(all(feature = "blas", target_os = "linux"))]
 extern crate openblas_src;
 
-pub use ::ndarray as ndarray;
+pub use ::ndarray;
 pub use ::ndarray::*;
 
 pub mod sgemm;
@@ -151,9 +151,10 @@ impl DenseMatrix<f64> {
                     }
                     let diag = self.inner[[j, j]] - sum;
                     if diag <= 0.0 {
-                        return Err(TensorError::NotPositiveDefinite(
-                            format!("Matrix is not positive definite at index ({}, {})", j, j),
-                        ));
+                        return Err(TensorError::NotPositiveDefinite(format!(
+                            "Matrix is not positive definite at index ({}, {})",
+                            j, j
+                        )));
                     }
                     l[[j, j]] = diag.sqrt();
                 } else {
@@ -244,7 +245,12 @@ mod tests {
     #[test]
     fn test_cholesky() {
         // Simple positive definite matrix
-        let a = DenseMatrix::from_raw(vec![4.0, 12.0, -16.0, 12.0, 37.0, -43.0, -16.0, -43.0, 98.0], 3, 3).unwrap();
+        let a = DenseMatrix::from_raw(
+            vec![4.0, 12.0, -16.0, 12.0, 37.0, -43.0, -16.0, -43.0, 98.0],
+            3,
+            3,
+        )
+        .unwrap();
         let l = a.cholesky().unwrap();
         assert_eq!(l.shape(), (3, 3));
 

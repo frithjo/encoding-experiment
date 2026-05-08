@@ -18,8 +18,19 @@ The primary workflow: extract a vindex, launch the REPL, or build from a Vindexf
 | `repl` | Launch the LQL interactive REPL |
 | `lql` | Execute a single LQL statement |
 | `walk` | Walk the model as a local vector index (gate KNN + down lookup) |
-| `vindex-bench` | Benchmark vindex walk: accuracy vs dense, throughput |
 | `serve` | Serve a vindex over HTTP (knowledge queries, patches, multi-model) |
+
+## Experimental command surface
+
+These commands are valuable for benchmarking and research workflows, but are not
+part of the core product workflow contract.
+
+| Command | Description |
+|---|---|
+| `vindex-bench` | Benchmark vindex walk: accuracy vs dense, throughput |
+
+For broader experimental benchmarking, see `experiments/kv-cache-benchmark/README.md`
+and `docs/perf/README.md`.
 
 ### `larql serve`
 
@@ -482,6 +493,9 @@ larql convert <SUBCOMMAND>
 | Subcommand | Description |
 |---|---|
 | `gguf-to-vindex` | Convert a GGUF model to a vindex (dequantized to f32) |
+| `gguf-attention-extract` | Extract raw GGUF attention tensor payloads without tokenizer or dequantization |
+| `gguf-attention-verify` | Byte-verify an extracted attention payload against the source GGUF offsets |
+| `gguf-attention-proof` | Run attention extraction and byte verification in one command |
 | `safetensors-to-vindex` | Convert safetensors model to a vindex |
 | `gguf-info` | Show GGUF file metadata and detected architecture |
 
@@ -494,11 +508,31 @@ larql convert gguf-to-vindex model-Q4_K_M.gguf -o model.vindex --f16
 # Show GGUF metadata
 larql convert gguf-info model-Q4_K_M.gguf
 
+# Extract and prove raw attention tensors, separate from runtime weights
+larql convert gguf-attention-proof model-Q4_K_M.gguf -o attention-proof --attention-scope all
+
 # Convert safetensors to vindex
 larql convert safetensors-to-vindex ./model/ -o model.vindex --level inference --f16
 ```
 
-Supported GGUF quantization types for reading: F32, F16, BF16, Q4_0, Q4_1, Q8_0. All tensors are dequantized to f32 during conversion.
+Supported GGUF quantization types for reading: F32, F16, BF16, Q4_0, Q4_1, Q8_0. All tensors are dequantized to f32 during conversion. Attention proof commands preserve raw GGUF encoded tensor bytes and write `attention_proof.json`, `attention_inventory.json`, `source_attention.bin`, and `attention_verification.json`.
+
+### `larql attention-runtime`
+
+Run or prove a separated attention runtime. The attention process accepts post-projection Q/K/V activations over TCP and returns causal GQA output; learned model weights stay on the caller side. Proof mode requires a real GGUF, walks the GGUF tensor graph, and auto-selects the first runnable Q/K/V/O attention layer unless `--layer` is supplied.
+
+```bash
+# Standalone one-shot attention runtime
+larql attention-runtime serve --host 127.0.0.1 --port 0 --oneshot --ready-file /tmp/larql-attn.addr
+
+# Real GGUF layer split proof: parent loads weights, child computes attention only
+larql attention-runtime proof --gguf model-Q4_K_M.gguf --seq-len 2 -o separated-attention-gguf-layer-proof.json
+
+# Raw GGUF attention tensor extraction into capsule-backed files
+larql attention-runtime extract-gguf --gguf model-Q4_K_M.gguf --scope all --out attention-proof
+```
+
+The proof fails unless the child process response matches the graph-derived causal GQA reference within tolerance and records `model_weights_sent: false`. The parent process loads learned weights, computes Q/K/V and the O projection, sends only Q/K/V activations over TCP, and compares the result against the real GGUF layer path. `extract-gguf` writes `attention_manifest.json`, `tensor-capsules/*.capsule.json`, and raw `tensors/*.bin` payloads for inspection.
 
 ### `larql hf`
 

@@ -1,0 +1,17 @@
+schema_version = "larql.governance.ceremony_budgets.v1"
+
+[ceremony.machine_creation]
+max_open_llm_decisions = 3
+
+[ceremony.policy_update]
+max_open_llm_decisions = 2
+
+[ceremony.capability_minting]
+max_open_llm_decisions = 0
+
+[ceremony.struct_minting]
+max_open_llm_decisions = 3
+
+[ceremony.ci_governance_check]
+max_open_llm_decisions = 0
+

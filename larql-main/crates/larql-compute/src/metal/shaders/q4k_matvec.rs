@@ -80,4 +80,4 @@ kernel void q4k_matvec(
 "#;
 
 pub const ROWS_PER_TG: u64 = 8;
-pub const THREADS_PER_TG: u64 = 128;  // 4 simdgroups × 32 lanes, each sg does 2 rows
+pub const THREADS_PER_TG: u64 = 128; // 4 simdgroups × 32 lanes, each sg does 2 rows

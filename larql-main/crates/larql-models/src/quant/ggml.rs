@@ -9,17 +9,18 @@
 //! Used by GGUF model files. Each format stores blocks of 32 elements
 //! with shared scale factors.
 
-use crate::detect::ModelError;
 use super::half::f16_to_f32;
+use crate::detect::ModelError;
 
 // GGML tensor type IDs
 pub const TYPE_F32: u32 = 0;
 pub const TYPE_F16: u32 = 1;
 pub const TYPE_Q4_0: u32 = 2;
 pub const TYPE_Q4_1: u32 = 3;
-pub const TYPE_Q8_0: u32 = 6;
-pub const TYPE_Q5_0: u32 = 8;
-pub const TYPE_Q5_1: u32 = 9;
+pub const TYPE_Q5_0: u32 = 6;
+pub const TYPE_Q5_1: u32 = 7;
+pub const TYPE_Q8_0: u32 = 8;
+pub const TYPE_Q8_1: u32 = 9;
 pub const TYPE_Q2_K: u32 = 10;
 pub const TYPE_Q3_K: u32 = 11;
 pub const TYPE_Q4_K: u32 = 12;
@@ -37,8 +38,9 @@ pub fn tensor_data_size(tensor_type: u32, n_elements: usize) -> Result<usize, Mo
         TYPE_Q5_0 => Ok(n_elements / 32 * 22),
         TYPE_Q5_1 => Ok(n_elements / 32 * 24),
         TYPE_Q8_0 => Ok(n_elements / 32 * 34),
-        TYPE_Q4_K => Ok(n_elements / 256 * 144),  // super-block of 256 = 144 bytes (2+2+12+128)
-        TYPE_Q6_K => Ok(n_elements / 256 * 210),  // super-block of 256 = 210 bytes
+        TYPE_Q8_1 => Ok(n_elements / 32 * 36),
+        TYPE_Q4_K => Ok(n_elements / 256 * 144), // super-block of 256 = 144 bytes (2+2+12+128)
+        TYPE_Q6_K => Ok(n_elements / 256 * 210), // super-block of 256 = 210 bytes
         TYPE_Q2_K => Ok(n_elements / 256 * 84),
         TYPE_Q3_K => Ok(n_elements / 256 * 110),
         TYPE_Q5_K => Ok(n_elements / 256 * 176),
@@ -56,6 +58,7 @@ pub fn type_name(tensor_type: u32) -> &'static str {
         TYPE_Q8_0 => "Q8_0",
         TYPE_Q5_0 => "Q5_0",
         TYPE_Q5_1 => "Q5_1",
+        TYPE_Q8_1 => "Q8_1",
         TYPE_Q2_K => "Q2_K",
         TYPE_Q3_K => "Q3_K",
         TYPE_Q4_K => "Q4_K",
@@ -67,13 +70,16 @@ pub fn type_name(tensor_type: u32) -> &'static str {
 }
 
 /// Dequantize raw bytes to f32 based on GGML tensor type.
-pub fn dequantize(data: &[u8], tensor_type: u32, n_elements: usize) -> Result<Vec<f32>, ModelError> {
+pub fn dequantize(
+    data: &[u8],
+    tensor_type: u32,
+    n_elements: usize,
+) -> Result<Vec<f32>, ModelError> {
     match tensor_type {
-        TYPE_F32 => {
-            Ok(data.chunks_exact(4)
-                .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
-                .collect())
-        }
+        TYPE_F32 => Ok(data
+            .chunks_exact(4)
+            .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+            .collect()),
         TYPE_F16 => Ok(super::half::decode_f16(data)),
         TYPE_BF16 => Ok(super::half::decode_bf16(data)),
         TYPE_Q4_0 => dequantize_q4_0(data, n_elements),
@@ -226,7 +232,7 @@ pub fn dequantize_q5_1(data: &[u8], n_elements: usize) -> Result<Vec<f32>, Model
 ///
 /// Each (scale, min) pair governs 32 elements within the 256-element super-block.
 pub fn dequantize_q4_k(data: &[u8], n_elements: usize) -> Result<Vec<f32>, ModelError> {
-    let block_size = 144;   // 2 + 2 + 12 + 128 = actual Q4_K block size in llama.cpp
+    let block_size = 144; // 2 + 2 + 12 + 128 = actual Q4_K block size in llama.cpp
     let super_block = 256;
     let n_blocks = n_elements / super_block;
     let mut out = Vec::with_capacity(n_elements);
@@ -243,10 +249,10 @@ pub fn dequantize_q4_k(data: &[u8], n_elements: usize) -> Result<Vec<f32>, Model
         for j in 0..8 {
             if j < 4 {
                 scales[j] = scales_bytes[j] & 0x3F;
-                mins[j]   = scales_bytes[j + 4] & 0x3F;
+                mins[j] = scales_bytes[j + 4] & 0x3F;
             } else {
                 scales[j] = (scales_bytes[j + 4] & 0x0F) | ((scales_bytes[j - 4] >> 6) << 4);
-                mins[j]   = (scales_bytes[j + 4] >> 4)    | ((scales_bytes[j]     >> 6) << 4);
+                mins[j] = (scales_bytes[j + 4] >> 4) | ((scales_bytes[j] >> 6) << 4);
             }
         }
 
@@ -282,8 +288,8 @@ pub fn dequantize_q6_k(data: &[u8], n_elements: usize) -> Result<Vec<f32>, Model
 
     for sb in 0..n_blocks {
         let block = &data[sb * block_size..(sb + 1) * block_size];
-        let ql = &block[0..128];    // lower 4 bits
-        let qh = &block[128..192];  // upper 2 bits
+        let ql = &block[0..128]; // lower 4 bits
+        let qh = &block[128..192]; // upper 2 bits
         let scales = &block[192..208]; // 16 int8 scales
         let d = f16_to_f32(u16::from_le_bytes([block[208], block[209]]));
 
@@ -291,7 +297,11 @@ pub fn dequantize_q6_k(data: &[u8], n_elements: usize) -> Result<Vec<f32>, Model
             let sc = d * (sc_byte as i8) as f32;
             for i in 0..16 {
                 let idx = j * 16 + i;
-                let lo4 = if idx % 2 == 0 { ql[idx / 2] & 0x0F } else { (ql[idx / 2] >> 4) & 0x0F };
+                let lo4 = if idx % 2 == 0 {
+                    ql[idx / 2] & 0x0F
+                } else {
+                    (ql[idx / 2] >> 4) & 0x0F
+                };
                 let hi2_byte = qh[idx / 4];
                 let hi2 = (hi2_byte >> ((idx % 4) * 2)) & 0x03;
                 let val = ((lo4 as i32) | ((hi2 as i32) << 4)) - 32;
@@ -308,7 +318,10 @@ pub fn dequantize_q6_k(data: &[u8], n_elements: usize) -> Result<Vec<f32>, Model
 /// Input must be a multiple of 32 elements.
 /// Output: 18 bytes per block (f16 scale + 16 bytes of packed 4-bit quants).
 pub fn quantize_q4_0(data: &[f32]) -> Vec<u8> {
-    assert!(data.len().is_multiple_of(32), "Q4_0: element count must be multiple of 32");
+    assert!(
+        data.len().is_multiple_of(32),
+        "Q4_0: element count must be multiple of 32"
+    );
     let n_blocks = data.len() / 32;
     let mut out = Vec::with_capacity(n_blocks * 18);
 
@@ -340,7 +353,10 @@ pub fn quantize_q4_0(data: &[f32]) -> Vec<u8> {
 /// Input must be a multiple of 32 elements.
 /// Output: 34 bytes per block (f16 scale + 32 signed int8 quants).
 pub fn quantize_q8_0(data: &[f32]) -> Vec<u8> {
-    assert!(data.len().is_multiple_of(32), "Q8_0: element count must be multiple of 32");
+    assert!(
+        data.len().is_multiple_of(32),
+        "Q8_0: element count must be multiple of 32"
+    );
     let n_blocks = data.len() / 32;
     let mut out = Vec::with_capacity(n_blocks * 34);
 
@@ -361,7 +377,6 @@ pub fn quantize_q8_0(data: &[f32]) -> Vec<u8> {
     }
     out
 }
-
 
 // Compute operations (matvec, vecmat, NEON kernels) moved to larql-compute.
 // See: crates/larql-compute/src/cpu/ops/
@@ -431,7 +446,7 @@ mod tests {
     fn q8_0_basic() {
         let mut block = vec![0x00, 0x38]; // f16 scale = 0.5
         for _ in 0..16 {
-            block.push(2u8);    // +2 → 2*0.5 = 1.0
+            block.push(2u8); // +2 → 2*0.5 = 1.0
             block.push(0xFEu8); // -2 as i8 → -2*0.5 = -1.0
         }
         let result = dequantize_q8_0(&block, 32).unwrap();
@@ -467,22 +482,47 @@ mod tests {
         assert_eq!(tensor_data_size(TYPE_F16, 32).unwrap(), 64);
         assert_eq!(tensor_data_size(TYPE_Q4_0, 32).unwrap(), 18);
         assert_eq!(tensor_data_size(TYPE_Q4_1, 32).unwrap(), 20);
+        assert_eq!(tensor_data_size(TYPE_Q5_0, 32).unwrap(), 22);
+        assert_eq!(tensor_data_size(TYPE_Q5_1, 32).unwrap(), 24);
         assert_eq!(tensor_data_size(TYPE_Q8_0, 32).unwrap(), 34);
+        assert_eq!(tensor_data_size(TYPE_Q8_1, 32).unwrap(), 36);
     }
 
     #[test]
     fn type_names() {
         assert_eq!(type_name(TYPE_F32), "F32");
         assert_eq!(type_name(TYPE_Q4_0), "Q4_0");
+        assert_eq!(type_name(TYPE_Q5_0), "Q5_0");
+        assert_eq!(type_name(TYPE_Q5_1), "Q5_1");
         assert_eq!(type_name(TYPE_Q8_0), "Q8_0");
+        assert_eq!(type_name(TYPE_Q8_1), "Q8_1");
         assert_eq!(type_name(99), "unknown");
+    }
+
+    #[test]
+    fn ggml_type_ids_match_upstream_layout() {
+        assert_eq!(TYPE_Q5_0, 6);
+        assert_eq!(TYPE_Q5_1, 7);
+        assert_eq!(TYPE_Q8_0, 8);
+        assert_eq!(TYPE_Q8_1, 9);
+
+        assert_eq!(type_name(6), "Q5_0");
+        assert_eq!(type_name(7), "Q5_1");
+        assert_eq!(type_name(8), "Q8_0");
+        assert_eq!(type_name(9), "Q8_1");
+
+        assert_eq!(tensor_data_size(6, 32).unwrap(), 22);
+        assert_eq!(tensor_data_size(7, 32).unwrap(), 24);
+        assert_eq!(tensor_data_size(8, 32).unwrap(), 34);
+        assert_eq!(tensor_data_size(9, 32).unwrap(), 36);
     }
 
     // ── F32 passthrough ──
 
     #[test]
     fn f32_passthrough() {
-        let data: Vec<u8> = [1.0f32, -2.0, 3.0].iter()
+        let data: Vec<u8> = [1.0f32, -2.0, 3.0]
+            .iter()
             .flat_map(|v| v.to_le_bytes())
             .collect();
         let result = dequantize(&data, TYPE_F32, 3).unwrap();

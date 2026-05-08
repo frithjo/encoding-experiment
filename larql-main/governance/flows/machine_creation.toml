@@ -1,0 +1,17 @@
+schema_version = "larql.governance.policy_flow.v1"
+
+[flow]
+id = "machine_creation"
+actions = ["create_machine"]
+steps = [
+  { id = "need_assessment", next = ["overlap_check"] },
+  { id = "overlap_check", next = ["proposal"] },
+  { id = "proposal", next = ["policy_review"] },
+  { id = "policy_review", next = ["capability_mint"] },
+  { id = "capability_mint", next = ["patch_generation"] },
+  { id = "patch_generation", next = ["compiler_check"] },
+  { id = "compiler_check", next = ["test_check"] },
+  { id = "test_check", next = ["receipt"] },
+  { id = "receipt", next = ["replay"] },
+  { id = "replay", next = [] },
+]

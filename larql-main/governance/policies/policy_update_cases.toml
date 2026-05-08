@@ -1,0 +1,36 @@
+[[case]]
+name = "deny_policy_rule_addition_without_shadow_eval"
+action = "add_policy_rule"
+
+[case.evidence]
+shadow_eval_result = false
+policy_review_receipt = true
+rule_admission_capability = true
+
+[case.expect]
+decision = "deny"
+rule_id = "policy.rule_addition.requires_shadow_eval"
+
+[[case]]
+name = "allow_policy_rule_addition_with_governed_admission"
+action = "add_policy_rule"
+
+[case.evidence]
+shadow_eval_result = true
+policy_review_receipt = true
+rule_admission_capability = true
+
+[case.expect]
+decision = "allow"
+
+[[case]]
+name = "deny_policy_activation_without_replay"
+action = "activate_policy_set"
+
+[case.evidence]
+policy_replay_result = false
+active_policy_set_hash_recorded = true
+
+[case.expect]
+decision = "deny"
+rule_id = "policy.activation.requires_replay"

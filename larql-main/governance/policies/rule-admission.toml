@@ -1,0 +1,19 @@
+schema_version = "larql.governance.policy_pack.v1"
+
+[[rule]]
+id = "policy.rule_addition.requires_shadow_eval"
+class = "constitutional_policy"
+severity = "deny"
+description = "Rule additions require shadow evaluation and approval capability before index update."
+when = { all = [{ action = "add_policy_rule" }] }
+require = { all = [{ evidence = "shadow_eval_result", present = true }, { evidence = "policy_review_receipt", present = true }, { evidence = "rule_admission_capability", present = true }] }
+decision = { on_missing = "deny", message = "Rule addition lacks governed admission evidence.", required_actions = ["run shadow-eval", "record policy review receipt", "obtain rule admission capability"] }
+
+[[rule]]
+id = "policy.activation.requires_replay"
+class = "activation_policy"
+severity = "deny"
+description = "Policy activation requires replay evidence against active policy set hash."
+when = { all = [{ action = "activate_policy_set" }] }
+require = { all = [{ evidence = "policy_replay_result", present = true }, { evidence = "active_policy_set_hash_recorded", present = true }] }
+decision = { on_missing = "deny", message = "Policy activation lacks replay or policy hash evidence.", required_actions = ["run replay", "record active policy set hash"] }

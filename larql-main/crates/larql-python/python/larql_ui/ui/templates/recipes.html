@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="page-title">Recipes</h1>
+
+<form method="post" class="task-form">
+  <label for="name">Name</label>
+  <input id="name" name="name" type="text" value="{{ form_data.name if form_data else '' }}" placeholder="Capital describe">
+
+  <div class="form-row">
+    <div class="form-col">
+      <label for="kind">Kind</label>
+      <select id="kind" name="kind">
+        {% set selected_kind = form_data.kind if form_data else 'describe' %}
+        <option value="describe" {% if selected_kind == 'describe' %}selected{% endif %}>describe</option>
+        <option value="probe" {% if selected_kind == 'probe' %}selected{% endif %}>probe</option>
+        <option value="generation" {% if selected_kind == 'generation' %}selected{% endif %}>generation</option>
+        <option value="lql" {% if selected_kind == 'lql' %}selected{% endif %}>lql</option>
+        <option value="infer" {% if selected_kind == 'infer' %}selected{% endif %}>infer</option>
+        <option value="walk_model" {% if selected_kind == 'walk_model' %}selected{% endif %}>walk_model</option>
+      </select>
+    </div>
+
+    <div class="form-col">
+      <label for="default_engine">Engine (optional)</label>
+      <select id="default_engine" name="default_engine">
+        {% set de = form_data.get('default_engine', '') if form_data else '' %}
+        <option value="" {% if not de %}selected{% endif %}>default</option>
+        <option value="describe" {% if de == 'describe' %}selected{% endif %}>describe</option>
+        <option value="lql" {% if de == 'lql' %}selected{% endif %}>lql</option>
+        <option value="infer" {% if de == 'infer' %}selected{% endif %}>infer</option>
+        <option value="walk_model" {% if de == 'walk_model' %}selected{% endif %}>walk_model</option>
+      </select>
+    </div>
+  </div>
+
+  <label for="template">Template</label>
+  <input id="template" name="template" type="text" value="{{ form_data.template if form_data else '{subject}' }}" placeholder="{subject}">
+
+  <label for="lql_template">LQL query (for lql kind)</label>
+  <textarea id="lql_template" name="lql_template" rows="3" placeholder="STATS or DESCRIBE ...">{{ form_data.lql_template if form_data else '' }}</textarea>
+
+  <label for="description">Description</label>
+  <textarea id="description" name="description" rows="2">{{ form_data.description if form_data else '' }}</textarea>
+
+  <label for="tags">Tags</label>
+  <input id="tags" name="tags" type="text" value="{{ form_data.tags if form_data and form_data.get('tags') is not none else '' }}" placeholder="geo, probe">
+
+  <button type="submit" class="submit-button">Save recipe <kbd>Ctrl+Enter</kbd></button>
+</form>
+
+{% if recipes %}
+<section class="panel result-panel">
+  <h2>Saved Recipes ({{ recipes|length }})</h2>
+  <div class="result-list">
+    {% for recipe in recipes %}
+    <article class="result-card">
+      <div class="panel-header">
+        <strong><a href="/recipes/{{ recipe.id }}">{{ recipe.name }}</a></strong>
+        <span>{{ recipe.kind }}</span>
+      </div>
+      {% if recipe.tags %}
+      <div class="muted tag-row">{% for t in recipe.tags %}<span class="tag">{{ t }}</span>{% endfor %}</div>
+      {% endif %}
+      <div class="muted">{{ recipe.description or "No description." }}</div>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="panel panel-inline">
+  <details id="import-recipes-details">
+    <summary>Import <kbd>I</kbd></summary>
+    <form class="stack-form">
+      <label for="import-recipes-json">JSON</label>
+      <textarea id="import-recipes-json" name="json" rows="4" placeholder="Paste exported JSON..."></textarea>
+      <button type="button" id="import-recipes-submit">Import</button>
+    </form>
+  </details>
+</section>
+
+<section class="panel panel-inline">
+  <details id="export-recipes-details">
+    <summary>Export <kbd>E</kbd></summary>
+    <form class="stack-form">
+      <label for="export-recipes-json">JSON</label>
+      <textarea id="export-recipes-json" name="json" rows="4" readonly></textarea>
+      <div class="button-row">
+        <button type="button" id="export-recipes-load">Load</button>
+        <button type="button" id="export-recipes-copy">Copy</button>
+      </div>
+    </form>
+  </details>
+</section>
+
+<script>
+  (function() {
+    const exportBtn = document.getElementById('export-recipes-btn');
+    const importBtn = document.getElementById('import-recipes-btn');
+    const exportDetails = document.getElementById('export-recipes-details');
+    const importDetails = document.getElementById('import-recipes-details');
+    const exportJson = document.getElementById('export-recipes-json');
+    const importJson = document.getElementById('import-recipes-json');
+    const exportLoad = document.getElementById('export-recipes-load');
+    const exportCopy = document.getElementById('export-recipes-copy');
+    const importSubmit = document.getElementById('import-recipes-submit');
+
+    if (exportLoad) {
+      exportLoad.addEventListener('click', async () => {
+        const res = await fetch('/api/recipes/export');
+        const data = await res.json();
+        if (data.error) {
+          alert('Export failed: ' + data.error);
+          return;
+        }
+        exportJson.value = data.recipes;
+      });
+    }
+
+    if (exportCopy) {
+      exportCopy.addEventListener('click', () => {
+        exportJson.select();
+        document.execCommand('copy');
+        alert('Copied to clipboard');
+      });
+    }
+
+    if (importSubmit) {
+      importSubmit.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const json = importJson.value.trim();
+        if (!json) {
+          alert('Please paste JSON to import');
+          return;
+        }
+        const res = await fetch('/api/recipes/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ json })
+        });
+        const data = await res.json();
+        if (data.error) {
+          alert('Import failed: ' + data.error);
+          return;
+        }
+        alert(`Imported ${data.imported} recipes`);
+        importDetails.open = false;
+        location.reload();
+      });
+    }
+
+    document.addEventListener('keydown', (event) => {
+      const t = event.target;
+      const tag = t && t.tagName;
+      const inTextField = t && (t.isContentEditable === true || (tag && ["INPUT", "TEXTAREA", "SELECT"].includes(tag)));
+      if (inTextField) return;
+      
+      if (event.key === 'e' && event.altKey && exportDetails) {
+        exportDetails.open = !exportDetails.open;
+        if (exportDetails.open) {
+          exportLoad.click();
+        }
+        return;
+      }
+      
+      if (event.key === 'i' && event.altKey && importDetails) {
+        importDetails.open = !importDetails.open;
+        if (importDetails.open) {
+          importJson.value = '';
+        }
+        return;
+      }
+    });
+  })();
+</script>
+{% endblock %}

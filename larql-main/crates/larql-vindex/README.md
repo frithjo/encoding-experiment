@@ -1,5 +1,12 @@
 # larql-vindex
 
+## Crate Role
+
+- Role: Vindex storage/query/patch lifecycle core
+- Zone: core
+- Release impact: high
+- Stability target: stable
+
 The queryable model format. Decompile, browse, edit, and recompile neural networks.
 
 ## What is a Vindex?
@@ -382,6 +389,13 @@ Warnings:   0 (build)
 Formats:    f32, Q8_0, Q4_K, Q6_K, Q4_0
 Models:     Gemma 2/3/4, Llama, Mistral, Mixtral, Qwen, Phi, DeepSeek, Granite, StarCoder2, GPT-OSS, GPT-2
 ```
+
+## Public vs Internal Surface
+
+- Public: vindex file/manifest contracts and query APIs relied on by CLI/server
+  and Python surfaces.
+- Internal: storage layout, index acceleration, and execution shortcuts can
+  evolve while preserving format compatibility.
 
 ## License
 

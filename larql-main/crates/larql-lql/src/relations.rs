@@ -3,8 +3,8 @@
 //! Uses discovered cluster centres from the vindex (computed during build).
 //! Falls back to embedding-direction heuristics if no clusters are available.
 
-use larql_inference::ndarray::{Array1, Array2};
 use larql_inference::larql_tokenizer::Tokenizer;
+use larql_inference::ndarray::{Array1, Array2};
 use larql_vindex::clustering::ClusterResult;
 
 /// Classifies edges into relation types using discovered clusters
@@ -56,8 +56,12 @@ impl RelationClassifier {
                             let parts: Vec<&str> = key.split('_').collect();
                             if parts.len() == 2 {
                                 if let (Some(layer), Some(feat)) = (
-                                    parts[0].strip_prefix('L').and_then(|s| s.parse::<usize>().ok()),
-                                    parts[1].strip_prefix('F').and_then(|s| s.parse::<usize>().ok()),
+                                    parts[0]
+                                        .strip_prefix('L')
+                                        .and_then(|s| s.parse::<usize>().ok()),
+                                    parts[1]
+                                        .strip_prefix('F')
+                                        .and_then(|s| s.parse::<usize>().ok()),
                                 ) {
                                     probe_labels.insert((layer, feat), rel.to_string());
                                 }
@@ -106,7 +110,11 @@ impl RelationClassifier {
         let clusters = self.clusters.as_ref()?;
         let label = clusters.labels.get(cluster_id)?;
         let count = clusters.counts.get(cluster_id).copied().unwrap_or(0);
-        let tops = clusters.top_tokens.get(cluster_id).map(|v| v.as_slice()).unwrap_or(&[]);
+        let tops = clusters
+            .top_tokens
+            .get(cluster_id)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[]);
         Some((label, count, tops))
     }
 
@@ -149,7 +157,11 @@ impl RelationClassifier {
         let clusters = self.clusters.as_ref()?;
         let (cluster_id, sim) =
             larql_vindex::clustering::classify_direction(direction, &clusters.centres);
-        let label = clusters.labels.get(cluster_id).map(|s| s.as_str()).unwrap_or("unknown");
+        let label = clusters
+            .labels
+            .get(cluster_id)
+            .map(|s| s.as_str())
+            .unwrap_or("unknown");
         Some((cluster_id, label, sim))
     }
 
@@ -192,7 +204,8 @@ impl RelationClassifier {
     /// Returns the most common layer for features with this relation.
     pub fn typical_layer_for_relation(&self, relation: &str) -> Option<usize> {
         let norm = normalise_relation(relation);
-        let mut layer_counts: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+        let mut layer_counts: std::collections::HashMap<usize, usize> =
+            std::collections::HashMap::new();
 
         // Check probe labels
         for (&(layer, _), label) in &self.probe_labels {
@@ -213,7 +226,10 @@ impl RelationClassifier {
             }
         }
 
-        layer_counts.into_iter().max_by_key(|(_, count)| *count).map(|(layer, _)| layer)
+        layer_counts
+            .into_iter()
+            .max_by_key(|(_, count)| *count)
+            .map(|(layer, _)| layer)
     }
 }
 

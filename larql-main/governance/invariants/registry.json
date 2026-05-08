@@ -1,0 +1,28 @@
+{
+  "schema_version": "larql.governance.invariant_registry.v1",
+  "registry_name": "repo-invariants",
+  "admission_policy_hash": "sha256:1b6085def59f4e8fb29787e4f4f3e6bd5b97c3d4e14e133e827b69ea7bf303bf",
+  "ci_gate": {
+    "name": "governance-rules",
+    "command_hash": "sha256:2546e9f75b7ad5e1dac942850862cf23c7966d725b95086ecc7d2d2902a034f1",
+    "required": true
+  },
+  "invariants": [
+    {
+      "id": "machines-and-non-machines-boundary",
+      "subject": "machines-and-non-machines",
+      "status": "admitted",
+      "statement_hash": "sha256:6d422a01428bc4454dd2e1ce4588ed6adc8770c0b1925dc5924084674be08fc4",
+      "source_hashes": [
+        "sha256:88ce0033398b6eeb2567863772f1c0a8af2a6c886813f1e4ba72e5c2aeb4a2c9",
+        "sha256:1bf76bc498200a19eeb06c40e9cb17cf225627db319b65d34d1ca100a55d7d8a",
+        "sha256:d5fe33f33f95357b3852f689e374777b5f57cd58560c2e6dae0c266a456ed3b8"
+      ],
+      "evidence_hashes": [
+        "sha256:2b72d7ecbbd3d155a7c5b3837a4ed1c2287d00fb6817de8aba80ca6d78089714"
+      ],
+      "admission_receipt_hash": "sha256:c93a783063d7e76a95cba38e1e89e5f89c8dd2d6d781e756abfbc3585cf79e2a",
+      "ci_gate": true
+    }
+  ]
+}

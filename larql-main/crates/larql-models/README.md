@@ -1,5 +1,12 @@
 # larql-models
 
+## Crate Role
+
+- Role: Model architecture and weight-loading runtime core
+- Zone: core
+- Release impact: high
+- Stability target: stable
+
 Model architecture definitions for LARQL — traits, config parsing, tensor key mappings, weight loading, and quantization formats.
 
 ## What it does
@@ -202,6 +209,13 @@ cargo run -p larql-models --example demo_tensor_keys
 4. **String components** — no domain-specific enums (component names are `&str`)
 5. **Format-agnostic** — safetensors and GGUF produce the same `ModelWeights`
 6. **Multimodal-aware** — config parsing handles nested `text_config` automatically
+
+## Public vs Internal Surface
+
+- Public: model trait contracts, config/weight loading interfaces, and stable
+  model metadata consumed by other core/interface crates.
+- Internal: architecture-specific key mapping and parsing heuristics may change
+  without broad product-facing behavior changes.
 
 ## License
 

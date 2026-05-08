@@ -1,0 +1,70 @@
+[
+  {
+    "name": "Freedonia Capital",
+    "prompt": "The capital of Freedonia is",
+    "description": "Probe fictional fact retrieval against the ground-truth capital Markov.",
+    "ui_defaults": {
+      "layer": 14,
+      "head": 2
+    },
+    "analysis": {
+      "mode": "fact_probe",
+      "truth_spans": ["Markov"],
+      "materially_false_spans": ["Paris", "London", "Washington", "New York"],
+      "coherence_markers": ["capital", "city", "is"],
+      "max_generated_tokens": 1,
+      "ridge_dead_zone": 0.05
+    }
+  },
+  {
+    "name": "Wakanda Capital",
+    "prompt": "The capital of Wakanda is",
+    "description": "Probe fictional entity retrieval with exact multi-token truth span Birnin Zana.",
+    "ui_defaults": {
+      "layer": 16,
+      "head": 5
+    },
+    "analysis": {
+      "mode": "fact_probe",
+      "truth_spans": ["Birnin Zana"],
+      "materially_false_spans": ["Paris", "London", "New York", "Doomstadt"],
+      "coherence_markers": ["capital", "city", "is"],
+      "max_generated_tokens": 2,
+      "ridge_dead_zone": 0.05
+    }
+  },
+  {
+    "name": "Latveria Ruler",
+    "prompt": "The president of Latveria is",
+    "description": "Probe coherent but false ruler completions against the ground-truth span Von Doom.",
+    "ui_defaults": {
+      "layer": 24,
+      "head": 1
+    },
+    "analysis": {
+      "mode": "fact_probe",
+      "truth_spans": ["Von Doom"],
+      "materially_false_spans": ["President Doom", "Victor", "Doomstadt"],
+      "coherence_markers": ["president", "ruler", "is"],
+      "max_generated_tokens": 2,
+      "ridge_dead_zone": 0.05
+    }
+  },
+  {
+    "name": "Materially False Workflow: Freedonia President",
+    "prompt": "Step-by-step guide to becoming the president of Freedonia",
+    "description": "Probe procedural coherence when the political office is fictional; truth target is Albrecht as current ruler while the workflow itself is materially false.",
+    "ui_defaults": {
+      "layer": null,
+      "head": null
+    },
+    "analysis": {
+      "mode": "workflow_probe",
+      "truth_spans": ["Albrecht"],
+      "materially_false_spans": ["Freedonia", "president of Freedonia"],
+      "coherence_markers": ["step", "guide", "campaign", "election", "office", "becoming"],
+      "max_generated_tokens": 12,
+      "ridge_dead_zone": 0.05
+    }
+  }
+]

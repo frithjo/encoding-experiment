@@ -1,5 +1,12 @@
 # larql-inference
 
+## Crate Role
+
+- Role: Transformer inference and trace runtime over vindex/model weights
+- Zone: core
+- Release impact: high
+- Stability target: managed
+
 Inference engine for transformer models. Forward pass, BLAS-fused attention, hardware-accelerated matmul backends, and pluggable FFN routing.
 
 ## Overview
@@ -208,6 +215,13 @@ larql-inference   Forward pass, attention, backends, WalkFfn
 | [docs/adr/003](docs/adr/003-cached-layer-graph.md) | Cached layer graph for template-fixed layers |
 | [docs/adr/004](docs/adr/004-predict-honest.md) | predict_honest — production pipeline with per-layer params |
 | [docs/adr/005](docs/adr/005-per-layer-graph.md) | PerLayerGraph — adaptive per-layer strategy |
+
+## Public vs Internal Surface
+
+- Public: inference entrypoints, backend abstractions, and trace outputs consumed
+  by interface crates.
+- Internal: per-layer routing, performance heuristics, and fused kernel details
+  are implementation details and may change.
 
 ## License
 

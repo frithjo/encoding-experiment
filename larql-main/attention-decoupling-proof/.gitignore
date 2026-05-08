@@ -1,0 +1,5 @@
+# Local proof inputs and generated tensor payloads.
+*.gguf
+*-attention-rust/
+separated-attention-runtime-gguf-layer-proof.json
+attention-proof/

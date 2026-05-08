@@ -1,0 +1,41 @@
+schema_version = "larql.governance.ceremony.v1"
+id = "policy_update"
+name = "PolicyUpdateCeremony"
+max_open_llm_decisions = 2
+
+phases = [
+  "ProsePolicyConcernSubmitted",
+  "PolicyIntentExtracted",
+  "RuleCandidateDrafted",
+  "RuleExamplesAttached",
+  "ConflictAnalysisCompleted",
+  "ShadowEvaluationCompleted",
+  "PolicyChangeApproved",
+  "PolicyCapabilityMinted",
+  "PolicyFileUpdated",
+  "PolicyHashAdvanced",
+  "ReplayVerified",
+  "PolicyUpdateClosed",
+]
+
+required_artifacts = [
+  "governance/templates/policy_proposal.toml",
+  "governance/schemas/policy_proposal.schema.json",
+  "governance/policies/*_cases.toml",
+]
+
+required_checks = [
+  "larql machine rules conflict-check",
+  "larql machine rules shadow-eval",
+  "larql machine rules test",
+  "larql machine rules eval",
+]
+
+[authority]
+prose_executable = false
+llm_may_approve = false
+llm_may_activate = false
+weakening_requires_special_ceremony = true
+activation_requires_capability = true
+activation_requires_policy_hash_advance = true
+activation_requires_replay = true

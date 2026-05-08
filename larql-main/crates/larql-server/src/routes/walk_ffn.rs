@@ -14,8 +14,8 @@
 
 use std::sync::Arc;
 
-use axum::Json;
 use axum::extract::State;
+use axum::Json;
 use serde::Deserialize;
 
 use crate::error::ServerError;
@@ -36,12 +36,11 @@ pub struct WalkFfnRequest {
     pub top_k: usize,
 }
 
-fn default_top_k() -> usize { 8092 }
+fn default_top_k() -> usize {
+    8092
+}
 
-fn run_walk_ffn(
-    state: &AppState,
-    req: &WalkFfnRequest,
-) -> Result<serde_json::Value, ServerError> {
+fn run_walk_ffn(state: &AppState, req: &WalkFfnRequest) -> Result<serde_json::Value, ServerError> {
     let model = state
         .model(None)
         .ok_or_else(|| ServerError::NotFound("no model loaded".into()))?;
@@ -64,14 +63,19 @@ fn run_walk_ffn(
     } else if let Some(layer) = req.layer {
         vec![layer]
     } else {
-        return Err(ServerError::BadRequest("must provide 'layer' or 'layers'".into()));
+        return Err(ServerError::BadRequest(
+            "must provide 'layer' or 'layers'".into(),
+        ));
     };
 
     let mut results = Vec::with_capacity(scan_layers.len());
     for &layer in &scan_layers {
         let hits = patched.gate_knn(layer, &query, req.top_k);
         let features: Vec<usize> = hits.iter().map(|(f, _)| *f).collect();
-        let scores: Vec<f32> = hits.iter().map(|(_, s)| (*s * 100.0).round() / 100.0).collect();
+        let scores: Vec<f32> = hits
+            .iter()
+            .map(|(_, s)| (*s * 100.0).round() / 100.0)
+            .collect();
         results.push(serde_json::json!({
             "layer": layer,
             "features": features,

@@ -1,0 +1,27 @@
+schema_version = "larql.governance.recipe.v1"
+
+[recipe]
+id = "duplicate_questions"
+kind = "proposal_recipe"
+
+[[recipe.questions]]
+id = "q1"
+prompt = "p1"
+answer_kind = "text"
+produces = ["f1"]
+
+[[recipe.questions]]
+id = "q1"
+prompt = "p2"
+answer_kind = "text"
+produces = ["f2"]
+
+[[recipe.factoids]]
+id = "f1"
+kind = "text"
+required = true
+
+[[recipe.factoids]]
+id = "f2"
+kind = "text"
+required = true

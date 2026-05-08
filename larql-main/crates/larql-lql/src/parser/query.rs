@@ -1,8 +1,8 @@
 //! Query statement parsers: WALK, INFER, SELECT, DESCRIBE, EXPLAIN.
 
+use super::{ParseError, Parser};
 use crate::ast::*;
 use crate::lexer::{Keyword, Token};
-use super::{Parser, ParseError};
 
 impl Parser {
     pub(crate) fn parse_walk(&mut self) -> Result<Statement, ParseError> {
@@ -42,7 +42,13 @@ impl Parser {
         }
 
         self.eat_semicolon();
-        Ok(Statement::Walk { prompt, top, layers, mode, compare })
+        Ok(Statement::Walk {
+            prompt,
+            top,
+            layers,
+            mode,
+            compare,
+        })
     }
 
     pub(crate) fn parse_infer(&mut self) -> Result<Statement, ParseError> {
@@ -67,7 +73,11 @@ impl Parser {
         }
 
         self.eat_semicolon();
-        Ok(Statement::Infer { prompt, top, compare })
+        Ok(Statement::Infer {
+            prompt,
+            top,
+            compare,
+        })
     }
 
     pub(crate) fn parse_select(&mut self) -> Result<Statement, ParseError> {
@@ -77,10 +87,22 @@ impl Parser {
 
         self.expect_keyword(Keyword::From)?;
         let source = match self.peek() {
-            Token::Keyword(Keyword::Edges) => { self.advance(); SelectSource::Edges }
-            Token::Keyword(Keyword::Features) => { self.advance(); SelectSource::Features }
-            Token::Keyword(Keyword::Entities) => { self.advance(); SelectSource::Entities }
-            Token::Keyword(Keyword::Tokens) => { self.advance(); SelectSource::Tokens }
+            Token::Keyword(Keyword::Edges) => {
+                self.advance();
+                SelectSource::Edges
+            }
+            Token::Keyword(Keyword::Features) => {
+                self.advance();
+                SelectSource::Features
+            }
+            Token::Keyword(Keyword::Entities) => {
+                self.advance();
+                SelectSource::Entities
+            }
+            Token::Keyword(Keyword::Tokens) => {
+                self.advance();
+                SelectSource::Tokens
+            }
             _ => {
                 // Default to EDGES for backwards compatibility.
                 self.expect_keyword(Keyword::Edges)?;
@@ -122,7 +144,14 @@ impl Parser {
         };
 
         self.eat_semicolon();
-        Ok(Statement::Select { source, fields, conditions, nearest, order, limit })
+        Ok(Statement::Select {
+            source,
+            fields,
+            conditions,
+            nearest,
+            order,
+            limit,
+        })
     }
 
     pub(crate) fn parse_describe(&mut self) -> Result<Statement, ParseError> {
@@ -133,6 +162,7 @@ impl Parser {
         let mut layer = None;
         let mut relations_only = false;
         let mut mode = DescribeMode::default();
+        let mut stream = false;
 
         loop {
             match self.peek() {
@@ -158,6 +188,10 @@ impl Parser {
                     self.advance();
                     mode = DescribeMode::Raw;
                 }
+                Token::Keyword(Keyword::Stream) => {
+                    self.advance();
+                    stream = true;
+                }
                 _ => {
                     if let Some(b) = self.try_parse_layer_band() {
                         band = Some(b);
@@ -169,7 +203,14 @@ impl Parser {
         }
 
         self.eat_semicolon();
-        Ok(Statement::Describe { entity, band, layer, relations_only, mode })
+        Ok(Statement::Describe {
+            entity,
+            band,
+            layer,
+            relations_only,
+            mode,
+            stream,
+        })
     }
 
     pub(crate) fn parse_explain(&mut self) -> Result<Statement, ParseError> {
@@ -228,6 +269,131 @@ impl Parser {
         }
 
         self.eat_semicolon();
-        Ok(Statement::Explain { prompt, mode, layers, band, verbose, top, relations_only, with_attention })
+        Ok(Statement::Explain {
+            prompt,
+            mode,
+            layers,
+            band,
+            verbose,
+            top,
+            relations_only,
+            with_attention,
+        })
+    }
+
+    pub(crate) fn parse_analyze_infer(&mut self) -> Result<Statement, ParseError> {
+        self.expect_keyword(Keyword::Analyze)?;
+        self.expect_keyword(Keyword::Infer)?;
+        let prompt = self.expect_string()?;
+
+        let mut mode = AnalysisMode::FactProbe;
+        let mut mode_seen = false;
+        let mut truth_spans = Vec::new();
+        let mut materially_false_spans = Vec::new();
+        let mut coherence_markers = Vec::new();
+        let mut max_generated_tokens = None;
+        let mut ridge_dead_zone = None;
+        let mut top = None;
+        let mut format = None;
+
+        loop {
+            match self.peek() {
+                Token::Keyword(Keyword::Mode) => {
+                    self.advance();
+                    mode = if self.check_keyword(Keyword::FactProbe) {
+                        self.advance();
+                        AnalysisMode::FactProbe
+                    } else if self.check_keyword(Keyword::WorkflowProbe) {
+                        self.advance();
+                        AnalysisMode::WorkflowProbe
+                    } else {
+                        return Err(ParseError(
+                            "expected FACT_PROBE or WORKFLOW_PROBE".to_string(),
+                        ));
+                    };
+                    mode_seen = true;
+                }
+                Token::Keyword(Keyword::TruthSpans) => {
+                    self.advance();
+                    truth_spans = self.parse_string_list()?;
+                }
+                Token::Keyword(Keyword::FalseSpans) => {
+                    self.advance();
+                    materially_false_spans = self.parse_string_list()?;
+                }
+                Token::Keyword(Keyword::CoherenceMarkers) => {
+                    self.advance();
+                    coherence_markers = self.parse_string_list()?;
+                }
+                Token::Keyword(Keyword::MaxGeneratedTokens) => {
+                    self.advance();
+                    max_generated_tokens = Some(self.expect_u32()?);
+                }
+                Token::Keyword(Keyword::RidgeDeadZone) => {
+                    self.advance();
+                    ridge_dead_zone = Some(self.expect_f32()?);
+                }
+                Token::Keyword(Keyword::Top) => {
+                    self.advance();
+                    top = Some(self.expect_u32()?);
+                }
+                Token::Keyword(Keyword::Format) => {
+                    self.advance();
+                    if self.check_keyword(Keyword::Csv) {
+                        return Err(ParseError("CSV format is not supported for ANALYZE INFER. Use FORMAT JSON or omit the FORMAT clause.".to_string()));
+                    }
+                    if self.check_keyword(Keyword::Safetensors) {
+                        return Err(ParseError("SAFETENSORS format is not supported for ANALYZE INFER. Use FORMAT JSON or omit the FORMAT clause.".to_string()));
+                    }
+                    if self.check_keyword(Keyword::Gguf) {
+                        return Err(ParseError("GGUF format is not supported for ANALYZE INFER. Use FORMAT JSON or omit the FORMAT clause.".to_string()));
+                    }
+                    if self.check_keyword(Keyword::Json) {
+                        self.advance();
+                        format = Some(crate::ast::OutputFormat::Json);
+                    } else {
+                        return Err(ParseError("expected JSON for FORMAT clause".to_string()));
+                    }
+                }
+                _ => break,
+            }
+        }
+
+        // Validate required clauses for strict scientific contract
+        if !mode_seen {
+            return Err(ParseError(
+                "ANALYZE INFER requires MODE clause. Example: MODE FACT_PROBE".to_string(),
+            ));
+        }
+
+        match mode {
+            AnalysisMode::FactProbe => {
+                if truth_spans.is_empty() && materially_false_spans.is_empty() {
+                    return Err(ParseError(
+                        "MODE FACT_PROBE requires at least TRUTH_SPANS or FALSE_SPANS".to_string(),
+                    ));
+                }
+            }
+            AnalysisMode::WorkflowProbe => {
+                if materially_false_spans.is_empty() {
+                    return Err(ParseError(
+                        "MODE WORKFLOW_PROBE requires FALSE_SPANS".to_string(),
+                    ));
+                }
+            }
+        }
+
+        self.eat_semicolon();
+        Ok(Statement::AnalyzeInfer {
+            prompt,
+            mode,
+            truth_spans,
+            materially_false_spans,
+            coherence_markers,
+            max_generated_tokens,
+            ridge_dead_zone,
+            top,
+            format,
+        })
     }
 }

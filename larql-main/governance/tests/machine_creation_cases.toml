@@ -1,0 +1,46 @@
+[[case]]
+name = "deny_machine_creation_without_overlap_check"
+action = "create_machine"
+
+[case.facts]
+machine_proposal_present = true
+
+[case.evidence]
+existing_machine_overlap_check = false
+machine_responsibility_boundary = true
+machine_accepts_valid_input_test = true
+machine_rejects_malformed_input_test = true
+
+[case.expect]
+decision = "deny"
+rule_id = "machine_creation.requires_overlap_check"
+
+[[case]]
+name = "allow_machine_creation_with_overlap_and_boundary"
+action = "create_machine"
+
+[case.facts]
+machine_proposal_present = true
+
+[case.evidence]
+existing_machine_overlap_check = true
+machine_responsibility_boundary = true
+machine_accepts_valid_input_test = true
+machine_rejects_malformed_input_test = true
+
+[case.expect]
+decision = "allow"
+
+[[case]]
+name = "review_non_machine_transition_without_capability"
+action = "non_machine_governed_transition"
+
+[case.facts]
+machine_proposal_present = false
+
+[case.evidence]
+non_machine_transition_capability = false
+
+[case.expect]
+decision = "require_review"
+rule_id = "non_machine.governed_transition.requires_capability"

@@ -22,3 +22,9 @@ numpy = "0.26"
 ndarray = { path = "../larql-tensor", package = "larql-tensor" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+[package.metadata.product]
+zone = "interface"
+role = "python-sdk-and-ui-integration"
+release_impact = "critical"
+stability_target = "managed"

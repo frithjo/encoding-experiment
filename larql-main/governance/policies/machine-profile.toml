@@ -1,0 +1,127 @@
+schema_version = "larql.governance.policy_pack.v1"
+
+[[rule]]
+id = "profile.default.allow"
+class = "runtime_policy"
+severity = "info"
+description = "Default governance rule profiles are covered by active policy; forbidden authority flags are denied by stricter rules."
+when = { all = [{ action = "verify_governance_rule_profile" }] }
+require = {}
+decision = { on_missing = "allow", message = "Governance rule profile is covered by active policy.", required_actions = [] }
+
+[[rule]]
+id = "profile.machine_arbitrary_file_edit.forbidden"
+class = "runtime_policy"
+severity = "deny"
+description = "Machine profiles may not allow arbitrary file edits."
+when = { all = [{ action = "verify_governance_rule_profile" }, { fact = "profile.allow_machine_edit_arbitrary_files_freely", equals = true }] }
+require = { all = [{ evidence = "profile_forbidden_authority_review", present = true }] }
+decision = { on_missing = "deny", message = "Governance rule profile allows arbitrary machine file edits.", required_actions = ["disable allow_machine_edit_arbitrary_files_freely"] }
+
+[[rule]]
+id = "profile.machine_prose_field_inference.forbidden"
+class = "runtime_policy"
+severity = "deny"
+description = "Machine profiles may not allow field types inferred from prose without review."
+when = { all = [{ action = "verify_governance_rule_profile" }, { fact = "profile.allow_machine_infer_field_types_from_prose_without_review", equals = true }] }
+require = { all = [{ evidence = "profile_forbidden_authority_review", present = true }] }
+decision = { on_missing = "deny", message = "Governance rule profile allows unreviewed prose field inference.", required_actions = ["disable allow_machine_infer_field_types_from_prose_without_review"] }
+
+[[rule]]
+id = "profile.machine_unsafe_code.forbidden"
+class = "runtime_policy"
+severity = "deny"
+description = "Machine profiles may not allow generated unsafe code."
+when = { all = [{ action = "verify_governance_rule_profile" }, { fact = "profile.allow_machine_generate_unsafe_code", equals = true }] }
+require = { all = [{ evidence = "profile_forbidden_authority_review", present = true }] }
+decision = { on_missing = "deny", message = "Governance rule profile allows generated unsafe code.", required_actions = ["disable allow_machine_generate_unsafe_code"] }
+
+[[rule]]
+id = "profile.machine_repr_c_without_justification.forbidden"
+class = "runtime_policy"
+severity = "deny"
+description = "Machine profiles may not allow repr(C) generation without justification."
+when = { all = [{ action = "verify_governance_rule_profile" }, { fact = "profile.allow_machine_generate_repr_c_without_justification", equals = true }] }
+require = { all = [{ evidence = "profile_forbidden_authority_review", present = true }] }
+decision = { on_missing = "deny", message = "Governance rule profile allows repr(C) generation without justification.", required_actions = ["disable allow_machine_generate_repr_c_without_justification"] }
+
+[[rule]]
+id = "profile.machine_overwrite_hand_written_code.forbidden"
+class = "runtime_policy"
+severity = "deny"
+description = "Machine profiles may not allow overwriting hand-written code."
+when = { all = [{ action = "verify_governance_rule_profile" }, { fact = "profile.allow_machine_overwrite_hand_written_code", equals = true }] }
+require = { all = [{ evidence = "profile_forbidden_authority_review", present = true }] }
+decision = { on_missing = "deny", message = "Governance rule profile allows overwriting hand-written code.", required_actions = ["disable allow_machine_overwrite_hand_written_code"] }
+
+[[rule]]
+id = "profile.machine_auto_dependency.forbidden"
+class = "runtime_policy"
+severity = "deny"
+description = "Machine profiles may not allow dependency additions without governed review."
+when = { all = [{ action = "verify_governance_rule_profile" }, { fact = "profile.allow_machine_auto_add_dependencies", equals = true }] }
+require = { all = [{ evidence = "profile_forbidden_authority_review", present = true }] }
+decision = { on_missing = "deny", message = "Governance rule profile allows automatic dependency additions.", required_actions = ["disable allow_machine_auto_add_dependencies"] }
+
+[[rule]]
+id = "profile.machine_auto_commit.forbidden"
+class = "runtime_policy"
+severity = "deny"
+description = "Machine profiles may not allow auto-commit without receipts."
+when = { all = [{ action = "verify_governance_rule_profile" }, { fact = "profile.allow_machine_auto_commit_without_receipt", equals = true }] }
+require = { all = [{ evidence = "profile_forbidden_authority_review", present = true }] }
+decision = { on_missing = "deny", message = "Governance rule profile allows auto-commit without receipt.", required_actions = ["disable allow_machine_auto_commit_without_receipt"] }
+
+[[rule]]
+id = "profile.machine_public_api_without_tests.forbidden"
+class = "runtime_policy"
+severity = "deny"
+description = "Machine profiles may not allow public API mutation without test and documentation policy."
+when = { all = [{ action = "verify_governance_rule_profile" }, { fact = "profile.allow_machine_modify_public_api_without_test_doc_policy", equals = true }] }
+require = { all = [{ evidence = "profile_forbidden_authority_review", present = true }] }
+decision = { on_missing = "deny", message = "Governance rule profile allows public API mutation without test/doc policy.", required_actions = ["disable allow_machine_modify_public_api_without_test_doc_policy"] }
+
+[[rule]]
+id = "profile.machine_define_constraints.forbidden"
+class = "artifact_policy"
+severity = "deny"
+description = "Machines apply constraints; non-machines define stable declarative constraints."
+when = { all = [{ action = "verify_governance_rule_profile" }, { fact = "profile.allow_machine_define_stable_declarative_constraints", equals = true }] }
+require = { all = [{ evidence = "profile_forbidden_authority_review", present = true }] }
+decision = { on_missing = "deny", message = "Governance rule profile lets machines define stable declarative constraints.", required_actions = ["disable allow_machine_define_stable_declarative_constraints"] }
+
+[[rule]]
+id = "profile.non_machine_governed_transition.forbidden"
+class = "artifact_policy"
+severity = "deny"
+description = "Non-machines may be authoritative but may not perform governed transitions."
+when = { all = [{ action = "verify_governance_rule_profile" }, { fact = "profile.allow_non_machine_perform_governed_transitions", equals = true }] }
+require = { all = [{ evidence = "profile_forbidden_authority_review", present = true }] }
+decision = { on_missing = "deny", message = "Governance rule profile lets non-machines perform governed transitions.", required_actions = ["disable allow_non_machine_perform_governed_transitions"] }
+
+[[rule]]
+id = "profile.unregistered_invariants.forbidden"
+class = "constitutional_policy"
+severity = "deny"
+description = "Invariant authority must enter through the invariant registry."
+when = { all = [{ action = "verify_governance_rule_profile" }, { fact = "profile.allow_unregistered_invariants", equals = true }] }
+require = { all = [{ evidence = "profile_forbidden_authority_review", present = true }] }
+decision = { on_missing = "deny", message = "Governance rule profile allows unregistered invariants.", required_actions = ["disable allow_unregistered_invariants"] }
+
+[[rule]]
+id = "profile.ci_without_invariant_registry.forbidden"
+class = "ci_policy"
+severity = "deny"
+description = "CI governance must include the invariant registry."
+when = { all = [{ action = "verify_governance_rule_profile" }, { fact = "profile.allow_ci_without_invariant_registry", equals = true }] }
+require = { all = [{ evidence = "profile_forbidden_authority_review", present = true }] }
+decision = { on_missing = "deny", message = "Governance rule profile allows CI without invariant registry.", required_actions = ["disable allow_ci_without_invariant_registry"] }
+
+[[rule]]
+id = "profile.raw_prose_admitted_records.forbidden"
+class = "constitutional_policy"
+severity = "deny"
+description = "Admitted records must carry hash references instead of raw prose authority."
+when = { all = [{ action = "verify_governance_rule_profile" }, { fact = "profile.allow_raw_prose_in_admitted_records", equals = true }] }
+require = { all = [{ evidence = "profile_forbidden_authority_review", present = true }] }
+decision = { on_missing = "deny", message = "Governance rule profile allows raw prose in admitted records.", required_actions = ["disable allow_raw_prose_in_admitted_records"] }

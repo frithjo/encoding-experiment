@@ -1,0 +1,10 @@
+schema_version = "larql.governance.rule_profile.v1"
+
+[profile]
+id = "event_schema"
+applies_to = "event_schema"
+rule_sets = [
+  "rule_admission",
+]
+required_facts = []
+default_flow = "policy_update"

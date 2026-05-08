@@ -1,0 +1,4 @@
+{
+  "snapshot_content_sha256": "sha256:0c89aa1423cbb571fb676c7617839e8b97852dbf3d2fb566bed953e0ebf3d94b",
+  "notes": "Pinned body hash for canonical repo policy + ci_governance_rules.json input. Update when policy or fixture input changes intentionally."
+}

@@ -3,8 +3,8 @@
 //! Memory-efficient: O(seq) per position, never materializes full [seq, seq] matrix.
 //! Uses BLAS gemv for both Q·K scores and softmax·V accumulation.
 
-use ndarray::Array2;
 use super::AttentionWeights;
+use ndarray::Array2;
 
 /// GQA with causal masking (no weight capture).
 /// q: (seq, num_q * head_dim), k: (seq, num_kv * head_dim), v: same as k
@@ -19,7 +19,8 @@ pub fn gqa_attention(
     scale: f64,
     seq_len: usize,
 ) -> Array2<f32> {
-    let (out, _) = gqa_attention_with_weights(q, k, v, num_q, head_dim, reps, scale, seq_len, false, None);
+    let (out, _) =
+        gqa_attention_with_weights(q, k, v, num_q, head_dim, reps, scale, seq_len, false, None);
     out
 }
 
@@ -101,7 +102,85 @@ pub fn gqa_attention_with_weights(
     }
 
     let weights = if capture {
-        Some(AttentionWeights { heads: captured_heads })
+        Some(AttentionWeights {
+            heads: captured_heads,
+        })
+    } else {
+        None
+    };
+
+    (out, weights)
+}
+
+/// GQA for a single decode token attending over a cached prefix.
+#[allow(clippy::too_many_arguments)]
+pub fn gqa_attention_last_token_with_weights(
+    q_last: &Array2<f32>,
+    k: &Array2<f32>,
+    v: &Array2<f32>,
+    num_q: usize,
+    head_dim: usize,
+    reps: usize,
+    scale: f64,
+    seq_len: usize,
+    capture: bool,
+    softcap: Option<f32>,
+) -> (Array2<f32>, Option<AttentionWeights>) {
+    let mut out = Array2::<f32>::zeros((1, num_q * head_dim));
+    let mut captured_heads: Vec<Vec<f32>> = if capture {
+        Vec::with_capacity(num_q)
+    } else {
+        Vec::new()
+    };
+
+    let scale_f32 = scale as f32;
+    let mut scores_buf = vec![0.0f32; seq_len];
+
+    for h in 0..num_q {
+        let kv_h = h / reps;
+        let q_off = h * head_dim;
+        let kv_off = kv_h * head_dim;
+
+        let q_row = q_last.slice(ndarray::s![0, q_off..q_off + head_dim]);
+        let k_block = k.slice(ndarray::s![0..seq_len, kv_off..kv_off + head_dim]);
+        let raw_scores: ndarray::Array1<f32> = k_block.dot(&q_row);
+
+        for i in 0..seq_len {
+            let mut s = raw_scores[i] * scale_f32;
+            if let Some(cap) = softcap {
+                s = (s / cap).tanh() * cap;
+            }
+            scores_buf[i] = s;
+        }
+
+        let max_val = scores_buf.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        let mut sum = 0.0f64;
+        for score in &mut scores_buf {
+            let e = ((*score - max_val) as f64).exp();
+            *score = e as f32;
+            sum += e;
+        }
+        let inv_sum = (1.0 / sum) as f32;
+        for score in &mut scores_buf {
+            *score *= inv_sum;
+        }
+
+        if capture {
+            captured_heads.push(scores_buf.clone());
+        }
+
+        let v_block = v.slice(ndarray::s![0..seq_len, kv_off..kv_off + head_dim]);
+        let scores_view = ndarray::ArrayView1::from(&scores_buf);
+        let weighted_v = v_block.t().dot(&scores_view);
+        for d in 0..head_dim {
+            out[[0, q_off + d]] = weighted_v[d];
+        }
+    }
+
+    let weights = if capture {
+        Some(AttentionWeights {
+            heads: captured_heads,
+        })
     } else {
         None
     };

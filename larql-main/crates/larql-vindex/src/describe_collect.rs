@@ -141,15 +141,7 @@ mod tests {
     #[test]
     fn rejects_non_content_primary_token() {
         let trace = WalkTrace {
-            layers: vec![(
-                0,
-                vec![hit(
-                    0,
-                    1,
-                    10.0,
-                    meta("the", vec![("Paris", 1.0)]),
-                )],
-            )],
+            layers: vec![(0, vec![hit(0, 1, 10.0, meta("the", vec![("Paris", 1.0)]))])],
         };
         let out = collect_describe_edges_from_trace(&trace, "France", DESCRIBE_GATE_FLOOR_DEFAULT);
         assert!(out.is_empty());
@@ -160,15 +152,7 @@ mod tests {
         // Primary "Berlin" gate 10; secondary "the" is readable but not content → also empty;
         // also_readable non-empty, gate < 20 → skip.
         let trace2 = WalkTrace {
-            layers: vec![(
-                1,
-                vec![hit(
-                    1,
-                    2,
-                    10.0,
-                    meta("Berlin", vec![("the", 1.0)]),
-                )],
-            )],
+            layers: vec![(1, vec![hit(1, 2, 10.0, meta("Berlin", vec![("the", 1.0)]))])],
         };
         let out = collect_describe_edges_from_trace(&trace2, "France", DESCRIBE_GATE_FLOOR_DEFAULT);
         assert!(out.is_empty());
@@ -196,15 +180,13 @@ mod tests {
         let trace = WalkTrace {
             layers: vec![(
                 0,
-                vec![hit(
-                    0,
-                    1,
-                    4.0,
-                    meta("Berlin", vec![("Munich", 1.0)]),
-                )],
+                vec![hit(0, 1, 4.0, meta("Berlin", vec![("Munich", 1.0)]))],
             )],
         };
-        assert!(collect_describe_edges_from_trace(&trace, "France", DESCRIBE_GATE_FLOOR_DEFAULT).is_empty());
+        assert!(
+            collect_describe_edges_from_trace(&trace, "France", DESCRIBE_GATE_FLOOR_DEFAULT)
+                .is_empty()
+        );
         assert!(!collect_describe_edges_from_trace(&trace, "France", 4.0).is_empty());
     }
 }

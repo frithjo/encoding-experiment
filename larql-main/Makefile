@@ -1,4 +1,4 @@
-.PHONY: build release test check clean fmt lint demos
+.PHONY: build release test check clean fmt lint demos product-metadata-check product-role-check dependency-direction-check validation-disclosure-check source-file-policy-check structure-check
 
 # Build
 build:
@@ -25,8 +25,25 @@ fmt-check:
 lint:
 	cargo clippy --workspace --tests -- -D warnings
 
+product-metadata-check:
+	python3 scripts/check_product_metadata.py
+
+product-role-check:
+	python3 scripts/check_role_consistency.py
+
+dependency-direction-check:
+	python3 scripts/check_dependency_direction.py
+
+validation-disclosure-check:
+	python3 scripts/check_validation_disclosure.py
+
+source-file-policy-check:
+	./scripts/verify-source-file-policy.sh
+
+structure-check: product-metadata-check product-role-check dependency-direction-check validation-disclosure-check source-file-policy-check
+
 # All quality checks
-ci: fmt-check lint test
+ci: fmt-check structure-check lint test
 
 # Clean
 clean:
@@ -85,3 +102,7 @@ extract-full:
 predict:
 	cargo run --release -p larql-cli -- predict google/gemma-3-4b-it \
 		--prompt "The capital of France is" -k 10
+
+# Carbonyl runtime verification
+verify-carbonyl:
+	@./apps/terminal-runtime/scripts/install-carbonyl-runtime.sh

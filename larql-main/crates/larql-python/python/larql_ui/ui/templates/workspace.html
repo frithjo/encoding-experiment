@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="page-title">Workspace</h1>
+
+<form method="post" class="task-form">
+  <label for="path">Workspace path</label>
+  <input id="path" name="path" type="text" value="{{ form_path or (current_workspace.path if current_workspace else '') }}" placeholder="/path/to/model.vindex">
+  
+  <button type="submit" class="submit-button">Open workspace <kbd>Ctrl+Enter</kbd></button>
+</form>
+
+{% if current_workspace %}
+{% include "partials/workspace_status.html" %}
+{% endif %}
+{% endblock %}

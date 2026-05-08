@@ -1,11 +1,53 @@
 //! Remote executor — forwards LQL queries to a larql-server via HTTP.
 
+use super::Backend;
+use super::Session;
 use crate::ast::*;
 use crate::error::LqlError;
-use super::Session;
-use super::Backend;
 
 use larql_core::{Client as HttpClient, Response};
+
+fn patch_timestamp_now() -> String {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+        .to_string()
+}
+
+fn condition_usize(conditions: &[crate::ast::Condition], field: &str) -> Option<usize> {
+    conditions
+        .iter()
+        .find(|c| c.field == field)
+        .and_then(|c| match &c.value {
+            crate::ast::Value::Integer(n) => Some(*n as usize),
+            _ => None,
+        })
+}
+
+fn condition_string(conditions: &[crate::ast::Condition], field: &str) -> Option<String> {
+    conditions
+        .iter()
+        .find(|c| c.field == field)
+        .and_then(|c| match &c.value {
+            crate::ast::Value::String(s) => Some(s.clone()),
+            _ => None,
+        })
+}
+
+fn rows_to_layer_features(rows: &[serde_json::Value]) -> Result<Vec<(usize, usize)>, LqlError> {
+    rows.iter()
+        .map(|row| {
+            let layer = row.get("layer").and_then(|v| v.as_u64()).ok_or_else(|| {
+                LqlError::Execution("remote SELECT row missing numeric 'layer'".into())
+            })?;
+            let feature = row.get("feature").and_then(|v| v.as_u64()).ok_or_else(|| {
+                LqlError::Execution("remote SELECT row missing numeric 'feature'".into())
+            })?;
+            Ok((layer as usize, feature as usize))
+        })
+        .collect()
+}
 
 /// Format `/v1/explain-infer` JSON (standalone or embedded as `followup_infer` on `/v1/describe`).
 fn format_explain_infer_json_value(
@@ -51,7 +93,11 @@ fn format_explain_infer_json_value(
                     } else {
                         let gate = feat["gate_score"].as_f64().unwrap_or(0.0);
                         let top_token = feat["top_token"].as_str().unwrap_or("?");
-                        let name = if !relation.is_empty() { relation } else { top_token };
+                        let name = if !relation.is_empty() {
+                            relation
+                        } else {
+                            top_token
+                        };
                         Some(format!("{:<14} {:+.1}", name, gate))
                     }
                 } else {
@@ -147,7 +193,9 @@ impl Session {
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let text = resp.text().map_err(|e| LqlError::exec("failed to read error response", e))?;
+            let text = resp
+                .text()
+                .map_err(|e| LqlError::exec("failed to read error response", e))?;
             return Err(LqlError::Execution(format!(
                 "server returned {}: {}",
                 status, text
@@ -162,25 +210,21 @@ impl Session {
         let layers = stats["layers"].as_u64().unwrap_or(0);
         let features = stats["features"].as_u64().unwrap_or(0);
 
-        // Generate a unique session ID for this connection
-        // Use getrandom to add a random component for better uniqueness
-        let mut random_bytes = [0u8; 8];
-        getrandom::getrandom(&mut random_bytes).unwrap_or_else(|_| {
-            // Fallback to simple hash if getrandom fails
-            let hash = std::collections::hash_map::DefaultHasher::new();
-            let mut hasher = std::collections::hash_map::DefaultHasher::default();
-            std::hash::Hash::hash(&std::process::id(), &mut hasher);
-            std::hash::Hash::hash(&std::time::SystemTime::now(), &mut hasher);
-            let h = std::hash::Hasher::finish(&hasher);
-            random_bytes = h.to_le_bytes();
-        });
+        // Generate a unique session ID for this connection.
+        let mut hasher = std::collections::hash_map::DefaultHasher::default();
+        std::hash::Hash::hash(&std::process::id(), &mut hasher);
+        std::hash::Hash::hash(&std::time::SystemTime::now(), &mut hasher);
+        let random_bytes = std::hash::Hasher::finish(&hasher).to_le_bytes();
         let random_suffix = u64::from_le_bytes(random_bytes);
-        let session_id = format!("larql-{}-{}-{}", std::process::id(),
+        let session_id = format!(
+            "larql-{}-{}-{}",
+            std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_nanos(),
-            random_suffix);
+            random_suffix
+        );
 
         self.backend = Backend::Remote {
             url: url.clone(),
@@ -205,8 +249,15 @@ impl Session {
     /// Get the remote URL, client, and session ID, or error.
     fn require_remote(&self) -> Result<(&str, &HttpClient, &str), LqlError> {
         match &self.backend {
-            Backend::Remote { url, client, session_id, .. } => Ok((url, client, session_id)),
-            _ => Err(LqlError::Execution("not connected to a remote server".into())),
+            Backend::Remote {
+                url,
+                client,
+                session_id,
+                ..
+            } => Ok((url, client, session_id)),
+            _ => Err(LqlError::Execution(
+                "not connected to a remote server".into(),
+            )),
         }
     }
 
@@ -219,7 +270,10 @@ impl Session {
 
     /// Helper to convert Vec<(String, String)> to Vec<(&str, &str)> for query parameters
     fn to_query_ref(params: &[(String, String)]) -> Vec<(&str, &str)> {
-        params.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect()
+        params
+            .iter()
+            .map(|(a, b)| (a.as_str(), b.as_str()))
+            .collect()
     }
 
     /// GET `{remote_url}{endpoint}` with optional query parameters,
@@ -260,13 +314,12 @@ impl Session {
 
     /// Validate the response status, parse the body as JSON, and turn
     /// any failure into a tagged `LqlError`.
-    fn check_and_parse(
-        endpoint: &str,
-        resp: Response,
-    ) -> Result<serde_json::Value, LqlError> {
+    fn check_and_parse(endpoint: &str, resp: Response) -> Result<serde_json::Value, LqlError> {
         if !resp.status().is_success() {
             let status = resp.status();
-            let text = resp.text().map_err(|e| LqlError::exec("failed to read error response", e))?;
+            let text = resp
+                .text()
+                .map_err(|e| LqlError::exec("failed to read error response", e))?;
             return Err(LqlError::Execution(format!(
                 "{endpoint} failed ({status}): {text}"
             )));
@@ -274,7 +327,6 @@ impl Session {
         resp.json::<serde_json::Value>()
             .map_err(|e| LqlError::exec("invalid response", e))
     }
-
 
     // ── Remote query forwarding ──
 
@@ -285,9 +337,13 @@ impl Session {
         layer: Option<u32>,
         relations_only: bool,
         mode: crate::ast::DescribeMode,
+        _stream: bool,
     ) -> Result<Vec<String>, LqlError> {
         let verbose = mode == crate::ast::DescribeMode::Verbose;
-        let show_also = matches!(mode, crate::ast::DescribeMode::Verbose | crate::ast::DescribeMode::Raw);
+        let show_also = matches!(
+            mode,
+            crate::ast::DescribeMode::Verbose | crate::ast::DescribeMode::Raw
+        );
 
         // Match local `exec_describe`: default band is all layers (`None` → "all" on the wire).
         let band_str = match band {
@@ -377,14 +433,21 @@ impl Session {
                         format!("{:<12}", "")
                     };
 
-                    let tag = if show_labels && source == "probe" { "  (probe)" } else { "" };
+                    let tag = if show_labels && source == "probe" {
+                        "  (probe)"
+                    } else {
+                        ""
+                    };
 
                     let also_str = if show_also {
-                        edge["also"].as_array()
-                            .map(|arr| arr.iter()
-                                .filter_map(|v| v.as_str())
-                                .collect::<Vec<_>>()
-                                .join(", "))
+                        edge["also"]
+                            .as_array()
+                            .map(|arr| {
+                                arr.iter()
+                                    .filter_map(|v| v.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            })
                             .filter(|s| !s.is_empty())
                             .map(|s| format!("  also: {s}"))
                             .unwrap_or_default()
@@ -458,47 +521,103 @@ impl Session {
         prompt: &str,
         top: Option<u32>,
         layers: Option<&Range>,
+        mode: Option<WalkMode>,
+        compare: bool,
     ) -> Result<Vec<String>, LqlError> {
         let top_k = top.unwrap_or(10).to_string();
         let layers_str = layers.map(|r| format!("{}-{}", r.start, r.end));
+        let mode_s = mode.map(|m| match m {
+            WalkMode::Hybrid => "hybrid",
+            WalkMode::Pure => "pure",
+            WalkMode::Dense => "dense",
+        });
+        let compare_s = if compare { "true" } else { "false" };
 
         let mut params: Vec<(&str, &str)> = vec![
             ("prompt", prompt),
             ("top", top_k.as_str()),
+            ("compare", compare_s),
         ];
         if let Some(ref s) = layers_str {
             params.push(("layers", s.as_str()));
         }
+        if let Some(ref s) = mode_s {
+            params.push(("mode", s));
+        }
 
         let body = self.remote_get_json("/v1/walk", &params)?;
 
+        let token = body["token"].as_str().unwrap_or("?");
+        let layers_count = body["layers_count"].as_u64().unwrap_or(0);
+        let mode_name = body["mode"]
+            .as_str()
+            .map(|m| match m {
+                "pure" => "pure (sparse KNN only)",
+                "dense" => "dense (full matmul)",
+                _ => "hybrid (default)",
+            })
+            .unwrap_or("hybrid (default)");
+
         let mut out = Vec::new();
-        out.push(format!("Feature scan for {:?}", prompt));
+        out.push(format!(
+            "Feature scan for {:?} (token {:?}, {} layers, mode={})",
+            prompt, token, layers_count, mode_name,
+        ));
         out.push(String::new());
 
         if let Some(hits) = body["hits"].as_array() {
+            let mut current_layer = None;
+            let mut layer_hits = 0;
+            let max_per_layer = if compare { 5 } else { 3 };
+
             for hit in hits {
                 let layer = hit["layer"].as_u64().unwrap_or(0);
+                if current_layer != Some(layer) {
+                    current_layer = Some(layer);
+                    layer_hits = 0;
+                }
+
+                if layer_hits >= max_per_layer {
+                    continue;
+                }
+                layer_hits += 1;
+
                 let feature = hit["feature"].as_u64().unwrap_or(0);
                 let gate = hit["gate_score"].as_f64().unwrap_or(0.0);
                 let target = hit["target"].as_str().unwrap_or("?");
                 let down_tokens: String = hit["down"]
                     .as_array()
-                    .map(|arr| arr.iter()
-                        .filter_map(|v| v.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", "))
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    })
                     .unwrap_or_default();
 
                 out.push(format!(
-                    "  L{}: F{} → {} (gate={:.1}, down=[{}])",
-                    layer, feature, target, gate, down_tokens
+                    "  L{:2}: F{:<5} gate={:+.1}  top={:15}  down=[{}]",
+                    layer,
+                    feature,
+                    gate,
+                    format!("{:?}", target),
+                    down_tokens
                 ));
             }
         }
 
         if let Some(ms) = body["latency_ms"].as_f64() {
             out.push(format!("\n{:.1}ms (remote)", ms));
+        }
+
+        if compare {
+            out.push(String::new());
+            out.push(
+                "Note: COMPARE shows more features per layer. For inference use INFER.".into(),
+            );
+        } else {
+            out.push(String::new());
+            out.push("Note: pure vindex scan (no attention). For inference use INFER.".into());
         }
 
         Ok(out)
@@ -588,6 +707,55 @@ impl Session {
         ))
     }
 
+    pub(crate) fn remote_analyze_infer(
+        &self,
+        prompt: &str,
+        mode: AnalysisMode,
+        truth_spans: &[String],
+        materially_false_spans: &[String],
+        coherence_markers: &[String],
+        max_generated_tokens: Option<u32>,
+        ridge_dead_zone: Option<f32>,
+        top: Option<u32>,
+        format: Option<OutputFormat>,
+    ) -> Result<Vec<String>, LqlError> {
+        let mode_str = match mode {
+            AnalysisMode::FactProbe => "fact_probe",
+            AnalysisMode::WorkflowProbe => "workflow_probe",
+        };
+
+        // Build typed AnalysisRequest directly for /v1/analyze-infer
+        let request = larql_inference::AnalysisRequest {
+            prompt: prompt.to_string(),
+            top_k: top.unwrap_or(5) as usize,
+            mode: mode_str.to_string(),
+            truth_spans: truth_spans.to_vec(),
+            materially_false_spans: materially_false_spans.to_vec(),
+            coherence_markers: coherence_markers.to_vec(),
+            max_generated_tokens: max_generated_tokens.map(|v| v as usize),
+            ridge_dead_zone,
+        };
+
+        let request_json = serde_json::to_value(&request)
+            .map_err(|e| LqlError::Execution(format!("failed to serialize request: {e}")))?;
+        let result_json = self
+            .remote_post_json("/v1/analyze-infer", &request_json, false)
+            .map_err(|e| LqlError::Execution(format!("remote analysis failed: {e}")))?;
+        let result: larql_inference::AnalysisResult = serde_json::from_value(result_json)
+            .map_err(|e| LqlError::Execution(format!("invalid remote analysis result: {e}")))?;
+
+        match format {
+            Some(OutputFormat::Json) => self.format_analysis_result_json(&result),
+            Some(OutputFormat::Csv) => Err(LqlError::Execution(
+                "CSV format is not implemented for remote ANALYZE INFER".into(),
+            )),
+            Some(OutputFormat::Safetensors) | Some(OutputFormat::Gguf) => Err(LqlError::Execution(
+                "Only text and JSON output are supported for remote ANALYZE INFER".into(),
+            )),
+            None => self.format_analysis_result(&result),
+        }
+    }
+
     pub(crate) fn remote_stats(&self) -> Result<Vec<String>, LqlError> {
         let body = self.remote_get_json("/v1/stats", &[])?;
         let url = match &self.backend {
@@ -597,12 +765,24 @@ impl Session {
 
         let mut out = Vec::new();
         out.push(format!("Model: {}", body["model"].as_str().unwrap_or("?")));
-        out.push(format!("Family: {}", body["family"].as_str().unwrap_or("?")));
+        out.push(format!(
+            "Family: {}",
+            body["family"].as_str().unwrap_or("?")
+        ));
         out.push(format!("Layers: {}", body["layers"].as_u64().unwrap_or(0)));
-        out.push(format!("Features: {}", body["features"].as_u64().unwrap_or(0)));
-        out.push(format!("Hidden: {}", body["hidden_size"].as_u64().unwrap_or(0)));
+        out.push(format!(
+            "Features: {}",
+            body["features"].as_u64().unwrap_or(0)
+        ));
+        out.push(format!(
+            "Hidden: {}",
+            body["hidden_size"].as_u64().unwrap_or(0)
+        ));
         out.push(format!("Dtype: {}", body["dtype"].as_str().unwrap_or("?")));
-        out.push(format!("Extract level: {}", body["extract_level"].as_str().unwrap_or("?")));
+        out.push(format!(
+            "Extract level: {}",
+            body["extract_level"].as_str().unwrap_or("?")
+        ));
 
         if let Some(bands) = body.get("layer_bands") {
             if let (Some(s), Some(k), Some(o)) = (
@@ -630,7 +810,11 @@ impl Session {
         Ok(out)
     }
 
-    pub(crate) fn remote_show_relations(&self, mode: crate::ast::DescribeMode, with_examples: bool) -> Result<Vec<String>, LqlError> {
+    pub(crate) fn remote_show_relations(
+        &self,
+        mode: crate::ast::DescribeMode,
+        with_examples: bool,
+    ) -> Result<Vec<String>, LqlError> {
         use crate::ast::DescribeMode;
         let body = self.remote_get_json("/v1/relations", &[])?;
 
@@ -655,9 +839,7 @@ impl Session {
         }
 
         // Raw token relations (show for Verbose, Raw, or when no probes)
-        let show_raw = mode == DescribeMode::Raw
-            || mode == DescribeMode::Verbose
-            || out.is_empty();
+        let show_raw = mode == DescribeMode::Raw || mode == DescribeMode::Verbose || out.is_empty();
 
         if show_raw {
             if let Some(rels) = body["relations"].as_array() {
@@ -676,11 +858,12 @@ impl Session {
                         let max_l = rel["max_layer"].as_u64().unwrap_or(0);
                         let examples_str = if with_examples {
                             if let Some(arr) = rel["examples"].as_array() {
-                                let ex: Vec<&str> = arr.iter()
-                                    .filter_map(|v| v.as_str())
-                                    .collect();
-                                if ex.is_empty() { String::new() }
-                                else { format!("  e.g. {}", ex.join(", ")) }
+                                let ex: Vec<&str> = arr.iter().filter_map(|v| v.as_str()).collect();
+                                if ex.is_empty() {
+                                    String::new()
+                                } else {
+                                    format!("  e.g. {}", ex.join(", "))
+                                }
                             } else {
                                 String::new()
                             }
@@ -739,60 +922,53 @@ impl Session {
         &self,
         conditions: &[crate::ast::Condition],
     ) -> Result<Vec<String>, LqlError> {
-        // Build delete operations from conditions.
         let mut ops = Vec::new();
-        let mut missing_fields = Vec::new();
-        
-        let layer = conditions
-            .iter()
-            .find(|c| c.field == "layer")
-            .and_then(|c| match &c.value {
-                crate::ast::Value::Integer(n) => Some(*n as usize),
-                _ => None,
-            });
-        
-        let feature = conditions
-            .iter()
-            .find(|c| c.field == "feature")
-            .and_then(|c| match &c.value {
-                crate::ast::Value::Integer(n) => Some(*n as usize),
-                _ => None,
-            });
-        
-        if layer.is_none() {
-            missing_fields.push("layer");
-        }
-        if feature.is_none() {
-            missing_fields.push("feature");
-        }
-        
-        if !missing_fields.is_empty() {
-            return Err(LqlError::Execution(format!(
-                "DELETE requires {} condition{}: {}",
-                if missing_fields.len() == 1 { "a" } else { "" },
-                if missing_fields.len() == 1 { "" } else { "s" },
-                missing_fields.join(", ")
-            )));
-        }
-        
-        let layer = layer.unwrap();
-        let feature = feature.unwrap();
+        let layer = condition_usize(conditions, "layer");
+        let feature = condition_usize(conditions, "feature");
 
-        ops.push(larql_vindex::PatchOp::Delete {
-            layer,
-            feature,
-            reason: Some("remote DELETE".into()),
-        });
+        if let (Some(layer), Some(feature)) = (layer, feature) {
+            ops.push(larql_vindex::PatchOp::Delete {
+                layer,
+                feature,
+                reason: Some("remote DELETE".into()),
+            });
+        } else {
+            let entity = condition_string(conditions, "entity").ok_or_else(|| {
+                LqlError::Execution("DELETE requires either layer+feature or entity".into())
+            })?;
+            let mut body = serde_json::Map::new();
+            body.insert("entity".into(), serde_json::json!(entity));
+            body.insert("limit".into(), serde_json::json!(10000));
+            body.insert("fields".into(), serde_json::json!(["layer", "feature"]));
+            if let Some(layer) = layer {
+                body.insert("layer".into(), serde_json::json!(layer));
+            }
+
+            let result =
+                self.remote_post_json("/v1/select", &serde_json::Value::Object(body), true)?;
+            let rows = result["rows"].as_array().cloned().unwrap_or_default();
+            let matches = rows_to_layer_features(&rows)?;
+            if matches.is_empty() {
+                return Ok(vec!["  (no matching features found)".into()]);
+            }
+            for (layer, feature) in &matches {
+                ops.push(larql_vindex::PatchOp::Delete {
+                    layer: *layer,
+                    feature: *feature,
+                    reason: Some("remote DELETE".into()),
+                });
+            }
+        }
 
         // Use sensible defaults for patch metadata since remote patches
         // don't have a local base model reference
-        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let now = patch_timestamp_now();
         let patch = larql_vindex::VindexPatch {
             version: 1,
             base_model: "remote".to_string(),
             base_checksum: None,
             created_at: now,
-            description: Some(format!("DELETE L{layer} F{feature}")),
+            description: Some(format!("DELETE {} feature(s)", ops.len())),
             author: None,
             tags: vec![],
             operations: ops,
@@ -804,7 +980,10 @@ impl Session {
             false,
         )?;
 
-        Ok(vec![format!("Deleted: L{layer} F{feature} → remote server")])
+        Ok(vec![format!(
+            "Deleted: {} feature(s) → remote server",
+            patch.operations.len()
+        )])
     }
 
     pub(crate) fn remote_update(
@@ -812,42 +991,8 @@ impl Session {
         set: &[crate::ast::Assignment],
         conditions: &[crate::ast::Condition],
     ) -> Result<Vec<String>, LqlError> {
-        let mut missing_fields = Vec::new();
-        
-        let layer = conditions
-            .iter()
-            .find(|c| c.field == "layer")
-            .and_then(|c| match &c.value {
-                crate::ast::Value::Integer(n) => Some(*n as usize),
-                _ => None,
-            });
-        
-        let feature = conditions
-            .iter()
-            .find(|c| c.field == "feature")
-            .and_then(|c| match &c.value {
-                crate::ast::Value::Integer(n) => Some(*n as usize),
-                _ => None,
-            });
-        
-        if layer.is_none() {
-            missing_fields.push("layer");
-        }
-        if feature.is_none() {
-            missing_fields.push("feature");
-        }
-        
-        if !missing_fields.is_empty() {
-            return Err(LqlError::Execution(format!(
-                "UPDATE requires {} condition{}: {}",
-                if missing_fields.len() == 1 { "a" } else { "" },
-                if missing_fields.len() == 1 { "" } else { "s" },
-                missing_fields.join(", ")
-            )));
-        }
-        
-        let layer = layer.unwrap();
-        let feature = feature.unwrap();
+        let layer = condition_usize(conditions, "layer");
+        let feature = condition_usize(conditions, "feature");
 
         // Build down_meta from SET assignments.
         let target = set
@@ -866,35 +1011,63 @@ impl Session {
                 _ => None,
             });
 
-        let down_meta = target.as_ref().map(|t| {
-            // top_token_id is set to 0; the server is expected to resolve
-            // this from the top_token string if needed for validation.
-            larql_vindex::patch::core::PatchDownMeta {
+        let down_meta = target
+            .as_ref()
+            .map(|t| larql_vindex::patch::core::PatchDownMeta {
                 top_token: t.clone(),
                 top_token_id: 0,
                 c_score: confidence.unwrap_or(0.9),
-            }
-        });
+            });
 
-        let op = larql_vindex::PatchOp::Update {
-            layer,
-            feature,
-            gate_vector_b64: None,
-            down_meta,
-        };
+        let mut ops = Vec::new();
+        if let (Some(layer), Some(feature)) = (layer, feature) {
+            ops.push(larql_vindex::PatchOp::Update {
+                layer,
+                feature,
+                gate_vector_b64: None,
+                down_meta: down_meta.clone(),
+            });
+        } else {
+            let entity = condition_string(conditions, "entity").ok_or_else(|| {
+                LqlError::Execution("UPDATE requires either layer+feature or entity".into())
+            })?;
+            let mut body = serde_json::Map::new();
+            body.insert("entity".into(), serde_json::json!(entity));
+            body.insert("limit".into(), serde_json::json!(10000));
+            body.insert("fields".into(), serde_json::json!(["layer", "feature"]));
+            if let Some(layer) = layer {
+                body.insert("layer".into(), serde_json::json!(layer));
+            }
+
+            let result =
+                self.remote_post_json("/v1/select", &serde_json::Value::Object(body), true)?;
+            let rows = result["rows"].as_array().cloned().unwrap_or_default();
+            let matches = rows_to_layer_features(&rows)?;
+            if matches.is_empty() {
+                return Ok(vec!["  (no matching features found)".into()]);
+            }
+            for (layer, feature) in matches {
+                ops.push(larql_vindex::PatchOp::Update {
+                    layer,
+                    feature,
+                    gate_vector_b64: None,
+                    down_meta: down_meta.clone(),
+                });
+            }
+        }
 
         // Use sensible defaults for patch metadata since remote patches
         // don't have a local base model reference
-        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let now = patch_timestamp_now();
         let patch = larql_vindex::VindexPatch {
             version: 1,
             base_model: "remote".to_string(),
             base_checksum: None,
             created_at: now,
-            description: Some(format!("UPDATE L{layer} F{feature}")),
+            description: Some(format!("UPDATE {} feature(s)", ops.len())),
             author: None,
             tags: vec![],
-            operations: vec![op],
+            operations: ops,
         };
 
         let _result = self.remote_post_json(
@@ -907,7 +1080,10 @@ impl Session {
             .as_deref()
             .map(|t| format!(" target={t}"))
             .unwrap_or_default();
-        Ok(vec![format!("Updated: L{layer} F{feature}{desc} → remote server")])
+        Ok(vec![format!(
+            "Updated: {} feature(s){desc} → remote server",
+            patch.operations.len()
+        )])
     }
 
     // ── Remote SELECT ──
@@ -925,7 +1101,10 @@ impl Session {
 
         // Add order support
         if let Some(o) = order {
-            body.insert("order".into(), serde_json::json!(if o.descending { "desc" } else { "asc" }));
+            body.insert(
+                "order".into(),
+                serde_json::json!(if o.descending { "desc" } else { "asc" }),
+            );
             body.insert("order_by".into(), serde_json::json!(&o.field));
         }
 
@@ -936,10 +1115,13 @@ impl Session {
 
         // Add nearest support
         if let Some(n) = nearest {
-            body.insert("nearest".into(), serde_json::json!({
-                "entity": n.entity,
-                "layer": n.layer,
-            }));
+            body.insert(
+                "nearest".into(),
+                serde_json::json!({
+                    "entity": n.entity,
+                    "layer": n.layer,
+                }),
+            );
         }
 
         // Track unknown fields for warning
@@ -963,17 +1145,15 @@ impl Session {
                         body.insert("layer".into(), serde_json::json!(n));
                     }
                 }
-                "confidence" | "c_score" => {
-                    match &cond.value {
-                        crate::ast::Value::Number(n) => {
-                            body.insert("confidence_floor".into(), serde_json::json!(n));
-                        }
-                        crate::ast::Value::Integer(n) => {
-                            body.insert("confidence_floor".into(), serde_json::json!(n));
-                        }
-                        _ => {}
+                "confidence" | "c_score" => match &cond.value {
+                    crate::ast::Value::Number(n) => {
+                        body.insert("confidence_floor".into(), serde_json::json!(n));
                     }
-                }
+                    crate::ast::Value::Integer(n) => {
+                        body.insert("confidence_floor".into(), serde_json::json!(n));
+                    }
+                    _ => {}
+                },
                 _ => {
                     if !supported_fields.contains(&cond.field.as_str()) {
                         unknown_fields.push(cond.field.clone());
@@ -984,14 +1164,14 @@ impl Session {
 
         // Warn about unknown fields
         if !unknown_fields.is_empty() {
-            eprintln!("Warning: SELECT ignored unknown condition fields: {}", unknown_fields.join(", "));
+            eprintln!(
+                "Warning: SELECT ignored unknown condition fields: {}",
+                unknown_fields.join(", ")
+            );
         }
 
-        let result = self.remote_post_json(
-            "/v1/select",
-            &serde_json::Value::Object(body),
-            false,
-        )?;
+        let result =
+            self.remote_post_json("/v1/select", &serde_json::Value::Object(body), false)?;
 
         let mut out = Vec::new();
 
@@ -1047,14 +1227,20 @@ impl Session {
                      Patch stays client-side — server never sees it."
                 )])
             }
-            _ => Err(LqlError::Execution("not connected to a remote server".into())),
+            _ => Err(LqlError::Execution(
+                "not connected to a remote server".into(),
+            )),
         }
     }
 
     pub(crate) fn remote_show_patches(&self) -> Result<Vec<String>, LqlError> {
         let local_patches = match &self.backend {
             Backend::Remote { local_patches, .. } => local_patches,
-            _ => return Err(LqlError::Execution("not connected to a remote server".into())),
+            _ => {
+                return Err(LqlError::Execution(
+                    "not connected to a remote server".into(),
+                ))
+            }
         };
 
         let mut out = Vec::new();
@@ -1065,7 +1251,10 @@ impl Session {
             for p in local_patches {
                 let (ins, upd, del) = p.counts();
                 let desc = p.description.as_deref().unwrap_or("unnamed");
-                out.push(format!("  - {} (ins={}, upd={}, del={})", desc, ins, upd, del));
+                out.push(format!(
+                    "  - {} (ins={}, upd={}, del={})",
+                    desc, ins, upd, del
+                ));
             }
         }
         Ok(out)
@@ -1081,8 +1270,8 @@ impl Session {
         limit: Option<u32>,
         export_format: Option<crate::ast::ExportFormat>,
     ) -> Result<Vec<String>, LqlError> {
-        use std::collections::HashMap;
         use larql_vindex::token_summary::{TokenHit, TokenShape};
+        use std::collections::HashMap;
 
         // ── Build query params ──
         let layer_s = layer.map(|l| l.to_string());
@@ -1161,29 +1350,30 @@ impl Session {
             }
         }
 
-        let groups = body["groups"].as_array().map(|arr| arr.iter()).flatten().unwrap_or(std::iter::empty());
         let mut parsed: Vec<(String, HashMap<String, TokenHit>)> = Vec::new();
-        for g in groups {
-            let label = g["label"].as_str().unwrap_or("").to_string();
-            let mut hits: HashMap<String, TokenHit> = HashMap::new();
-            if let Some(rows) = g["token_hits"].as_array() {
-                for r in rows {
-                    let token = r["token"].as_str().unwrap_or("").to_string();
-                    let shape = shape_from_name(r["shape"].as_str().unwrap_or("other"));
-                    let kind = r["kind"].as_str().and_then(kind_from_str);
-                    let hit = TokenHit {
-                        shape,
-                        kind,
-                        hits: r["hits"].as_u64().unwrap_or(0) as usize,
-                        syntax_hits: r["syntax_hits"].as_u64().unwrap_or(0) as usize,
-                        knowledge_hits: r["knowledge_hits"].as_u64().unwrap_or(0) as usize,
-                        output_hits: r["output_hits"].as_u64().unwrap_or(0) as usize,
-                        max_score: r["max_score"].as_f64().unwrap_or(0.0) as f32,
-                    };
-                    hits.insert(token, hit);
+        if let Some(groups) = body["groups"].as_array() {
+            for g in groups {
+                let label = g["label"].as_str().unwrap_or("").to_string();
+                let mut hits: HashMap<String, TokenHit> = HashMap::new();
+                if let Some(rows) = g["token_hits"].as_array() {
+                    for r in rows {
+                        let token = r["token"].as_str().unwrap_or("").to_string();
+                        let shape = shape_from_name(r["shape"].as_str().unwrap_or("other"));
+                        let kind = r["kind"].as_str().and_then(kind_from_str);
+                        let hit = TokenHit {
+                            shape,
+                            kind,
+                            hits: r["hits"].as_u64().unwrap_or(0) as usize,
+                            syntax_hits: r["syntax_hits"].as_u64().unwrap_or(0) as usize,
+                            knowledge_hits: r["knowledge_hits"].as_u64().unwrap_or(0) as usize,
+                            output_hits: r["output_hits"].as_u64().unwrap_or(0) as usize,
+                            max_score: r["max_score"].as_f64().unwrap_or(0.0) as f32,
+                        };
+                        hits.insert(token, hit);
+                    }
                 }
+                parsed.push((label, hits));
             }
-            parsed.push((label, hits));
         }
 
         // ── Render by reusing local formatters verbatim ──
@@ -1246,8 +1436,10 @@ impl Session {
         let body = self.remote_get_json("/v1/models", &[])?;
 
         let mut out = Vec::new();
-        out.push(format!("{:<35} {:>10} {:>8} {:>12}",
-            "Model", "Features", "Status", "Path"));
+        out.push(format!(
+            "{:<35} {:>10} {:>8} {:>12}",
+            "Model", "Features", "Status", "Path"
+        ));
         out.push("-".repeat(70));
 
         if let Some(models) = body["models"].as_array() {
@@ -1256,7 +1448,8 @@ impl Session {
                 let features = m["features"].as_u64().unwrap_or(0);
                 let loaded = m["loaded"].as_bool().unwrap_or(false);
                 let path = m["path"].as_str().unwrap_or("/v1");
-                out.push(format!("{:<35} {:>10} {:>8} {:>12}",
+                out.push(format!(
+                    "{:<35} {:>10} {:>8} {:>12}",
                     id,
                     features,
                     if loaded { "loaded" } else { "unloaded" },
@@ -1268,7 +1461,10 @@ impl Session {
         Ok(out)
     }
 
-    pub(crate) fn remote_show_layers(&self, range: Option<&crate::ast::Range>) -> Result<Vec<String>, LqlError> {
+    pub(crate) fn remote_show_layers(
+        &self,
+        range: Option<&crate::ast::Range>,
+    ) -> Result<Vec<String>, LqlError> {
         let mut params: Vec<(String, String)> = vec![];
         if let Some(r) = range {
             params.push(("start".to_string(), r.start.to_string()));
@@ -1293,10 +1489,7 @@ impl Session {
                 let top_token = l["top_token"].as_str().unwrap_or("");
                 out.push(format!(
                     "{:<8} {:>10} {:>10} {:>15}",
-                    layer,
-                    features,
-                    with_meta,
-                    top_token
+                    layer, features, with_meta, top_token
                 ));
             }
         }
@@ -1312,16 +1505,24 @@ impl Session {
     ) -> Result<Vec<String>, LqlError> {
         let mut params: Vec<(String, String)> = vec![("layer".to_string(), layer.to_string())];
 
-        let token_filter = conditions.iter().find(|c| c.field == "relation" || c.field == "token").and_then(|c| {
-            if let crate::ast::Value::String(ref s) = c.value { Some(s.clone()) } else { None }
-        });
-        let confidence_floor = conditions.iter().find(|c| c.field == "confidence" || c.field == "c_score").and_then(|c| {
-            match &c.value {
+        let token_filter = conditions
+            .iter()
+            .find(|c| c.field == "relation" || c.field == "token")
+            .and_then(|c| {
+                if let crate::ast::Value::String(ref s) = c.value {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            });
+        let confidence_floor = conditions
+            .iter()
+            .find(|c| c.field == "confidence" || c.field == "c_score")
+            .and_then(|c| match &c.value {
                 crate::ast::Value::Number(n) => Some(*n as f32),
                 crate::ast::Value::Integer(n) => Some(*n as f32),
                 _ => None,
-            }
-        });
+            });
 
         if let Some(tf) = token_filter {
             params.push(("token".to_string(), tf));
@@ -1337,7 +1538,9 @@ impl Session {
         let body = self.remote_get_json("/v1/features", &qref)?;
 
         if let Some(error) = body.get("error") {
-            return Err(LqlError::Execution(error.as_str().unwrap_or("unknown error").to_string()));
+            return Err(LqlError::Execution(
+                error.as_str().unwrap_or("unknown error").to_string(),
+            ));
         }
 
         let mut out = Vec::new();
@@ -1355,10 +1558,7 @@ impl Session {
                 let down_outputs = f["down_outputs"].as_str().unwrap_or("");
                 out.push(format!(
                     "{:<8} {:<20} {:>10.1} {:>30}",
-                    feature,
-                    top_token,
-                    score,
-                    down_outputs
+                    feature, top_token, score, down_outputs
                 ));
             }
         }
@@ -1383,10 +1583,7 @@ impl Session {
         let body = self.remote_get_json("/v1/entities", &qref)?;
 
         let mut out = Vec::new();
-        out.push(format!(
-            "{:<30} {:>10} {:>10}",
-            "Entity", "Count", "Score"
-        ));
+        out.push(format!("{:<30} {:>10} {:>10}", "Entity", "Count", "Score"));
         out.push("-".repeat(52));
 
         if let Some(entities) = body["entities"].as_array() {
@@ -1394,22 +1591,24 @@ impl Session {
                 let entity = e["entity"].as_str().unwrap_or("");
                 let count = e["count"].as_u64().unwrap_or(0);
                 let score = e["score"].as_f64().unwrap_or(0.0);
-                out.push(format!(
-                    "{:<30} {:>10} {:>10.1}",
-                    entity,
-                    count,
-                    score
-                ));
+                out.push(format!("{:<30} {:>10} {:>10.1}", entity, count, score));
             }
         }
 
         Ok(out)
     }
 
-    pub(crate) fn remote_remove_local_patch(&mut self, name: &str) -> Result<Vec<String>, LqlError> {
+    pub(crate) fn remote_remove_local_patch(
+        &mut self,
+        name: &str,
+    ) -> Result<Vec<String>, LqlError> {
         let local_patches = match &mut self.backend {
             Backend::Remote { local_patches, .. } => local_patches,
-            _ => return Err(LqlError::Execution("not connected to a remote server".into())),
+            _ => {
+                return Err(LqlError::Execution(
+                    "not connected to a remote server".into(),
+                ))
+            }
         };
 
         // Try to parse as index first, then fall back to description match
@@ -1432,7 +1631,45 @@ impl Session {
                 let desc = removed.description.as_deref().unwrap_or("unnamed");
                 Ok(vec![format!("Removed local patch #{}: {}", i, desc)])
             }
-            None => Err(LqlError::Execution(format!("local patch not found: {name} (use index or description)")))
+            None => Err(LqlError::Execution(format!(
+                "local patch not found: {name} (use index or description)"
+            ))),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{condition_string, condition_usize, rows_to_layer_features};
+    use crate::ast::{CompareOp, Condition, Value};
+    use crate::error::LqlError;
+
+    #[test]
+    fn remote_condition_helpers_extract_expected_types() {
+        let conditions = vec![
+            Condition {
+                field: "layer".into(),
+                op: CompareOp::Eq,
+                value: Value::Integer(12),
+            },
+            Condition {
+                field: "entity".into(),
+                op: CompareOp::Eq,
+                value: Value::String("France".into()),
+            },
+        ];
+        assert_eq!(condition_usize(&conditions, "layer"), Some(12));
+        assert_eq!(
+            condition_string(&conditions, "entity").as_deref(),
+            Some("France")
+        );
+        assert_eq!(condition_usize(&conditions, "entity"), None);
+    }
+
+    #[test]
+    fn rows_to_layer_features_rejects_malformed_rows() {
+        let rows = vec![serde_json::json!({"layer": 3})];
+        let err = rows_to_layer_features(&rows).unwrap_err();
+        assert!(matches!(err, LqlError::Execution(_)));
     }
 }

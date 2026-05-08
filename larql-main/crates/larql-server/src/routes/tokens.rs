@@ -6,13 +6,11 @@
 
 use std::sync::Arc;
 
-use axum::Json;
 use axum::extract::{Path, Query, State};
+use axum::Json;
 use serde::Deserialize;
 
-use larql_vindex::token_summary::{
-    collect_token_hits, token_shape_name, TokenFilters, TokenHit,
-};
+use larql_vindex::token_summary::{collect_token_hits, token_shape_name, TokenFilters, TokenHit};
 
 use crate::error::ServerError;
 use crate::state::{AppState, LoadedModel};

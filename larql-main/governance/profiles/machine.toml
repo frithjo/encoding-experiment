@@ -1,0 +1,13 @@
+schema_version = "larql.governance.rule_profile.v1"
+
+[profile]
+id = "machine"
+applies_to = "machine"
+rule_sets = [
+  "machine_runtime",
+  "rule_admission",
+]
+required_facts = [
+  "machine_proposal_present",
+]
+default_flow = "machine_creation"

@@ -5,13 +5,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = larql_inference::InferenceModel::load("google/gemma-3-4b-it")?;
     let _weights = model.weights();
     let vd = std::path::PathBuf::from("output/gemma3-4b-v2.vindex");
-    let mut index = larql_vindex::VectorIndex::load_vindex(&vd, &mut larql_vindex::SilentLoadCallbacks)?;
+    let mut index =
+        larql_vindex::VectorIndex::load_vindex(&vd, &mut larql_vindex::SilentLoadCallbacks)?;
     let _ = index.load_attn_q4k(&vd);
     let _ = index.load_interleaved_q4k(&vd);
 
     #[cfg(feature = "metal")]
     {
-        let metal = larql_compute::metal::MetalBackend::new().expect("need metal");
+        let metal = larql_compute::metal::MetalBackend::new_default().expect("need metal");
         let gate_index: &dyn larql_vindex::GateIndex = &index;
         let q4_ffn_mmap = gate_index.interleaved_q4k_mmap_ref().unwrap();
         let intermediate = gate_index.num_features(0);
@@ -20,7 +21,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let ffn_format = larql_compute::QuantFormat::Q4_K;
 
         let layers = larql_inference::layer_graph::pipeline_layer::build_pipeline_layers(
-            weights, &index, 0..1, q4_ffn_mmap, q4_ffn_per_matrix, ffn_format,
+            weights,
+            &index,
+            0..1,
+            q4_ffn_mmap,
+            q4_ffn_per_matrix,
+            ffn_format,
         );
         let layer = &layers[0];
 
@@ -33,7 +39,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let kv_dim = weights.num_kv_heads * weights.head_dim;
 
         println!("=== Per-Stage GPU Debug (Layer 0) ===\n");
-        println!("Input: nonzero={}/{}, max={:.4}", x.iter().filter(|v| v.abs() > 1e-10).count(), x.len(), x.iter().fold(0.0f32, |a, &b| a.max(b.abs())));
+        println!(
+            "Input: nonzero={}/{}, max={:.4}",
+            x.iter().filter(|v| v.abs() > 1e-10).count(),
+            x.len(),
+            x.iter().fold(0.0f32, |a, &b| a.max(b.abs()))
+        );
 
         let bufs = metal.bufs();
         let queue = metal.queue();
@@ -46,9 +57,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let cmd = queue.new_command_buffer();
             let enc = cmd.new_compute_command_encoder();
             larql_compute::metal::ops::full_pipeline::encode_rms_norm(
-                enc, &metal.rms_norm_pipeline,
-                &h_buf, &norm_buf, &norm_out,
-                hidden, layer.eps, layer.norm_offset,
+                enc,
+                &metal.rms_norm_pipeline,
+                &h_buf,
+                &norm_buf,
+                &norm_out,
+                hidden,
+                layer.eps,
+                layer.norm_offset,
             );
             enc.end_encoding();
             cmd.commit();
@@ -164,7 +180,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 enc.set_bytes(2, 4, &rope_base as *const f32 as *const std::ffi::c_void);
                 enc.set_bytes(3, 4, &pos as *const u32 as *const std::ffi::c_void);
                 enc.set_bytes(4, 4, &rdim as *const u32 as *const std::ffi::c_void);
-                enc.dispatch_threads(metal::MTLSize::new(pairs, 1, 1), metal::MTLSize::new(pairs.min(256), 1, 1));
+                enc.dispatch_threads(
+                    metal::MTLSize::new(pairs, 1, 1),
+                    metal::MTLSize::new(pairs.min(256), 1, 1),
+                );
             }
             for kvh in 0..layer.num_kv_heads {
                 let off = (kvh * layer.head_dim * 4) as u64;
@@ -174,7 +193,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 enc.set_bytes(2, 4, &rope_base as *const f32 as *const std::ffi::c_void);
                 enc.set_bytes(3, 4, &pos as *const u32 as *const std::ffi::c_void);
                 enc.set_bytes(4, 4, &rdim as *const u32 as *const std::ffi::c_void);
-                enc.dispatch_threads(metal::MTLSize::new(pairs, 1, 1), metal::MTLSize::new(pairs.min(256), 1, 1));
+                enc.dispatch_threads(
+                    metal::MTLSize::new(pairs, 1, 1),
+                    metal::MTLSize::new(pairs.min(256), 1, 1),
+                );
             }
             enc.end_encoding();
             cmd.commit();
@@ -193,10 +215,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         {
             let cmd = queue.new_command_buffer();
             larql_compute::metal::ops::kv_cache::append_and_attend(
-                cmd, &mut kv.layers[0],
-                &metal.kv_append_pipeline, &metal.kv_attend_pipeline,
-                &k_out, &v_out, &q_out, &attn_out,
-                layer.num_q_heads, layer.attn_scale,
+                cmd,
+                &mut kv.layers[0],
+                &metal.kv_append_pipeline,
+                &metal.kv_attend_pipeline,
+                &k_out,
+                &v_out,
+                &q_out,
+                &attn_out,
+                layer.num_q_heads,
+                layer.attn_scale,
             );
             cmd.commit();
             cmd.wait_until_completed();

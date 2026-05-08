@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="page-title">Residual Trace</h1>
+
+{% if current_workspace and not supports_trace %}
+<section class="banner error" role="alert">Trace unavailable: no model weights in vindex. Extract with --level all to enable.</section>
+{% endif %}
+
+<form method="post" class="task-form">
+  <label for="trace_prompt">Prompt</label>
+  <textarea id="trace_prompt" name="prompt" rows="6" {% if current_workspace and not supports_trace %}readonly aria-disabled="true"{% endif %} placeholder="Enter prompt...">{{ form_data.prompt }}</textarea>
+
+  <div class="form-row">
+    <div class="form-col">
+      <label for="trace_positions">Positions</label>
+      <select id="trace_positions" name="positions" {% if current_workspace and not supports_trace %}disabled{% endif %}>
+        <option value="last" {% if form_data.positions == "last" %}selected{% endif %}>last</option>
+        <option value="all" {% if form_data.positions == "all" %}selected{% endif %}>all</option>
+      </select>
+    </div>
+
+    <div class="form-col">
+      <label for="trace_walk_top_k">WalkModel top-k</label>
+      <input id="trace_walk_top_k" name="walk_top_k" type="number" min="1" step="1" value="{{ form_data.walk_top_k }}" {% if current_workspace and not supports_trace %}readonly aria-disabled="true"{% endif %}>
+    </div>
+  </div>
+
+  <button type="submit" class="submit-button" {% if current_workspace and not supports_trace %}disabled{% endif %}>Run trace <kbd>Ctrl+Enter</kbd></button>
+</form>
+
+{% if run and run.kind == "trace" %}
+<section class="panel result-panel">
+  <h2>Result</h2>
+  <div class="muted">{{ run.summary }} | {{ run.duration_ms }} ms</div>
+  <p><strong>Tokens:</strong> {{ run.raw.tokens|length }} · <strong>Nodes:</strong> {{ run.raw.n_nodes }} · <strong>Layers:</strong> {{ run.raw.n_layers }} · <strong>positions:</strong> {{ run.raw.positions }}</p>
+  {% if run.raw.layer_summaries %}
+  <div class="table-scroll">
+    <table class="data-table">
+      <thead>
+        <tr><th>Layer</th><th>|res|</th><th>|Δattn|</th><th>|Δffn|</th><th>top1</th><th>p</th></tr>
+      </thead>
+      <tbody>
+        {% for row in run.raw.layer_summaries %}
+        <tr>
+          <td>{% if row.layer < 0 %}emb{% else %}L{{ row.layer }}{% endif %}</td>
+          <td>{{ row.residual_norm | round(2) }}</td>
+          <td>{{ row.attn_delta_norm | round(2) }}</td>
+          <td>{{ row.ffn_delta_norm | round(2) }}</td>
+          <td><code>{{ row.top1_token }}</code></td>
+          <td>{{ row.top1_prob | round(3) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  <details class="tty-details">
+    <summary>Raw JSON</summary>
+    <pre>{{ run.raw|to_pretty_json }}</pre>
+  </details>
+</section>
+{% endif %}
+{% endblock %}

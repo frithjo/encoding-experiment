@@ -1,0 +1,44 @@
+{
+  "schema_version": "larql.governance.policy_input.v1",
+  "state_hash": "sha256:68a7eb53cb3637e1d4f03ed1d2a6224065f3a19d62d10795c255cfd7f4a19230",
+  "actor": "ci",
+  "action": "ci_governance_check",
+  "target_paths": [
+    "governance/invariants/registry.json",
+    "governance/policies/index.toml",
+    "governance/decision_surface/registry.toml",
+    "governance/ceremonies/budgets.toml"
+  ],
+  "evidence": [
+    "invariant_registry_verified",
+    "decision_surface_validated",
+    "active_policy_set_hash_recorded"
+  ],
+  "risk": 1,
+  "facts": [
+    {
+      "fact_type": "invariant_registry_present",
+      "value": true,
+      "evidence": [
+        "invariant_registry_verified"
+      ],
+      "source": "governance/invariants/registry.json"
+    },
+    {
+      "fact_type": "decision_surface_registry_present",
+      "value": true,
+      "evidence": [
+        "decision_surface_validated"
+      ],
+      "source": "governance/decision_surface/registry.toml"
+    },
+    {
+      "fact_type": "public_api_changed",
+      "value": false,
+      "evidence": [
+        "active_policy_set_hash_recorded"
+      ],
+      "source": "ci-policy-input"
+    }
+  ]
+}

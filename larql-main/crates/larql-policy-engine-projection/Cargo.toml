@@ -1,0 +1,22 @@
+[package]
+name = "larql-policy-engine-projection"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Rust-authored policy engine state snapshots for projection-only UI"
+
+[dependencies]
+larql-governance = { path = "../larql-governance" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+toml = "0.8"
+
+[package.metadata.product]
+zone = "interface"
+role = "policy-engine-snapshot-projection"
+release_impact = "medium"
+stability_target = "iterative"

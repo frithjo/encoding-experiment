@@ -1,0 +1,10 @@
+schema_version = "larql.governance.policy_flow.v1"
+
+[flow]
+id = "replay_closure"
+actions = ["ci_governance_check", "runtime_mutation"]
+steps = [
+  { id = "decision_recorded", next = ["ledger_replayed"] },
+  { id = "ledger_replayed", next = ["closure_recorded"] },
+  { id = "closure_recorded", next = [] },
+]

@@ -1,0 +1,12 @@
+schema_version = "larql.governance.policy_flow.v1"
+
+[flow]
+id = "patch_application"
+actions = ["mint_struct", "apply_patch"]
+steps = [
+  { id = "intent_recorded", next = ["candidate_generated"] },
+  { id = "candidate_generated", next = ["policy_evaluated"] },
+  { id = "policy_evaluated", next = ["checks_run"] },
+  { id = "checks_run", next = ["receipt_recorded"] },
+  { id = "receipt_recorded", next = [] },
+]

@@ -1,0 +1,23 @@
+schema_version = "larql.governance.paths.v1"
+
+[decision_surface]
+registry = "governance/decision_surface/registry.toml"
+open_dir = "governance/decision_surface/open"
+promoted_dir = "governance/decision_surface/promoted"
+retired_dir = "governance/decision_surface/retired"
+
+[policy]
+index = "governance/policies/index.toml"
+packs_dir = "governance/policies"
+proposal_dir = "governance/proposals"
+
+[ceremony]
+budget_file = "governance/ceremonies/budgets.toml"
+
+[artifacts]
+schemas_dir = "governance/schemas"
+templates_dir = "governance/templates"
+fixtures_dir = "governance/fixtures"
+examples_dir = "governance/examples"
+defaults_file = "governance/defaults/repo_governance.toml"
+llm_roles_file = "governance/defaults/llm_roles.toml"

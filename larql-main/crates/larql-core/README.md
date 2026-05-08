@@ -1,5 +1,12 @@
 # larql-core
 
+## Crate Role
+
+- Role: Shared graph and IO primitives used across product surfaces
+- Zone: core
+- Release impact: high
+- Stability target: stable
+
 Knowledge graph engine for LARQL. Triple-based edges, graph algorithms, LLM extraction, multi-format serialization.
 
 ## What it does
@@ -174,6 +181,13 @@ cargo run -p larql-core --example algorithm_demo          # Algorithm examples
 
 - `http` (default) — HTTP model provider for ollama/vLLM/llama.cpp
 - `msgpack` (default) — MessagePack serialization
+
+## Public vs Internal Surface
+
+- Public: stable graph primitives and storage/query APIs consumed by interface
+  crates.
+- Internal: indexing/layout optimizations can evolve as long as public behavior
+  and serialization contracts remain compatible.
 
 ## License
 

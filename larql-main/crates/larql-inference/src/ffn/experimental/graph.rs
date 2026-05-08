@@ -1,10 +1,10 @@
 #![allow(deprecated)]
 use ndarray::Array2;
 
-use crate::ffn::FfnBackend;
 use crate::ffn::sparse_compute::sparse_ffn_forward;
-use crate::model::ModelWeights;
+use crate::ffn::FfnBackend;
 use crate::graph_ffn::GateIndex;
+use crate::model::ModelWeights;
 
 /// Graph FFN backend: uses a precomputed gate index instead of the gate matmul.
 ///
@@ -59,7 +59,9 @@ impl<'a> GraphFfn<'a> {
             }
 
             // Step 2: look up candidate features from index, dedup
-            let features = self.gate_index.lookup_from_tokens(&token_scores, layer, self.top_k);
+            let features = self
+                .gate_index
+                .lookup_from_tokens(&token_scores, layer, self.top_k);
             if features.is_empty() {
                 continue;
             }

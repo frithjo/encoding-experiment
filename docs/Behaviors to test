@@ -1,0 +1,23 @@
+Behaviors to test:
+
+Tool handler correctness - larql-server computes attention matrices correctly using larql-inference
+WeightFfn backend processes tokens
+predict_with_ffn_attention captures per-layer attention
+Returns expected layer count, head dimensions, sequence length
+API contract - /tools/call endpoint returns expected JSON format
+Response structure matches ToolCallResponse
+Attention data serializes correctly (layer, heads fields)
+Tokens, num_layers, seq_len, predictions included
+Frontend-backend integration - Leptos successfully calls larql-server
+HTTP POST to http://localhost:8080/tools/call
+Request body format matches ToolCallRequest
+Async request completes without errors in WASM
+Data flow - attention data flows through full pipeline
+Inference → serialization → HTTP → deserialization → UI display
+Attention matrices render correctly in Leptos component
+Stats (layers, tokens) display accurately
+Error handling - invalid inputs and failures handled gracefully
+Empty prompt validation
+Server unavailable / connection errors
+Malformed response parsing errors
+Loading state management

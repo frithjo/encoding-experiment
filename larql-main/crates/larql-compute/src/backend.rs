@@ -33,13 +33,15 @@ pub trait ComputeBackend: Send + Sync {
     /// Multiple matmuls in one submission. Default: serial dispatch.
     /// GPU backends can override with parallel command buffer encoding.
     fn matmul_batch(&self, ops: &[MatMulOp]) -> Vec<Array2<f32>> {
-        ops.iter().map(|op| {
-            if op.transpose_b {
-                self.matmul_transb(op.a.view(), op.b.view())
-            } else {
-                self.matmul(op.a.view(), op.b.view())
-            }
-        }).collect()
+        ops.iter()
+            .map(|op| {
+                if op.transpose_b {
+                    self.matmul_transb(op.a.view(), op.b.view())
+                } else {
+                    self.matmul(op.a.view(), op.b.view())
+                }
+            })
+            .collect()
     }
 
     // ── Q4 quantized operations (optional) ──
@@ -48,25 +50,39 @@ pub trait ComputeBackend: Send + Sync {
     /// Returns None if backend doesn't support Q4.
     fn q4_matvec(
         &self,
-        _q4_data: &[u8], _q8_x: &[i8], _q8_scales: &[f32],
-        _num_rows: usize, _hidden: usize,
-    ) -> Option<Vec<f32>> { None }
+        _q4_data: &[u8],
+        _q8_x: &[i8],
+        _q8_scales: &[f32],
+        _num_rows: usize,
+        _hidden: usize,
+    ) -> Option<Vec<f32>> {
+        None
+    }
 
     /// Q4 vector-matrix: out[K] = activation[N] @ Q4[N,K].
     fn q4_vecmat(
         &self,
-        _activation: &[f32], _q4_data: &[u8],
-        _intermediate: usize, _hidden: usize,
-    ) -> Option<Vec<f32>> { None }
+        _activation: &[f32],
+        _q4_data: &[u8],
+        _intermediate: usize,
+        _hidden: usize,
+    ) -> Option<Vec<f32>> {
+        None
+    }
 
     /// Batched Q4 gate+up for all seq positions in one submission.
     #[allow(clippy::type_complexity)]
     fn q4_matvec_pair_batch(
         &self,
-        _gate_q4: &[u8], _up_q4: &[u8],
-        _x_matrix: &[f32], _seq_len: usize,
-        _num_rows: usize, _hidden: usize,
-    ) -> Option<(Vec<Vec<f32>>, Vec<Vec<f32>>)> { None }
+        _gate_q4: &[u8],
+        _up_q4: &[u8],
+        _x_matrix: &[f32],
+        _seq_len: usize,
+        _num_rows: usize,
+        _hidden: usize,
+    ) -> Option<(Vec<Vec<f32>>, Vec<Vec<f32>>)> {
+        None
+    }
 
     /// Full pipeline: ALL Q4 (attention + FFN) in one command buffer for all layers.
     /// Each layer: Q4 Q/K/V proj → fused attention (RoPE+GQA+softcap) → Q4 O proj → Q4 FFN.
@@ -76,12 +92,20 @@ pub trait ComputeBackend: Send + Sync {
         &self,
         _layers: &[crate::FullPipelineLayer<'_>],
         _x: &[f32],
-        _hidden: usize, _inter: usize,
-        _q_dim: usize, _kv_dim: usize,
+        _hidden: usize,
+        _inter: usize,
+        _q_dim: usize,
+        _kv_dim: usize,
         _seq_len: usize,
-        _num_q_heads: usize, _num_kv_heads: usize, _head_dim: usize,
-        _rope_base: f32, _use_qk_norm: bool, _softcap: f32,
-    ) -> Option<Vec<f32>> { None }
+        _num_q_heads: usize,
+        _num_kv_heads: usize,
+        _head_dim: usize,
+        _rope_base: f32,
+        _use_qk_norm: bool,
+        _softcap: f32,
+    ) -> Option<Vec<f32>> {
+        None
+    }
 
     /// Multi-layer Q4 FFN in one submission: gate → up → GEGLU → down, chained.
     /// All layers processed in one command buffer — no CPU-GPU round-trips.
@@ -93,18 +117,27 @@ pub trait ComputeBackend: Send + Sync {
         _x: &[f32],
         _inter: usize,
         _hidden: usize,
-    ) -> Option<Vec<f32>> { None }
+    ) -> Option<Vec<f32>> {
+        None
+    }
 
     /// Whether this backend supports KV cache decode operations.
-    fn has_kv_cache(&self) -> bool { false }
+    fn has_kv_cache(&self) -> bool {
+        false
+    }
 
     /// Populate KV cache with prefill K/V data for one layer.
     /// k_data/v_data: [seq_len, kv_dim] as flat f32.
     fn populate_kv_layer(
-        &self, _layer: usize,
-        _k_data: &[f32], _v_data: &[f32],
-        _seq_len: usize, _num_kv_heads: usize, _head_dim: usize,
-    ) { /* no-op for non-KV backends */ }
+        &self,
+        _layer: usize,
+        _k_data: &[f32],
+        _v_data: &[f32],
+        _seq_len: usize,
+        _num_kv_heads: usize,
+        _head_dim: usize,
+    ) { /* no-op for non-KV backends */
+    }
 
     /// Reset KV cache (for new prompt).
     fn reset_kv_cache(&self) {}
@@ -116,25 +149,39 @@ pub trait ComputeBackend: Send + Sync {
         &self,
         _layers: &[crate::FullPipelineLayer<'_>],
         _x: &[f32],
-        _hidden: usize, _inter: usize,
-        _q_dim: usize, _kv_dim: usize,
-        _num_q_heads: usize, _num_kv_heads: usize, _head_dim: usize,
+        _hidden: usize,
+        _inter: usize,
+        _q_dim: usize,
+        _kv_dim: usize,
+        _num_q_heads: usize,
+        _num_kv_heads: usize,
+        _head_dim: usize,
         _rope_base: f32,
-    ) -> Option<Vec<f32>> { None }
+    ) -> Option<Vec<f32>> {
+        None
+    }
 
     /// Q4_K matvec: scores[N] = Q4_K[N,K] @ f32_x[K]. Returns None if not supported.
     fn q4k_matvec(
         &self,
-        _q4k_data: &[u8], _x: &[f32],
-        _num_rows: usize, _hidden: usize,
-    ) -> Option<Vec<f32>> { None }
+        _q4k_data: &[u8],
+        _x: &[f32],
+        _num_rows: usize,
+        _hidden: usize,
+    ) -> Option<Vec<f32>> {
+        None
+    }
 
     /// Q6_K matvec: scores[N] = Q6_K[N,K] @ f32_x[K]. Returns None if not supported.
     fn q6k_matvec(
         &self,
-        _q6k_data: &[u8], _x: &[f32],
-        _num_rows: usize, _hidden: usize,
-    ) -> Option<Vec<f32>> { None }
+        _q6k_data: &[u8],
+        _x: &[f32],
+        _num_rows: usize,
+        _hidden: usize,
+    ) -> Option<Vec<f32>> {
+        None
+    }
 
     /// Prefill: full pipeline for seq>1 with KV cache population.
     /// Runs Q4 attention + FFN for all layers, stores post-RoPE K/V in KV cache.
@@ -144,15 +191,25 @@ pub trait ComputeBackend: Send + Sync {
         &self,
         _layers: &[crate::FullPipelineLayer<'_>],
         _x: &[f32],
-        _hidden: usize, _inter: usize,
-        _q_dim: usize, _kv_dim: usize,
+        _hidden: usize,
+        _inter: usize,
+        _q_dim: usize,
+        _kv_dim: usize,
         _seq_len: usize,
-        _num_q_heads: usize, _num_kv_heads: usize, _head_dim: usize,
-        _rope_base: f32, _use_qk_norm: bool, _softcap: f32,
-    ) -> Option<Vec<f32>> { None }
+        _num_q_heads: usize,
+        _num_kv_heads: usize,
+        _head_dim: usize,
+        _rope_base: f32,
+        _use_qk_norm: bool,
+        _softcap: f32,
+    ) -> Option<Vec<f32>> {
+        None
+    }
 
     /// Whether this backend supports Q4 fused operations.
-    fn has_q4(&self) -> bool { false }
+    fn has_q4(&self) -> bool {
+        false
+    }
 
     // ── Metadata ──
 
@@ -160,7 +217,9 @@ pub trait ComputeBackend: Send + Sync {
     fn name(&self) -> &str;
 
     /// Device info string (for logging/diagnostics).
-    fn device_info(&self) -> String { self.name().to_string() }
+    fn device_info(&self) -> String {
+        self.name().to_string()
+    }
 }
 
 // ── Helper functions for callers ──

@@ -23,10 +23,7 @@ pub struct CachedFfn {
 
 impl CachedFfn {
     /// Build cache by running a dense forward pass, capturing FFN outputs at each layer.
-    pub fn calibrate(
-        weights: &ModelWeights,
-        token_ids: &[u32],
-    ) -> Self {
+    pub fn calibrate(weights: &ModelWeights, token_ids: &[u32]) -> Self {
         use crate::ffn::WeightFfn;
         use crate::forward::trace_forward_with_ffn;
 
@@ -36,9 +33,7 @@ impl CachedFfn {
 
         // Run forward pass capturing activations (to get FFN outputs)
         let ffn = WeightFfn { weights };
-        let _trace = trace_forward_with_ffn(
-            weights, token_ids, &all_layers, true, 1, &ffn,
-        );
+        let _trace = trace_forward_with_ffn(weights, token_ids, &all_layers, true, 1, &ffn);
 
         // For each layer, compute the FFN delta:
         // FFN delta = post-FFN residual - post-attention residual
@@ -59,7 +54,9 @@ impl CachedFfn {
         let mut h = ndarray::Array2::<f32>::zeros((seq_len, hidden));
         for (i, &tok_id) in token_ids.iter().enumerate() {
             let row = weights.embed.row(tok_id as usize);
-            for j in 0..hidden { h[[i, j]] = row[j] * embed_scale; }
+            for j in 0..hidden {
+                h[[i, j]] = row[j] * embed_scale;
+            }
         }
 
         let mut cache = HashMap::new();
@@ -69,7 +66,10 @@ impl CachedFfn {
             // Run attention
             let h_post_attn = match crate::forward::run_attention_public(weights, &h, layer) {
                 Some(ha) => ha,
-                None => { h = h.clone(); continue; }
+                None => {
+                    h = h.clone();
+                    continue;
+                }
             };
 
             // Compute FFN output on the post-attention residual
@@ -104,7 +104,10 @@ impl CachedFfn {
             };
         }
 
-        CachedFfn { cache, hidden_size: hidden }
+        CachedFfn {
+            cache,
+            hidden_size: hidden,
+        }
     }
 }
 
@@ -120,7 +123,12 @@ impl CachedFfn {
         let mut w = BufWriter::new(file);
 
         // Determine seq_len from first cached layer
-        let seq_len = self.cache.values().next().map(|a| a.shape()[0]).unwrap_or(0);
+        let seq_len = self
+            .cache
+            .values()
+            .next()
+            .map(|a| a.shape()[0])
+            .unwrap_or(0);
 
         let mut sorted_layers: Vec<usize> = self.cache.keys().copied().collect();
         sorted_layers.sort();
@@ -132,8 +140,7 @@ impl CachedFfn {
             "num_layers": self.cache.len(),
             "layers": sorted_layers,
         });
-        serde_json::to_writer(&mut w, &header)
-            .map_err(|e| InferenceError::Parse(e.to_string()))?;
+        serde_json::to_writer(&mut w, &header).map_err(|e| InferenceError::Parse(e.to_string()))?;
         w.write_all(b"\n")?;
 
         // Write each layer's data as raw f32 in layer order
@@ -142,9 +149,8 @@ impl CachedFfn {
         for layer in layers {
             let arr = &self.cache[&layer];
             let slice = arr.as_slice().unwrap();
-            let bytes: &[u8] = unsafe {
-                std::slice::from_raw_parts(slice.as_ptr() as *const u8, slice.len() * 4)
-            };
+            let bytes: &[u8] =
+                unsafe { std::slice::from_raw_parts(slice.as_ptr() as *const u8, slice.len() * 4) };
             w.write_all(bytes)?;
         }
         w.flush()?;
@@ -159,13 +165,17 @@ impl CachedFfn {
         // Read header line
         let mut header_line = String::new();
         reader.read_line(&mut header_line)?;
-        let header: serde_json::Value = serde_json::from_str(&header_line)
-            .map_err(|e| InferenceError::Parse(e.to_string()))?;
+        let header: serde_json::Value =
+            serde_json::from_str(&header_line).map_err(|e| InferenceError::Parse(e.to_string()))?;
 
         let hidden_size = header["hidden_size"].as_u64().unwrap() as usize;
         let seq_len = header["seq_len"].as_u64().unwrap() as usize;
-        let layers: Vec<usize> = header["layers"].as_array().unwrap()
-            .iter().map(|v| v.as_u64().unwrap() as usize).collect();
+        let layers: Vec<usize> = header["layers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_u64().unwrap() as usize)
+            .collect();
 
         let floats_per_layer = seq_len * hidden_size;
         let bytes_per_layer = floats_per_layer * 4;
@@ -174,7 +184,8 @@ impl CachedFfn {
         for layer in layers {
             let mut buf = vec![0u8; bytes_per_layer];
             std::io::Read::read_exact(&mut reader, &mut buf)?;
-            let floats: Vec<f32> = buf.chunks_exact(4)
+            let floats: Vec<f32> = buf
+                .chunks_exact(4)
                 .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
                 .collect();
             let arr = ndarray::Array2::from_shape_vec((seq_len, hidden_size), floats)
@@ -203,7 +214,10 @@ impl FfnBackend for CachedFfn {
     }
 
     fn forward_with_activation(&self, layer: usize, x: &Array2<f32>) -> (Array2<f32>, Array2<f32>) {
-        (self.forward(layer, x), Array2::<f32>::zeros((x.shape()[0], 1)))
+        (
+            self.forward(layer, x),
+            Array2::<f32>::zeros((x.shape()[0], 1)),
+        )
     }
 
     fn name(&self) -> &str {

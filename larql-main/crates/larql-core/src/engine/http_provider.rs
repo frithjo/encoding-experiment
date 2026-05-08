@@ -1,6 +1,7 @@
 #[cfg(feature = "http")]
 use reqwest::blocking::Client;
 
+#[cfg(feature = "http")]
 use super::provider::*;
 
 /// Connects to any OpenAI-compatible completions API.

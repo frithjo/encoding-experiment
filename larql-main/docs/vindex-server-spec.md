@@ -71,7 +71,7 @@ larql> DESCRIBE "France";
 
 ```bash
 # Serve a single vindex
-larql serve <vindex_path> [OPTIONS]
+larql serve [OPTIONS]
 
 # Serve multiple vindexes
 larql serve --dir <directory> [OPTIONS]
@@ -199,7 +199,7 @@ GET /v1/walk?prompt=Einstein&top=5&layers=24-33
 | Param | Type | Description | Default |
 |-------|------|-------------|---------|
 | `prompt` | string | Prompt text (required) | — |
-| `top` | int | Top-K features per layer | 5 |
+| `top` | int | Top-K features per layer (maximum `1000`; oversized requests return `400`) | 5 |
 | `layers` | string | Layer range (e.g. `24-33` or `14,26,27`) | all |
 
 **Response:**
@@ -678,7 +678,7 @@ docker run -v ./vindexes:/data -p 8080:8080 larql-server /data/gemma3-4b.vindex
   builder = "dockerfile"
 
 [env]
-  VINDEX_PATH = "/data/gemma3-4b.vindex"
+  LARQL_VINDEX__PATH = "/data/gemma3-4b.vindex"
 
 [mounts]
   source = "vindex_data"

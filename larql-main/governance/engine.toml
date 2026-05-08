@@ -1,0 +1,30 @@
+schema_version = "larql.governance.engine_config.v1"
+
+[active]
+rule_sets = [
+  "ci",
+  "machine_profile",
+  "machine_runtime",
+  "rule_admission",
+]
+
+profiles = [
+  "machine",
+  "governing_artifact",
+  "policy_file",
+  "rust_struct",
+  "event_schema",
+]
+
+flows = [
+  "machine_creation",
+  "policy_update",
+  "policy_weakening",
+  "patch_application",
+  "capability_minting",
+  "replay_closure",
+]
+
+recipes = [
+  "struct_minting",
+]

@@ -1,0 +1,46 @@
+{# plan /partials/result-panel — generic run summary for polling #}
+{% if run %}
+<section class="panel partial-result-panel" id="partial-result-panel">
+  <div class="panel-header">
+    <h2>{{ run.summary }}</h2>
+    <span>{{ run.engine }} · {{ run.status }} · {{ run.duration_ms }} ms</span>
+  </div>
+  {% if run.status == "pending" or run.status == "running" %}
+  <p class="muted" role="status">Running…</p>
+  {% elif run.status == "error" %}
+  <p class="banner error" role="alert">{{ run.summary }}</p>
+  {% elif run.raw.predictions %}
+  <ul class="predictions">
+    {% for p in run.raw.predictions %}
+    <li><strong>{{ p.token }}</strong> — {{ (p.probability * 100) | round(2) }}%</li>
+    {% endfor %}
+  </ul>
+  {% elif run.raw.edges %}
+  <div class="result-list">
+    {% for edge in run.raw.edges[:15] %}
+    <article class="result-card">
+      <div class="result-main">
+        <strong>{{ edge.relation or "?" }}</strong>
+        <span class="arrow">→</span>
+        <span>{{ edge.target }}</span>
+      </div>
+      <div class="muted">score {{ edge.gate_score | round(1) }} | layer {{ edge.layer }} | feature {{ edge.feature }}{% if edge.source %} | {{ edge.source }}{% endif %}</div>
+      {% if edge.also %}
+      <div class="muted">also: {{ edge.also|join(", ") }}</div>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% elif run.raw.lines %}
+  <pre class="tty-pre">{% for line in run.raw.lines %}{{ line }}
+{% endfor %}</pre>
+  {% endif %}
+  <details class="tty-details">
+    <summary>Raw JSON</summary>
+    <pre>{{ run.raw|to_pretty_json }}</pre>
+  </details>
+  <p class="muted"><a href="/runs/{{ run.id }}">Open run detail</a></p>
+</section>
+{% else %}
+<p class="muted partial-result-panel" id="partial-result-panel">No result.</p>
+{% endif %}
