@@ -19,6 +19,7 @@ members = [
     "crates/larql-terminal-batch-dla",
     "crates/larql-terminal-renderer",
     "crates/larql-tty-io",
+    "crates/larql-factboard",
 ]
 default-members = [
     "crates/larql-models",

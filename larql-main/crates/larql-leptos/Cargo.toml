@@ -24,6 +24,7 @@ gloo-storage = "0.3"
 log = "0.4"
 console_log = "1.0"
 console_error_panic_hook = "0.1"
+larql-factboard = { path = "../larql-factboard" }
 
 [package.metadata.product]
 zone = "interface"
