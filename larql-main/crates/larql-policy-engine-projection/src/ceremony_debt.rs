@@ -167,12 +167,7 @@ fn debt_projection_rows(registry: &DecisionSurfaceRegistry) -> Vec<DecisionSurfa
     let mut rows: Vec<DecisionSurfaceItem> = registry
         .decision
         .iter()
-        .filter(|item| {
-            matches!(
-                item.status,
-                DecisionStatus::Open | DecisionStatus::Assisted
-            )
-        })
+        .filter(|item| matches!(item.status, DecisionStatus::Open | DecisionStatus::Assisted))
         .cloned()
         .collect();
     rows.sort_by(|left, right| left.id.cmp(&right.id));
@@ -236,10 +231,7 @@ pub fn build_ceremony_debt_state_snapshot_embedded(
         .iter()
         .map(|(path, text)| fingerprint_for_repo_path(path, text))
         .collect();
-    sources.sort_by(|left, right| {
-        left.repo_relative_path
-            .cmp(&right.repo_relative_path)
-    });
+    sources.sort_by(|left, right| left.repo_relative_path.cmp(&right.repo_relative_path));
 
     let snapshot_content_sha256 = compute_snapshot_hash(
         &sources,
@@ -305,10 +297,7 @@ mod tests {
     fn debt_rows_are_filtered_by_status_leaf_only_in_rust() {
         let snap = build_ceremony_debt_state_snapshot_embedded().unwrap();
         for item in &snap.decision_surface_registry.decision {
-            if matches!(
-                item.status,
-                DecisionStatus::Open | DecisionStatus::Assisted
-            ) {
+            if matches!(item.status, DecisionStatus::Open | DecisionStatus::Assisted) {
                 assert!(snap.debt_decisions.iter().any(|row| row.id == item.id));
             }
         }

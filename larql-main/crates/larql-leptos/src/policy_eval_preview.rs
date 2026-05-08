@@ -1,7 +1,8 @@
 use crate::policy_snapshot::{PolicyEngineEvaluationSnapshotView, PolicyRegistrySnapshotView};
 use larql_policy_engine_projection::{
-    build_policy_eval_preview_embedded, policy_input_from_preview_draft, preview_draft_from_ci_fixture,
-    PolicyEvalPreview, PolicyEvalPreviewDraft, PreviewFactsSpecification,
+    build_policy_eval_preview_embedded, policy_input_from_preview_draft,
+    preview_draft_from_ci_fixture, PolicyEvalPreview, PolicyEvalPreviewDraft,
+    PreviewFactsSpecification,
 };
 use leptos::*;
 use web_sys::{HtmlInputElement, HtmlTextAreaElement};
@@ -45,30 +46,28 @@ pub fn PolicyEvalPreviewPage() -> impl IntoView {
     let risk = create_rw_signal(seeded.risk.to_string());
     let target_paths_raw = create_rw_signal(seeded.target_paths_raw);
     let evidence_raw = create_rw_signal(seeded.evidence_raw);
-    let fixture_facts_only = create_rw_signal(matches!(seeded.facts, PreviewFactsSpecification::Fixture));
+    let fixture_facts_only =
+        create_rw_signal(matches!(seeded.facts, PreviewFactsSpecification::Fixture));
     let facts_custom_json = create_rw_signal(match seeded.facts {
         PreviewFactsSpecification::Fixture => String::new(),
         PreviewFactsSpecification::CustomJson(blob) => blob,
     });
-    let last_outcome =
-        create_rw_signal::<Option<Result<PolicyEvalPreview, String>>>(None);
+    let last_outcome = create_rw_signal::<Option<Result<PolicyEvalPreview, String>>>(None);
 
-    let reset_fixture = move |_| {
-        match preview_draft_from_ci_fixture() {
-            Ok(next) => {
-                actor.set(next.actor.clone());
-                action.set(next.action.clone());
-                state_hash.set(next.state_hash.clone());
-                risk.set(next.risk.to_string());
-                target_paths_raw.set(next.target_paths_raw.clone());
-                evidence_raw.set(next.evidence_raw.clone());
-                fixture_facts_only.set(true);
-                facts_custom_json.set(String::new());
-                last_outcome.set(None);
-            }
-            Err(err) => {
-                last_outcome.set(Some(Err(format!("fixture load error: {err}"))));
-            }
+    let reset_fixture = move |_| match preview_draft_from_ci_fixture() {
+        Ok(next) => {
+            actor.set(next.actor.clone());
+            action.set(next.action.clone());
+            state_hash.set(next.state_hash.clone());
+            risk.set(next.risk.to_string());
+            target_paths_raw.set(next.target_paths_raw.clone());
+            evidence_raw.set(next.evidence_raw.clone());
+            fixture_facts_only.set(true);
+            facts_custom_json.set(String::new());
+            last_outcome.set(None);
+        }
+        Err(err) => {
+            last_outcome.set(Some(Err(format!("fixture load error: {err}"))));
         }
     };
 
