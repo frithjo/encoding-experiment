@@ -4,7 +4,7 @@ use std::path::Path;
 use larql_governance::hash::{hash_bytes, hash_json};
 use larql_governance::rules_engine::{
     load_policy_registry, load_policy_registry_from_material, PolicyEngine, PolicyEngineDecision,
-    PolicyInput, PolicyLoadError, PolicyMode, PolicyRegistry,
+    PolicyEngineMaterial, PolicyInput, PolicyLoadError, PolicyMode, PolicyRegistry,
 };
 use serde::{Deserialize, Serialize};
 
@@ -269,6 +269,123 @@ fn embedded_policy_pack_map() -> BTreeMap<String, String> {
     packs
 }
 
+fn embedded_policy_engine_material() -> PolicyEngineMaterial {
+    let mut profiles = BTreeMap::new();
+    profiles.insert(
+        "event_schema".into(),
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../governance/profiles/event_schema.toml"
+        ))
+        .to_string(),
+    );
+    profiles.insert(
+        "governing_artifact".into(),
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../governance/profiles/governing_artifact.toml"
+        ))
+        .to_string(),
+    );
+    profiles.insert(
+        "machine".into(),
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../governance/profiles/machine.toml"
+        ))
+        .to_string(),
+    );
+    profiles.insert(
+        "policy_file".into(),
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../governance/profiles/policy_file.toml"
+        ))
+        .to_string(),
+    );
+    profiles.insert(
+        "rust_struct".into(),
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../governance/profiles/rust_struct.toml"
+        ))
+        .to_string(),
+    );
+
+    let mut flows = BTreeMap::new();
+    flows.insert(
+        "capability_minting".into(),
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../governance/flows/capability_minting.toml"
+        ))
+        .to_string(),
+    );
+    flows.insert(
+        "machine_creation".into(),
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../governance/flows/machine_creation.toml"
+        ))
+        .to_string(),
+    );
+    flows.insert(
+        "patch_application".into(),
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../governance/flows/patch_application.toml"
+        ))
+        .to_string(),
+    );
+    flows.insert(
+        "policy_update".into(),
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../governance/flows/policy_update.toml"
+        ))
+        .to_string(),
+    );
+    flows.insert(
+        "policy_weakening".into(),
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../governance/flows/policy_weakening.toml"
+        ))
+        .to_string(),
+    );
+    flows.insert(
+        "replay_closure".into(),
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../governance/flows/replay_closure.toml"
+        ))
+        .to_string(),
+    );
+
+    let mut recipes = BTreeMap::new();
+    recipes.insert(
+        "struct_minting".into(),
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../governance/recipes/struct_minting.toml"
+        ))
+        .to_string(),
+    );
+
+    PolicyEngineMaterial {
+        engine_config: Some(
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../governance/engine.toml"
+            ))
+            .to_string(),
+        ),
+        profiles,
+        flows,
+        recipes,
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct PolicyIndexFingerprintsGuard {
     active_policy_set: IncludesGuard,
@@ -277,6 +394,21 @@ struct PolicyIndexFingerprintsGuard {
 #[derive(Debug, Deserialize)]
 struct IncludesGuard {
     includes: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct EngineMaterialGuard {
+    active: EngineActiveGuard,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct EngineActiveGuard {
+    #[serde(default)]
+    profiles: Vec<String>,
+    #[serde(default)]
+    flows: Vec<String>,
+    #[serde(default)]
+    recipes: Vec<String>,
 }
 
 /// Guard used by tests to ensure embedded `include_str!` packs match the declared index order.
@@ -299,6 +431,49 @@ pub fn embedded_pack_keys_match_embedded_policy_index() -> Result<(), SnapshotEr
     Ok(())
 }
 
+pub fn embedded_engine_keys_match_embedded_engine_config() -> Result<(), SnapshotError> {
+    let material = embedded_policy_engine_material();
+    let engine_txt = material
+        .engine_config
+        .as_deref()
+        .ok_or_else(|| SnapshotError::InvalidFingerprint("embedded engine.toml missing".into()))?;
+    let guard: EngineMaterialGuard = toml::from_str(engine_txt).map_err(|err| {
+        SnapshotError::InvalidFingerprint(format!("embedded engine config parse failed: {err}"))
+    })?;
+
+    let mut declared_profiles = guard.active.profiles;
+    declared_profiles.sort();
+    let mut embedded_profiles: Vec<String> = material.profiles.keys().cloned().collect();
+    embedded_profiles.sort();
+    if declared_profiles != embedded_profiles {
+        return Err(SnapshotError::InvalidFingerprint(format!(
+            "embedded profile keys {embedded_profiles:?} differ from engine profiles {declared_profiles:?}"
+        )));
+    }
+
+    let mut declared_flows = guard.active.flows;
+    declared_flows.sort();
+    let mut embedded_flows: Vec<String> = material.flows.keys().cloned().collect();
+    embedded_flows.sort();
+    if declared_flows != embedded_flows {
+        return Err(SnapshotError::InvalidFingerprint(format!(
+            "embedded flow keys {embedded_flows:?} differ from engine flows {declared_flows:?}"
+        )));
+    }
+
+    let mut declared_recipes = guard.active.recipes;
+    declared_recipes.sort();
+    let mut embedded_recipes: Vec<String> = material.recipes.keys().cloned().collect();
+    embedded_recipes.sort();
+    if declared_recipes != embedded_recipes {
+        return Err(SnapshotError::InvalidFingerprint(format!(
+            "embedded recipe keys {embedded_recipes:?} differ from engine recipes {declared_recipes:?}"
+        )));
+    }
+
+    Ok(())
+}
+
 pub(crate) struct EmbeddedPolicyMaterial {
     pub(crate) registry: PolicyRegistry,
     pub(crate) packs: BTreeMap<String, String>,
@@ -306,11 +481,13 @@ pub(crate) struct EmbeddedPolicyMaterial {
 
 pub(crate) fn load_embedded_policy_material() -> Result<EmbeddedPolicyMaterial, SnapshotError> {
     embedded_pack_keys_match_embedded_policy_index()?;
+    embedded_engine_keys_match_embedded_engine_config()?;
     let packs = embedded_policy_pack_map();
     let registry = load_policy_registry_from_material(
         "governance/policies/index.toml",
         EMBEDDED_POLICY_INDEX_TXT,
         &packs,
+        &embedded_policy_engine_material(),
     )?;
     Ok(EmbeddedPolicyMaterial { registry, packs })
 }
@@ -358,6 +535,7 @@ mod tests {
     #[test]
     fn embedded_keys_track_policy_index() {
         embedded_pack_keys_match_embedded_policy_index().unwrap();
+        embedded_engine_keys_match_embedded_engine_config().unwrap();
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -373,6 +551,7 @@ mod tests {
             "governance/policies/index.toml",
             EMBEDDED_POLICY_INDEX_TXT,
             &packs,
+            &embedded_policy_engine_material(),
         )
         .unwrap();
         assert_eq!(disk.policy_hash, mem.policy_hash);

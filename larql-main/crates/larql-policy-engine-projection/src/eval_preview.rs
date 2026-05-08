@@ -2,7 +2,7 @@
 //! [`PolicyInput`]. Hosts render `PolicyEvalPreview` leaves only.
 
 use larql_governance::hash::hash_json;
-use larql_governance::rules_engine::{PolicyEngine, PolicyFact, PolicyInput};
+use larql_governance::rules_engine::{CandidateFact, PolicyEngine, PolicyInput};
 
 use crate::snapshot::{
     evaluation_snapshot, load_embedded_policy_material, registry_snapshot, EmbeddedPolicyMaterial,
@@ -45,7 +45,7 @@ impl Default for PolicyEvalPreviewDraft {
 pub enum PreviewFactsSpecification {
     /// Reuse governance facts bundled with [`crate::snapshot::sample_repo_ci_policy_input`].
     Fixture,
-    /// Serialized JSON array of [`PolicyFact`] — parsed only inside this crate.
+    /// Serialized JSON array of [`CandidateFact`] — parsed only inside this crate.
     CustomJson(String),
 }
 
@@ -134,8 +134,8 @@ fn policy_input_from_preview_draft_inner(
                     "facts custom json payload is empty".to_string(),
                 ));
             }
-            let facts: Vec<PolicyFact> = serde_json::from_str(trimmed).map_err(|err| {
-                SnapshotError::Draft(format!("facts json must be PolicyFact[]: {err}"))
+            let facts: Vec<CandidateFact> = serde_json::from_str(trimmed).map_err(|err| {
+                SnapshotError::Draft(format!("facts json must be CandidateFact[]: {err}"))
             })?;
             input.facts = facts;
         }

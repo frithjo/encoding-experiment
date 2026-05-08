@@ -187,7 +187,7 @@ pub fn PolicyEvalPreviewPage() -> impl IntoView {
                             }
                         /> "Use bundled CI governance facts"
                     </label>
-                    <label for="preview-facts-json">"Overrides (PolicyFact JSON array only — parsed strictly in Rust)"</label>
+                    <label for="preview-facts-json">"Overrides (CandidateFact JSON array only — parsed strictly in Rust)"</label>
                     <textarea
                         id="preview-facts-json"
                         prop:value=move || facts_custom_json.get()

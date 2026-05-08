@@ -39,7 +39,7 @@ enum RulesCommand {
         ledger: Option<PathBuf>,
     },
     /// Compile the active governance registry and emit the derived plan summary.
-    GovernanceCompile {
+    Compile {
         #[arg(long)]
         policy: PathBuf,
     },
@@ -160,7 +160,7 @@ pub fn run(args: RulesArgs) -> Result<(), Box<dyn Error>> {
             policy,
             ledger,
         } => run_eval(&facts, &policy, ledger.as_deref()),
-        RulesCommand::GovernanceCompile { policy } => run_compile(&policy),
+        RulesCommand::Compile { policy } => run_compile(&policy),
         RulesCommand::Test { cases, policy } => run_test(&cases, &policy),
         RulesCommand::ShadowEval {
             proposal,

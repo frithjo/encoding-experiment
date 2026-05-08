@@ -13,7 +13,7 @@ rm -f \
 cargo run -q -p larql-cli --bin larql -- machine rules verify \
   --registry governance/invariants/registry.json \
   --out target/governance/invariant-registry-receipt.json >/dev/null
-cargo run -q -p larql-cli --bin governor -- policy governance-compile \
+cargo run -q -p larql-cli --bin governor -- policy compile \
   --policy governance/policies/index.toml \
   > target/governance/policy-compile-report.json
 cargo run -q -p larql-cli --bin larql -- machine rules eval \
