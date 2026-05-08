@@ -3,8 +3,11 @@ use leptos::*;
 use leptos_meta::*;
 use leptos_router::*;
 
+mod policy_eval_preview;
 mod policy_snapshot;
-use policy_snapshot::{PolicyEngineSnapshotPage};
+
+use policy_eval_preview::PolicyEvalPreviewPage;
+use policy_snapshot::PolicyEngineSnapshotPage;
 
 #[component]
 pub fn App() -> impl IntoView {
@@ -18,10 +21,13 @@ pub fn App() -> impl IntoView {
                     <a href="/">"Factoid board"</a>
                     <span>{" · "}</span>
                     <a href="/policy-engine">"Policy engine snapshot"</a>
+                    <span>{" · "}</span>
+                    <a href="/policy-engine/eval">"Eval preview"</a>
                 </nav>
                 <Routes>
                     <Route path="/" view=FactoidBoard/>
                     <Route path="/policy-engine" view=PolicyEngineSnapshotPage/>
+                    <Route path="/policy-engine/eval" view=PolicyEvalPreviewPage/>
                 </Routes>
             </main>
         </Router>

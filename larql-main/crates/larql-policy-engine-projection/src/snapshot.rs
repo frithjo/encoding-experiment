@@ -27,6 +27,8 @@ pub enum SnapshotError {
     Json(#[from] serde_json::Error),
     #[error("{0}")]
     InvalidFingerprint(String),
+    #[error("preview draft invalid: {0}")]
+    Draft(String),
 }
 
 fn fingerprint_under_policies(include_style_path: &str) -> Result<String, SnapshotError> {
@@ -99,7 +101,7 @@ struct PolicyEngineStateSnapshotBody<'a> {
     evaluation: &'a PolicyEngineEvaluationSnapshot,
 }
 
-fn registry_snapshot(registry: &PolicyRegistry) -> PolicyRegistrySnapshot {
+pub(crate) fn registry_snapshot(registry: &PolicyRegistry) -> PolicyRegistrySnapshot {
     PolicyRegistrySnapshot {
         schema_version: registry.schema_version.clone(),
         active_policy_set_id: registry.active_policy_set.id.clone(),
@@ -110,7 +112,10 @@ fn registry_snapshot(registry: &PolicyRegistry) -> PolicyRegistrySnapshot {
     }
 }
 
-fn evaluation_snapshot(policy_input: &PolicyInput, decision: &PolicyEngineDecision) -> Result<PolicyEngineEvaluationSnapshot, serde_json::Error> {
+pub(crate) fn evaluation_snapshot(
+    policy_input: &PolicyInput,
+    decision: &PolicyEngineDecision,
+) -> Result<PolicyEngineEvaluationSnapshot, serde_json::Error> {
     Ok(PolicyEngineEvaluationSnapshot {
         policy_input: policy_input.clone(),
         policy_input_sha256: hash_json(policy_input)?,
@@ -296,10 +301,12 @@ pub fn embedded_pack_keys_match_embedded_policy_index() -> Result<(), SnapshotEr
     Ok(())
 }
 
-/// Snapshot built entirely from embedded repo policy sources (CSR/WASM-safe).
-pub fn build_policy_engine_state_snapshot_from_embedded_workspace_policies(
-    policy_input: &PolicyInput,
-) -> Result<PolicyEngineStateSnapshot, SnapshotError> {
+pub(crate) struct EmbeddedPolicyMaterial {
+    pub(crate) registry: PolicyRegistry,
+    pub(crate) packs: BTreeMap<String, String>,
+}
+
+pub(crate) fn load_embedded_policy_material() -> Result<EmbeddedPolicyMaterial, SnapshotError> {
     embedded_pack_keys_match_embedded_policy_index()?;
     let packs = embedded_policy_pack_map();
     let registry = load_policy_registry_from_material(
@@ -307,6 +314,15 @@ pub fn build_policy_engine_state_snapshot_from_embedded_workspace_policies(
         EMBEDDED_POLICY_INDEX_TXT,
         &packs,
     )?;
+    Ok(EmbeddedPolicyMaterial { registry, packs })
+}
+
+/// Snapshot built entirely from embedded repo policy sources (CSR/WASM-safe).
+pub fn build_policy_engine_state_snapshot_from_embedded_workspace_policies(
+    policy_input: &PolicyInput,
+) -> Result<PolicyEngineStateSnapshot, SnapshotError> {
+    let EmbeddedPolicyMaterial { registry, packs } = load_embedded_policy_material()?;
+
     let engine = PolicyEngine::new(registry.clone())?;
     let decision = engine.evaluate(policy_input);
 
@@ -321,7 +337,8 @@ pub fn build_policy_engine_state_snapshot_from_embedded_workspace_policies(
             SnapshotError::InvalidFingerprint(format!(
                 "embedded pack missing for index include {include:?}",
             ))
-        })?;        pack_fps.push(PolicySourceFingerprint {
+        })?;
+        pack_fps.push(PolicySourceFingerprint {
             repo_relative_path: fingerprint_under_policies(include)?,
             content_sha256: hash_bytes(text.as_bytes()),
         });
