@@ -17,9 +17,10 @@ pub const TYPE_F32: u32 = 0;
 pub const TYPE_F16: u32 = 1;
 pub const TYPE_Q4_0: u32 = 2;
 pub const TYPE_Q4_1: u32 = 3;
-pub const TYPE_Q8_0: u32 = 6;
-pub const TYPE_Q5_0: u32 = 8;
-pub const TYPE_Q5_1: u32 = 9;
+pub const TYPE_Q5_0: u32 = 6;
+pub const TYPE_Q5_1: u32 = 7;
+pub const TYPE_Q8_0: u32 = 8;
+pub const TYPE_Q8_1: u32 = 9;
 pub const TYPE_Q2_K: u32 = 10;
 pub const TYPE_Q3_K: u32 = 11;
 pub const TYPE_Q4_K: u32 = 12;
@@ -37,6 +38,7 @@ pub fn tensor_data_size(tensor_type: u32, n_elements: usize) -> Result<usize, Mo
         TYPE_Q5_0 => Ok(n_elements / 32 * 22),
         TYPE_Q5_1 => Ok(n_elements / 32 * 24),
         TYPE_Q8_0 => Ok(n_elements / 32 * 34),
+        TYPE_Q8_1 => Ok(n_elements / 32 * 36),
         TYPE_Q4_K => Ok(n_elements / 256 * 144), // super-block of 256 = 144 bytes (2+2+12+128)
         TYPE_Q6_K => Ok(n_elements / 256 * 210), // super-block of 256 = 210 bytes
         TYPE_Q2_K => Ok(n_elements / 256 * 84),
@@ -56,6 +58,7 @@ pub fn type_name(tensor_type: u32) -> &'static str {
         TYPE_Q8_0 => "Q8_0",
         TYPE_Q5_0 => "Q5_0",
         TYPE_Q5_1 => "Q5_1",
+        TYPE_Q8_1 => "Q8_1",
         TYPE_Q2_K => "Q2_K",
         TYPE_Q3_K => "Q3_K",
         TYPE_Q4_K => "Q4_K",
@@ -479,15 +482,39 @@ mod tests {
         assert_eq!(tensor_data_size(TYPE_F16, 32).unwrap(), 64);
         assert_eq!(tensor_data_size(TYPE_Q4_0, 32).unwrap(), 18);
         assert_eq!(tensor_data_size(TYPE_Q4_1, 32).unwrap(), 20);
+        assert_eq!(tensor_data_size(TYPE_Q5_0, 32).unwrap(), 22);
+        assert_eq!(tensor_data_size(TYPE_Q5_1, 32).unwrap(), 24);
         assert_eq!(tensor_data_size(TYPE_Q8_0, 32).unwrap(), 34);
+        assert_eq!(tensor_data_size(TYPE_Q8_1, 32).unwrap(), 36);
     }
 
     #[test]
     fn type_names() {
         assert_eq!(type_name(TYPE_F32), "F32");
         assert_eq!(type_name(TYPE_Q4_0), "Q4_0");
+        assert_eq!(type_name(TYPE_Q5_0), "Q5_0");
+        assert_eq!(type_name(TYPE_Q5_1), "Q5_1");
         assert_eq!(type_name(TYPE_Q8_0), "Q8_0");
+        assert_eq!(type_name(TYPE_Q8_1), "Q8_1");
         assert_eq!(type_name(99), "unknown");
+    }
+
+    #[test]
+    fn ggml_type_ids_match_upstream_layout() {
+        assert_eq!(TYPE_Q5_0, 6);
+        assert_eq!(TYPE_Q5_1, 7);
+        assert_eq!(TYPE_Q8_0, 8);
+        assert_eq!(TYPE_Q8_1, 9);
+
+        assert_eq!(type_name(6), "Q5_0");
+        assert_eq!(type_name(7), "Q5_1");
+        assert_eq!(type_name(8), "Q8_0");
+        assert_eq!(type_name(9), "Q8_1");
+
+        assert_eq!(tensor_data_size(6, 32).unwrap(), 22);
+        assert_eq!(tensor_data_size(7, 32).unwrap(), 24);
+        assert_eq!(tensor_data_size(8, 32).unwrap(), 34);
+        assert_eq!(tensor_data_size(9, 32).unwrap(), 36);
     }
 
     // ── F32 passthrough ──

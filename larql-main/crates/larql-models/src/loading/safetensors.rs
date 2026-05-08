@@ -85,8 +85,7 @@ pub fn load_model_dir(path: impl AsRef<Path>) -> Result<ModelWeights, ModelError
     for st_path in &st_files {
         let file = std::fs::File::open(st_path)?;
         let mmap = unsafe { Mmap::map(&file)? };
-        let st =
-            SafeTensorsFile::deserialize(&mmap).map_err(|e: String| ModelError::Parse(e))?;
+        let st = SafeTensorsFile::deserialize(&mmap).map_err(|e: String| ModelError::Parse(e))?;
 
         // Check for MXFP4 packed expert tensors (GPT-OSS format)
         let tensor_names: Vec<String> = st.names().iter().map(|n| n.to_string()).collect();

@@ -26,10 +26,8 @@ const GGUF_TYPE_INT64: u32 = 11;
 const GGUF_TYPE_FLOAT64: u32 = 12;
 
 // GGML tensor type IDs (from ggml module)
-const GGML_TYPE_F32: u32 = 0;
-const GGML_TYPE_F16: u32 = 1;
 const GGML_TYPE_Q4_0: u32 = 2;
-const GGML_TYPE_Q8_0: u32 = 6;
+const GGML_TYPE_Q8_0: u32 = 8;
 
 /// GGUF quantization format variants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,12 +90,12 @@ pub fn quantize_to_int8(data: &[f32]) -> (Vec<i8>, f32) {
         .max_by(|a, b| a.partial_cmp(b).unwrap())
         .unwrap_or(1.0)
         / 127.0;
-    
+
     let quantized: Vec<i8> = data
         .iter()
         .map(|&x| (x / scale).clamp(-127.0, 127.0) as i8)
         .collect();
-    
+
     (quantized, scale)
 }
 
@@ -115,9 +113,9 @@ pub fn quantize_to_int4(data: &[f32]) -> (Vec<u8>, f32) {
         .max_by(|a, b| a.partial_cmp(b).unwrap())
         .unwrap_or(1.0)
         / 7.0;
-    
+
     let mut packed = Vec::with_capacity((data.len() + 1) / 2);
-    
+
     for chunk in data.chunks(2) {
         // Convert to signed int4 range [-7, 7], then offset to [0, 15] for packing
         let first = ((chunk[0] / scale).clamp(-7.0, 7.0) as i8 + 8) as u8;
@@ -128,25 +126,25 @@ pub fn quantize_to_int4(data: &[f32]) -> (Vec<u8>, f32) {
         };
         packed.push(first | (second << 4));
     }
-    
+
     (packed, scale)
 }
 
 /// Dequantize int4 packed data back to f32.
 pub fn dequantize_from_int4(packed: &[u8], scale: f32, original_len: usize) -> Vec<f32> {
     let mut result = Vec::with_capacity(original_len);
-    
+
     for (i, &byte) in packed.iter().enumerate() {
         // Extract packed values [0, 15], convert back to signed [-7, 7]
         let first = ((byte & 0x0F) as i8 - 8) as f32;
         result.push(first * scale);
-        
+
         if i * 2 + 1 < original_len {
             let second = (((byte >> 4) & 0x0F) as i8 - 8) as f32;
             result.push(second * scale);
         }
     }
-    
+
     result
 }
 
@@ -172,7 +170,11 @@ fn quantize_tensor(data: &[f32], format: GgufQuantFormat) -> Vec<u8> {
 }
 
 /// Pad data to 32-byte alignment.
-fn pad_to_alignment<W: Write>(writer: &mut W, current_pos: u64, alignment: u64) -> std::io::Result<()> {
+fn pad_to_alignment<W: Write>(
+    writer: &mut W,
+    current_pos: u64,
+    alignment: u64,
+) -> std::io::Result<()> {
     let aligned_pos = current_pos.div_ceil(alignment) * alignment;
     if aligned_pos > current_pos {
         let padding = (aligned_pos - current_pos) as usize;
@@ -305,21 +307,31 @@ pub fn write_gguf_file(
 
     // Prepare metadata
     let mut metadata = HashMap::new();
-    metadata.insert("general.architecture".to_string(), GgufMetadataValue::String("llama".to_string()));
-    metadata.insert("general.quantization_version".to_string(), GgufMetadataValue::U32(2));
+    metadata.insert(
+        "general.architecture".to_string(),
+        GgufMetadataValue::String("llama".to_string()),
+    );
+    metadata.insert(
+        "general.quantization_version".to_string(),
+        GgufMetadataValue::U32(2),
+    );
     metadata.insert(
         format!("{}.quantization_version", "llama"),
         GgufMetadataValue::U32(2),
     );
 
     // Write header
-    writer.write_all(&GGUF_MAGIC.to_le_bytes())
+    writer
+        .write_all(&GGUF_MAGIC.to_le_bytes())
         .map_err(|e| format!("Failed to write magic: {}", e))?;
-    writer.write_all(&GGUF_VERSION.to_le_bytes())
+    writer
+        .write_all(&GGUF_VERSION.to_le_bytes())
         .map_err(|e| format!("Failed to write version: {}", e))?;
-    writer.write_all(&(tensors.len() as u64).to_le_bytes())
+    writer
+        .write_all(&(tensors.len() as u64).to_le_bytes())
         .map_err(|e| format!("Failed to write tensor count: {}", e))?;
-    writer.write_all(&(metadata.len() as u64).to_le_bytes())
+    writer
+        .write_all(&(metadata.len() as u64).to_le_bytes())
         .map_err(|e| format!("Failed to write metadata count: {}", e))?;
 
     // Write metadata KV pairs
@@ -343,18 +355,23 @@ pub fn write_gguf_file(
 
         write_string(&mut writer, name)
             .map_err(|e| format!("Failed to write tensor name '{}': {}", name, e))?;
-        writer.write_all(&1u32.to_le_bytes()) // n_dims (assume 1D for simplicity)
+        writer
+            .write_all(&1u32.to_le_bytes()) // n_dims (assume 1D for simplicity)
             .map_err(|e| format!("Failed to write tensor dims for '{}': {}", name, e))?;
-        writer.write_all(&(data.len() as u64).to_le_bytes()) // dims[0]
+        writer
+            .write_all(&(data.len() as u64).to_le_bytes()) // dims[0]
             .map_err(|e| format!("Failed to write tensor dim for '{}': {}", name, e))?;
-        writer.write_all(&tensor_type.to_le_bytes())
+        writer
+            .write_all(&tensor_type.to_le_bytes())
             .map_err(|e| format!("Failed to write tensor type for '{}': {}", name, e))?;
-        writer.write_all(&offset.to_le_bytes())
+        writer
+            .write_all(&offset.to_le_bytes())
             .map_err(|e| format!("Failed to write tensor offset for '{}': {}", name, e))?;
     }
 
     // Pad to 32-byte alignment before data section
-    let current_pos = writer.stream_position()
+    let current_pos = writer
+        .stream_position()
         .map_err(|e| format!("Failed to get stream position: {}", e))?;
     pad_to_alignment(&mut writer, current_pos, 32)
         .map_err(|e| format!("Failed to pad to alignment: {}", e))?;
@@ -362,11 +379,13 @@ pub fn write_gguf_file(
     // Write tensor data
     for (name, data) in tensors {
         let quantized = quantize_tensor(data, config.format);
-        writer.write_all(&quantized)
+        writer
+            .write_all(&quantized)
             .map_err(|e| format!("Failed to write tensor data for '{}': {}", name, e))?;
     }
 
-    writer.flush()
+    writer
+        .flush()
         .map_err(|e| format!("Failed to flush output file: {}", e))?;
 
     Ok(())
@@ -381,10 +400,15 @@ mod tests {
         let original = vec![1.0, -2.5, 3.7, -4.2, 0.0];
         let (quantized, scale) = quantize_to_int8(&original);
         let dequantized = dequantize_from_int8(&quantized, scale);
-        
+
         // Check that dequantized values are close to original
         for (orig, deq) in original.iter().zip(dequantized.iter()) {
-            assert!((orig - deq).abs() < 0.1, "Original: {}, Dequantized: {}", orig, deq);
+            assert!(
+                (orig - deq).abs() < 0.1,
+                "Original: {}, Dequantized: {}",
+                orig,
+                deq
+            );
         }
     }
 
@@ -396,7 +420,12 @@ mod tests {
 
         // Check that dequantized values are close to original (with more tolerance for int4)
         for (orig, deq) in original.iter().zip(dequantized.iter()) {
-            assert!((orig - deq).abs() < 0.6, "Original: {}, Dequantized: {}", orig, deq);
+            assert!(
+                (orig - deq).abs() < 0.6,
+                "Original: {}, Dequantized: {}",
+                orig,
+                deq
+            );
         }
     }
 
@@ -427,10 +456,10 @@ mod tests {
         let config = GgufQuantConfig::default();
         let result = write_gguf_file(Path::new("/tmp/test.gguf"), &tensors, &config);
         assert!(result.is_ok());
-        
+
         // Verify file was created
         assert!(Path::new("/tmp/test.gguf").exists());
-        
+
         // Clean up
         std::fs::remove_file("/tmp/test.gguf").ok();
     }

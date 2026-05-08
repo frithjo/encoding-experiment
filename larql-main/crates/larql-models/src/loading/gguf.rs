@@ -9,10 +9,11 @@ use std::io::{BufReader, Read, Seek};
 use std::path::Path;
 
 use larql_core::mmap::Mmap;
-use ndarray::{Array2, ShapeBuilder};
+use ndarray::{s, Array2, ShapeBuilder};
+use serde::{Deserialize, Serialize};
 
 use crate::detect::ModelError;
-use crate::weights::ModelWeights;
+use crate::weights::{ModelWeights, WeightArray};
 
 // ═══════════════════════════════════════════════════════════════
 // GGUF constants
@@ -68,6 +69,16 @@ impl GgufValue {
         }
     }
 
+    pub fn as_u64(&self) -> Option<u64> {
+        match self {
+            GgufValue::U32(v) => Some(*v as u64),
+            GgufValue::I32(v) if *v >= 0 => Some(*v as u64),
+            GgufValue::U64(v) => Some(*v),
+            GgufValue::I64(v) if *v >= 0 => Some(*v as u64),
+            _ => None,
+        }
+    }
+
     pub fn as_str(&self) -> Option<&str> {
         match self {
             GgufValue::String(s) => Some(s),
@@ -88,12 +99,57 @@ impl GgufValue {
 // GGUF tensor info
 // ═══════════════════════════════════════════════════════════════
 
+#[derive(Debug, Clone)]
 pub struct GgufTensorInfo {
-    name: String,
-    n_dims: u32,
-    dims: Vec<u64>,
-    tensor_type: u32,
-    offset: u64,
+    pub name: String,
+    pub n_dims: u32,
+    pub dims: Vec<u64>,
+    pub tensor_type: u32,
+    pub offset: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AttentionInventoryScope {
+    Decoder,
+    DecoderMtp,
+    All,
+}
+
+impl AttentionInventoryScope {
+    pub fn includes(self, tensor_scope: &str) -> bool {
+        match self {
+            Self::Decoder => tensor_scope == "decoder",
+            Self::DecoderMtp => matches!(tensor_scope, "decoder" | "mtp"),
+            Self::All => matches!(tensor_scope, "decoder" | "mtp" | "vision"),
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Decoder => "decoder",
+            Self::DecoderMtp => "decoder-mtp",
+            Self::All => "all",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GgufTensorSummary {
+    pub name: String,
+    pub normalized_name: String,
+    pub scope: String,
+    pub component: String,
+    pub role: String,
+    pub param: String,
+    pub layer: Option<usize>,
+    pub dims: Vec<u64>,
+    pub ggml_type_id: u32,
+    pub ggml_type: String,
+    pub relative_offset: u64,
+    pub absolute_offset: u64,
+    pub byte_size: u64,
+    pub included_in_runtime_vindex: bool,
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -161,9 +217,13 @@ impl GgufFile {
             });
         }
 
-        // Data starts at next alignment boundary (32 bytes)
+        // Data starts at next GGUF alignment boundary. Default is 32 bytes.
         let pos = r.stream_position().map_err(ModelError::Io)?;
-        let alignment = 32u64;
+        let alignment = metadata
+            .get("general.alignment")
+            .and_then(GgufValue::as_u64)
+            .filter(|v| *v > 0)
+            .unwrap_or(32);
         let data_offset = pos.div_ceil(alignment) * alignment;
 
         Ok(GgufFile {
@@ -172,6 +232,67 @@ impl GgufFile {
             data_offset,
             path: path.to_path_buf(),
         })
+    }
+
+    pub fn alignment(&self) -> u64 {
+        self.metadata
+            .get("general.alignment")
+            .and_then(GgufValue::as_u64)
+            .filter(|v| *v > 0)
+            .unwrap_or(32)
+    }
+
+    pub fn attention_inventory(
+        &self,
+        scope: AttentionInventoryScope,
+    ) -> Result<Vec<GgufTensorSummary>, ModelError> {
+        let mut out = Vec::new();
+        for info in &self.tensor_infos {
+            let Some((tensor_scope, layer, component, param)) =
+                classify_attention_tensor(&info.name)
+            else {
+                continue;
+            };
+            if !scope.includes(tensor_scope) {
+                continue;
+            }
+            let n_elements: u64 = info.dims.iter().product();
+            let byte_size = tensor_data_size(info.tensor_type, n_elements as usize)? as u64;
+            let role = attention_role(component).to_string();
+            out.push(GgufTensorSummary {
+                name: info.name.clone(),
+                normalized_name: normalize_gguf_key(&info.name),
+                scope: tensor_scope.to_string(),
+                component: component.to_string(),
+                role,
+                param: param.to_string(),
+                layer,
+                dims: info.dims.clone(),
+                ggml_type_id: info.tensor_type,
+                ggml_type: crate::quant::ggml::type_name(info.tensor_type).to_string(),
+                relative_offset: info.offset,
+                absolute_offset: self.data_offset + info.offset,
+                byte_size,
+                included_in_runtime_vindex: tensor_scope == "decoder"
+                    && matches!(
+                        component,
+                        "attn_q"
+                            | "attn_k"
+                            | "attn_v"
+                            | "attn_output"
+                            | "attn_q_norm"
+                            | "attn_k_norm"
+                    ),
+            });
+        }
+        out.sort_by(|a, b| {
+            a.scope
+                .cmp(&b.scope)
+                .then(a.layer.cmp(&b.layer))
+                .then(a.component.cmp(&b.component))
+                .then(a.name.cmp(&b.name))
+        });
+        Ok(out)
     }
 
     /// Load all tensors, dequantizing to f32.
@@ -336,6 +457,7 @@ pub fn load_gguf(path: &Path) -> Result<ModelWeights, ModelError> {
         let key = super::safetensors::normalize_key_pub(&k, prefixes);
         normalized_tensors.insert(key, v);
     }
+    expand_fused_qkv_tensors(&mut normalized_tensors, &*arch)?;
 
     let embed_key = arch.embed_key();
     let embed_raw = normalized_tensors
@@ -524,18 +646,98 @@ pub fn normalize_gguf_key(name: &str) -> String {
     // We normalize to the HF style since that's what ModelArchitecture expects
 
     name.replace("blk.", "layers.")
+        .replace("attn_q_norm.", "self_attn.q_norm.")
+        .replace("attn_k_norm.", "self_attn.k_norm.")
         .replace("attn_q.", "self_attn.q_proj.")
         .replace("attn_k.", "self_attn.k_proj.")
         .replace("attn_v.", "self_attn.v_proj.")
         .replace("attn_output.", "self_attn.o_proj.")
+        .replace("attn_out.", "self_attn.o_proj.")
         .replace("ffn_gate.", "mlp.gate_proj.")
         .replace("ffn_up.", "mlp.up_proj.")
         .replace("ffn_down.", "mlp.down_proj.")
+        .replace("post_attention_norm.", "post_attention_layernorm.")
         .replace("attn_norm.", "input_layernorm.")
         .replace("ffn_norm.", "post_attention_layernorm.")
         .replace("token_embd.", "embed_tokens.")
         .replace("output_norm.", "norm.")
         .replace("output.", "lm_head.")
+}
+
+fn expand_fused_qkv_tensors(
+    tensors: &mut HashMap<String, WeightArray>,
+    arch: &dyn crate::ModelArchitecture,
+) -> Result<(), ModelError> {
+    let cfg = arch.config();
+    let q_rows = cfg.num_q_heads * cfg.head_dim;
+    let kv_rows = cfg.num_kv_heads * cfg.head_dim;
+    let expected_rows = q_rows + (2 * kv_rows);
+
+    for layer in 0..cfg.num_layers {
+        let fused_key = format!("layers.{layer}.attn_qkv.weight");
+        let Some(fused) = tensors.remove(&fused_key) else {
+            continue;
+        };
+
+        let rows = fused.shape()[0];
+        let cols = fused.shape()[1];
+        if rows != expected_rows || cols != cfg.hidden_size {
+            tensors.insert(fused_key, fused);
+            continue;
+        }
+
+        let q = fused.slice(s![0..q_rows, ..]).to_owned().into_shared();
+        let k = fused
+            .slice(s![q_rows..q_rows + kv_rows, ..])
+            .to_owned()
+            .into_shared();
+        let v = fused
+            .slice(s![q_rows + kv_rows..expected_rows, ..])
+            .to_owned()
+            .into_shared();
+
+        tensors.entry(arch.attn_q_key(layer)).or_insert(q);
+        tensors.entry(arch.attn_k_key(layer)).or_insert(k);
+        tensors.entry(arch.attn_v_key(layer)).or_insert(v);
+    }
+
+    Ok(())
+}
+
+fn classify_attention_tensor(name: &str) -> Option<(&'static str, Option<usize>, &str, &str)> {
+    let parts: Vec<&str> = name.split('.').collect();
+    let (scope, layer, component_idx) = match parts.as_slice() {
+        ["blk", layer, ..] => ("decoder", layer.parse::<usize>().ok(), 2),
+        ["mtp", "layers", layer, ..] => ("mtp", layer.parse::<usize>().ok(), 3),
+        ["v", "blk", layer, ..] => ("vision", layer.parse::<usize>().ok(), 3),
+        _ => return None,
+    };
+    let component = *parts.get(component_idx)?;
+    if !is_attention_component(component) {
+        return None;
+    }
+    let param = parts.last().copied().unwrap_or("");
+    Some((scope, layer, component, param))
+}
+
+fn is_attention_component(component: &str) -> bool {
+    component.starts_with("attn_") || component == "attn" || component == "post_attention_norm"
+}
+
+fn attention_role(component: &str) -> &str {
+    match component {
+        "attn_qkv" => "qkv_fused",
+        "attn_q" => "q",
+        "attn_k" => "k",
+        "attn_v" => "v",
+        "attn_output" | "attn_out" => "o",
+        "attn_gate" => "gate",
+        "attn_q_norm" => "q_norm",
+        "attn_k_norm" => "k_norm",
+        "attn_norm" => "input_norm",
+        "post_attention_norm" => "post_attention_norm",
+        other => other,
+    }
 }
 
 #[cfg(test)]
@@ -547,6 +749,22 @@ mod tests {
         assert_eq!(
             normalize_gguf_key("blk.0.attn_q.weight"),
             "layers.0.self_attn.q_proj.weight"
+        );
+        assert_eq!(
+            normalize_gguf_key("blk.0.attn_q_norm.weight"),
+            "layers.0.self_attn.q_norm.weight"
+        );
+        assert_eq!(
+            normalize_gguf_key("blk.0.attn_k_norm.weight"),
+            "layers.0.self_attn.k_norm.weight"
+        );
+        assert_eq!(
+            normalize_gguf_key("blk.0.attn_out.weight"),
+            "layers.0.self_attn.o_proj.weight"
+        );
+        assert_eq!(
+            normalize_gguf_key("blk.0.post_attention_norm.weight"),
+            "layers.0.post_attention_layernorm.weight"
         );
         assert_eq!(
             normalize_gguf_key("blk.15.ffn_gate.weight"),
@@ -603,6 +821,178 @@ mod tests {
         assert_eq!(down.shape(), &[2, 4]);
         assert_eq!(down[[0, 0]], 1.0);
         assert_eq!(down[[1, 3]], 8.0);
+    }
+
+    #[test]
+    fn test_open_honors_general_alignment_metadata() {
+        use std::io::{Seek, Write};
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("aligned.gguf");
+        let mut file = std::fs::File::create(&path).unwrap();
+
+        file.write_all(&GGUF_MAGIC.to_le_bytes()).unwrap();
+        file.write_all(&3u32.to_le_bytes()).unwrap();
+        file.write_all(&0u64.to_le_bytes()).unwrap();
+        file.write_all(&1u64.to_le_bytes()).unwrap();
+
+        let key = b"general.alignment";
+        file.write_all(&(key.len() as u64).to_le_bytes()).unwrap();
+        file.write_all(key).unwrap();
+        file.write_all(&GGUF_TYPE_UINT32.to_le_bytes()).unwrap();
+        file.write_all(&64u32.to_le_bytes()).unwrap();
+
+        let pos = file.stream_position().unwrap();
+        file.flush().unwrap();
+
+        let gguf = GgufFile::open(&path).unwrap();
+        assert_eq!(gguf.alignment(), 64);
+        assert_eq!(gguf.data_offset, pos.div_ceil(64) * 64);
+    }
+
+    #[test]
+    fn test_attention_inventory_classifies_scope_role_and_offsets() {
+        let gguf = GgufFile {
+            metadata: HashMap::new(),
+            tensor_infos: vec![
+                GgufTensorInfo {
+                    name: "blk.0.attn_q.weight".into(),
+                    n_dims: 2,
+                    dims: vec![4, 2],
+                    tensor_type: crate::quant::ggml::TYPE_F32,
+                    offset: 0,
+                },
+                GgufTensorInfo {
+                    name: "mtp.layers.0.attn_output.weight".into(),
+                    n_dims: 2,
+                    dims: vec![3, 2],
+                    tensor_type: crate::quant::ggml::TYPE_F32,
+                    offset: 128,
+                },
+                GgufTensorInfo {
+                    name: "v.blk.1.attn_k.bias".into(),
+                    n_dims: 1,
+                    dims: vec![5],
+                    tensor_type: crate::quant::ggml::TYPE_F32,
+                    offset: 256,
+                },
+                GgufTensorInfo {
+                    name: "blk.0.ffn_gate.weight".into(),
+                    n_dims: 2,
+                    dims: vec![4, 2],
+                    tensor_type: crate::quant::ggml::TYPE_F32,
+                    offset: 512,
+                },
+            ],
+            data_offset: 64,
+            path: std::path::PathBuf::from("test.gguf"),
+        };
+
+        let decoder = gguf
+            .attention_inventory(AttentionInventoryScope::Decoder)
+            .unwrap();
+        assert_eq!(decoder.len(), 1);
+        assert_eq!(decoder[0].scope, "decoder");
+        assert_eq!(decoder[0].role, "q");
+        assert_eq!(decoder[0].absolute_offset, 64);
+        assert_eq!(decoder[0].byte_size, 32);
+        assert!(decoder[0].included_in_runtime_vindex);
+
+        let all = gguf
+            .attention_inventory(AttentionInventoryScope::All)
+            .unwrap();
+        assert_eq!(all.len(), 3);
+        assert_eq!(all.iter().filter(|t| t.scope == "vision").count(), 1);
+        assert_eq!(all.iter().find(|t| t.scope == "mtp").unwrap().role, "o");
+    }
+
+    #[test]
+    fn test_expand_fused_qkv_tensors_splits_only_exact_standard_shape() {
+        let arch = crate::architectures::generic::GenericArch::from_config(tiny_attention_config());
+        let mut tensors = HashMap::new();
+        let fused = Array2::from_shape_vec((6, 4), (0..24).map(|v| v as f32).collect())
+            .unwrap()
+            .into_shared();
+        tensors.insert("layers.0.attn_qkv.weight".to_string(), fused);
+
+        expand_fused_qkv_tensors(&mut tensors, &arch).unwrap();
+
+        assert!(!tensors.contains_key("layers.0.attn_qkv.weight"));
+        assert_eq!(
+            tensors
+                .get("layers.0.self_attn.q_proj.weight")
+                .unwrap()
+                .shape(),
+            &[2, 4]
+        );
+        assert_eq!(
+            tensors
+                .get("layers.0.self_attn.k_proj.weight")
+                .unwrap()
+                .shape(),
+            &[2, 4]
+        );
+        assert_eq!(
+            tensors
+                .get("layers.0.self_attn.v_proj.weight")
+                .unwrap()
+                .shape(),
+            &[2, 4]
+        );
+    }
+
+    #[test]
+    fn test_expand_fused_qkv_tensors_preserves_nonstandard_shape() {
+        let arch = crate::architectures::generic::GenericArch::from_config(tiny_attention_config());
+        let mut tensors = HashMap::new();
+        let fused = Array2::from_shape_vec((5, 4), (0..20).map(|v| v as f32).collect())
+            .unwrap()
+            .into_shared();
+        tensors.insert("layers.0.attn_qkv.weight".to_string(), fused);
+
+        expand_fused_qkv_tensors(&mut tensors, &arch).unwrap();
+
+        assert!(tensors.contains_key("layers.0.attn_qkv.weight"));
+        assert!(!tensors.contains_key("layers.0.self_attn.q_proj.weight"));
+        assert!(!tensors.contains_key("layers.0.self_attn.k_proj.weight"));
+        assert!(!tensors.contains_key("layers.0.self_attn.v_proj.weight"));
+    }
+
+    fn tiny_attention_config() -> crate::config::ModelConfig {
+        crate::config::ModelConfig {
+            model_type: "test".into(),
+            num_layers: 1,
+            hidden_size: 4,
+            intermediate_size: 8,
+            head_dim: 2,
+            num_q_heads: 1,
+            num_kv_heads: 1,
+            vocab_size: Some(16),
+            rope_base: 10000.0,
+            rope_local_base: None,
+            sliding_window: None,
+            num_experts: None,
+            num_experts_per_token: None,
+            num_shared_experts: None,
+            kv_lora_rank: None,
+            q_lora_rank: None,
+            rope_scaling: None,
+            attn_logit_softcapping: None,
+            final_logit_softcapping: None,
+            query_pre_attn_scalar: None,
+            embedding_multiplier: None,
+            residual_multiplier: None,
+            attention_multiplier: None,
+            logits_scaling: None,
+            global_head_dim: None,
+            num_global_kv_heads: None,
+            partial_rotary_factor: None,
+            sliding_window_pattern: None,
+            layer_types: None,
+            attention_k_eq_v: false,
+            per_layer_embed_dim: None,
+            num_kv_shared_layers: None,
+        }
     }
 
     // Dequant tests are in format::quant::ggml::tests
