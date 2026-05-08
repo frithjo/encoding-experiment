@@ -6,6 +6,7 @@ mod utils;
 
 use commands::extraction::*;
 use commands::machine_cmd;
+use commands::policy_rules_cmd;
 use commands::query::*;
 use larql_core::config::{load_config, AppConfig};
 
@@ -106,6 +107,12 @@ enum Commands {
 
     /// Governed machine policy, minting, and receipt commands.
     Machine(machine_cmd::MachineArgs),
+
+    /// Governance policy evaluator and update ceremony commands.
+    Policy(policy_rules_cmd::RulesArgs),
+
+    /// Replay policy decision ledgers.
+    Replay(policy_rules_cmd::ReplayArgs),
 
     // GraphWalk removed — used deprecated FeatureListFfn
     /// Trace residual stream trajectories on the sphere across layers.
@@ -223,7 +230,7 @@ struct ServeArgs {
     log_level: String,
 }
 
-fn main() {
+pub fn main() {
     // Load configuration at startup
     // This loads from config/default.toml, config/local.toml, .env, and LARQL__ env vars
     let _config = match load_config() {
@@ -271,6 +278,8 @@ fn main() {
         Commands::Hf(args) => hf_cmd::run(args),
         Commands::Verify(args) => verify_cmd::run(args),
         Commands::Machine(args) => machine_cmd::run(args),
+        Commands::Policy(args) => policy_rules_cmd::run(args),
+        Commands::Replay(args) => policy_rules_cmd::run_replay(args),
         // Commands::GraphWalk removed
         Commands::TrajectoryTrace(args) => trajectory_trace_cmd::run(args),
         // Commands::VindexBench removed

@@ -1,0 +1,17 @@
+schema_version = "larql.governance.defaults.v1"
+
+[machine_files]
+new_machine_dir = "crates/larql-governance/src"
+test_dir = "crates/larql-governance/tests"
+registration_file = "crates/larql-governance/src/lib.rs"
+
+[policy]
+unknown_rule = "deny"
+unknown_fact = "warn"
+conflict_resolution = "most_restrictive"
+
+[generated_code]
+mode = "patch_only"
+allow_arbitrary_file_edit = false
+allow_unsafe = false
+

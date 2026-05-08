@@ -3,9 +3,11 @@ use leptos::*;
 use leptos_meta::*;
 use leptos_router::*;
 
+mod ceremony_debt;
 mod policy_eval_preview;
 mod policy_snapshot;
 
+use ceremony_debt::CeremonyDebtPage;
 use policy_eval_preview::PolicyEvalPreviewPage;
 use policy_snapshot::PolicyEngineSnapshotPage;
 
@@ -23,11 +25,14 @@ pub fn App() -> impl IntoView {
                     <a href="/policy-engine">"Policy engine snapshot"</a>
                     <span>{" · "}</span>
                     <a href="/policy-engine/eval">"Eval preview"</a>
+                    <span>{" · "}</span>
+                    <a href="/policy-engine/ceremony-debt">"Ceremony / debt"</a>
                 </nav>
                 <Routes>
                     <Route path="/" view=FactoidBoard/>
                     <Route path="/policy-engine" view=PolicyEngineSnapshotPage/>
                     <Route path="/policy-engine/eval" view=PolicyEvalPreviewPage/>
+                    <Route path="/policy-engine/ceremony-debt" view=CeremonyDebtPage/>
                 </Routes>
             </main>
         </Router>

@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "larql.governance.policy_proposal.schema.v1",
+  "type": "object",
+  "required": [
+    "proposal_type",
+    "exact_prose",
+    "policy_update_type",
+    "formal_rule",
+    "examples",
+    "required_checks"
+  ],
+  "properties": {
+    "proposal_type": { "const": "PolicyProposal" },
+    "exact_prose": { "type": "string", "minLength": 1 },
+    "policy_update_type": {
+      "enum": [
+        "new_rule",
+        "rule_tightening",
+        "rule_relaxation",
+        "clarification",
+        "scope_change",
+        "severity_change",
+        "constitutional_change"
+      ]
+    },
+    "formal_rule": { "type": "object" },
+    "examples": {
+      "type": "array",
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "required": ["kind"],
+            "properties": { "kind": { "const": "allow" } }
+          }
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": ["kind"],
+            "properties": { "kind": { "const": "deny" } }
+          }
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": ["kind"],
+            "properties": { "kind": { "const": "review_required" } }
+          }
+        }
+      ],
+      "minItems": 3
+    },
+    "required_checks": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "governor policy test",
+          "governor policy shadow-eval",
+          "governor replay"
+        ]
+      },
+      "minItems": 3
+    }
+  },
+  "additionalProperties": false
+}

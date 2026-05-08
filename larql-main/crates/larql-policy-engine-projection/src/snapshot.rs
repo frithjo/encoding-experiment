@@ -34,9 +34,7 @@ pub enum SnapshotError {
 fn fingerprint_under_policies(include_style_path: &str) -> Result<String, SnapshotError> {
     assert_safe_piece(include_style_path)?;
     let normalized = include_style_path.replace('\\', "/");
-    Ok(format!(
-        "{POLICY_REPO_FINGERPRINT_PREFIX}/{normalized}",
-    ))
+    Ok(format!("{POLICY_REPO_FINGERPRINT_PREFIX}/{normalized}",))
 }
 
 fn assert_safe_piece(piece: &str) -> Result<(), SnapshotError> {
@@ -124,7 +122,9 @@ pub(crate) fn evaluation_snapshot(
     })
 }
 
-fn sort_policy_pack_fingerprints(mut packs: Vec<PolicySourceFingerprint>) -> Vec<PolicySourceFingerprint> {
+fn sort_policy_pack_fingerprints(
+    mut packs: Vec<PolicySourceFingerprint>,
+) -> Vec<PolicySourceFingerprint> {
     packs.sort_by(|left, right| left.repo_relative_path.cmp(&right.repo_relative_path));
     packs
 }
@@ -164,13 +164,9 @@ fn core_snapshot_from_loaded_registry(
     let registry_excerpt = registry_snapshot(&registry);
     let evaluation =
         evaluation_snapshot(policy_input, &engine_eval).map_err(SnapshotError::Json)?;
-    let snapshot_content_sha256 = compute_snapshot_body_hash(
-        &policy_index,
-        &packs_sorted,
-        &registry_excerpt,
-        &evaluation,
-    )
-    .map_err(SnapshotError::Json)?;
+    let snapshot_content_sha256 =
+        compute_snapshot_body_hash(&policy_index, &packs_sorted, &registry_excerpt, &evaluation)
+            .map_err(SnapshotError::Json)?;
 
     Ok(PolicyEngineStateSnapshot {
         schema_version: POLICY_ENGINE_STATE_SNAPSHOT_SCHEMA.to_string(),
@@ -197,7 +193,9 @@ pub fn build_policy_engine_state_snapshot_from_paths(
         index_path
             .file_name()
             .and_then(|name| name.to_str())
-            .ok_or_else(|| SnapshotError::InvalidFingerprint("policy index missing file name".into()))?,
+            .ok_or_else(|| {
+                SnapshotError::InvalidFingerprint("policy index missing file name".into())
+            })?,
     )?;
 
     let index_file_name = index_path
@@ -209,11 +207,11 @@ pub fn build_policy_engine_state_snapshot_from_paths(
         content_sha256: hash_bytes(index_bytes.as_bytes()),
     };
 
-    let root_dir = index_path
-        .parent()
-        .ok_or_else(|| SnapshotError::Policy(PolicyLoadError::MissingPolicyRoot(
+    let root_dir = index_path.parent().ok_or_else(|| {
+        SnapshotError::Policy(PolicyLoadError::MissingPolicyRoot(
             index_path.display().to_string(),
-        )))?;
+        ))
+    })?;
 
     let mut pack_fps = Vec::new();
     for include in &registry.active_policy_set.includes {
@@ -344,13 +342,7 @@ pub fn build_policy_engine_state_snapshot_from_embedded_workspace_policies(
         });
     }
 
-    core_snapshot_from_loaded_registry(
-        registry,
-        policy_index_fp,
-        pack_fps,
-        policy_input,
-        decision,
-    )
+    core_snapshot_from_loaded_registry(registry, policy_index_fp, pack_fps, policy_input, decision)
 }
 
 #[cfg(test)]
@@ -389,9 +381,14 @@ mod tests {
     #[test]
     fn snapshot_hashes_are_stable_for_deterministic_inputs() {
         let input = sample_repo_ci_policy_input().unwrap();
-        let first = build_policy_engine_state_snapshot_from_embedded_workspace_policies(&input).unwrap();
-        let second = build_policy_engine_state_snapshot_from_embedded_workspace_policies(&input).unwrap();
-        assert_eq!(first.snapshot_content_sha256, second.snapshot_content_sha256);
+        let first =
+            build_policy_engine_state_snapshot_from_embedded_workspace_policies(&input).unwrap();
+        let second =
+            build_policy_engine_state_snapshot_from_embedded_workspace_policies(&input).unwrap();
+        assert_eq!(
+            first.snapshot_content_sha256,
+            second.snapshot_content_sha256
+        );
         assert_eq!(
             first.evaluation.policy_input_sha256,
             second.evaluation.policy_input_sha256
@@ -407,10 +404,10 @@ mod tests {
         let input = sample_repo_ci_policy_input().unwrap();
         let embedded =
             build_policy_engine_state_snapshot_from_embedded_workspace_policies(&input).unwrap();
-        let disk = build_policy_engine_state_snapshot_from_paths(&repo_index_path(), &input).unwrap();
+        let disk =
+            build_policy_engine_state_snapshot_from_paths(&repo_index_path(), &input).unwrap();
         assert_eq!(
-            embedded.snapshot_content_sha256,
-            disk.snapshot_content_sha256,
+            embedded.snapshot_content_sha256, disk.snapshot_content_sha256,
             "embedded governance material must mirror disk-loaded registry semantics",
         );
 
@@ -418,7 +415,8 @@ mod tests {
         struct Fixture {
             snapshot_content_sha256: String,
         }
-        let fixture_txt = include_str!("../fixtures/golden_policy_engine_state_snapshot_fixture.json");
+        let fixture_txt =
+            include_str!("../fixtures/golden_policy_engine_state_snapshot_fixture.json");
         let parsed: Fixture = serde_json::from_str(fixture_txt).unwrap();
         assert_eq!(
             embedded.snapshot_content_sha256, parsed.snapshot_content_sha256,

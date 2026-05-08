@@ -1,6 +1,7 @@
 use larql_policy_engine_projection::{
-    build_policy_engine_state_snapshot_from_embedded_workspace_policies, sample_repo_ci_policy_input,
-    PolicyEngineEvaluationSnapshot, PolicyEngineStateSnapshot, PolicyRegistrySnapshot,
+    build_policy_engine_state_snapshot_from_embedded_workspace_policies,
+    sample_repo_ci_policy_input, PolicyEngineEvaluationSnapshot, PolicyEngineStateSnapshot,
+    PolicyRegistrySnapshot,
 };
 use leptos::*;
 
@@ -195,7 +196,8 @@ pub fn PolicyEngineSnapshotPage() -> impl IntoView {
     match embedded_snapshot_projection() {
         Ok(snapshot) => view! {
             <PolicyEngineSnapshotView snapshot=snapshot/>
-        }.into_view(),
+        }
+        .into_view(),
         Err(message) => view! {
             <section class="policy-engine-error">
                 <p>"Embedded policy snapshot unavailable."</p>
@@ -207,7 +209,8 @@ pub fn PolicyEngineSnapshotPage() -> impl IntoView {
 }
 
 fn embedded_snapshot_projection() -> Result<PolicyEngineStateSnapshot, String> {
-    let input = sample_repo_ci_policy_input().map_err(|err| format!("policy input fixture: {err}"))?;
+    let input =
+        sample_repo_ci_policy_input().map_err(|err| format!("policy input fixture: {err}"))?;
     build_policy_engine_state_snapshot_from_embedded_workspace_policies(&input)
         .map_err(|err| format!("embedded snapshot error: {err}"))
 }

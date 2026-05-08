@@ -1,0 +1,88 @@
+schema_version = "larql.governance.llm_autonomy_roles.v1"
+
+[llm_role.bootstrap_l0]
+level = "L0 observer"
+may_decide = [
+  "observation.summary",
+  "fact.summary",
+]
+may_not_decide = [
+  "policy.activation",
+  "policy.approval",
+  "capability.grant",
+  "runtime.mutation",
+]
+
+[llm_role.bootstrap_l1]
+level = "L1 petitioner"
+may_decide = [
+  "proposal.summary",
+  "evidence.candidate_list",
+]
+may_not_decide = [
+  "policy.activation",
+  "policy.approval",
+  "capability.grant",
+  "runtime.mutation",
+]
+
+[llm_role.bootstrap_l2]
+level = "L2 constrained drafter"
+may_decide = [
+  "proposal.summary",
+  "evidence.candidate_list",
+  "draft.from_template",
+]
+may_not_decide = [
+  "policy.activation",
+  "policy.approval",
+  "capability.grant",
+  "runtime.mutation",
+]
+
+[llm_role.bootstrap_l3]
+level = "L3 path navigator"
+may_decide = [
+  "proposal.summary",
+  "evidence.candidate_list",
+  "draft.from_template",
+  "path.allowed_ceremony",
+]
+may_not_decide = [
+  "policy.activation",
+  "policy.approval",
+  "capability.grant",
+  "runtime.mutation",
+]
+
+[llm_role.bootstrap_l4]
+level = "L4 scoped builder"
+may_decide = [
+  "proposal.summary",
+  "evidence.candidate_list",
+  "draft.from_template",
+  "path.allowed_ceremony",
+  "capability.scoped_execution",
+]
+may_not_decide = [
+  "policy.activation",
+  "policy.approval",
+  "capability.grant",
+  "runtime.mutation",
+]
+
+[llm_role.bootstrap_l5]
+level = "L5 policy critic"
+may_decide = [
+  "proposal.summary",
+  "evidence.candidate_list",
+  "draft.from_template",
+  "policy.improvement_proposal",
+  "shadow_eval.explanation",
+]
+may_not_decide = [
+  "policy.activation",
+  "policy.approval",
+  "capability.grant",
+  "runtime.mutation",
+]

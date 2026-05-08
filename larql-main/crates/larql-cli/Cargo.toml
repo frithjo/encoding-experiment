@@ -25,6 +25,7 @@ anyhow = "1"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = "0.10"
+toml = "0.8"
 
 [package.metadata.product]
 zone = "interface"

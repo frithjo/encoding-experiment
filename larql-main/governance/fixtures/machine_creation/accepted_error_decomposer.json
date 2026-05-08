@@ -1,0 +1,23 @@
+{
+  "schema_version": "larql.governance.machine_creation_fixture.v1",
+  "case_id": "accepted_error_decomposer",
+  "decision": "allow",
+  "action": "create_machine",
+  "proposal": {
+    "machine_name": "error_decomposer",
+    "responsibility_boundary": "Decomposes nested runtime error records into classified remediation facts.",
+    "overlap_analysis": "No active machine decomposes nested runtime errors into stable policy evidence.",
+    "required_tests": [
+      "machine_accepts_valid_input_test",
+      "machine_rejects_malformed_input_test"
+    ],
+    "risk": "medium"
+  },
+  "evidence": [
+    "existing_machine_overlap_check",
+    "machine_responsibility_boundary",
+    "machine_accepts_valid_input_test",
+    "machine_rejects_malformed_input_test"
+  ]
+}
+

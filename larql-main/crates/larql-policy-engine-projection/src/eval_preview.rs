@@ -92,7 +92,9 @@ fn compute_preview_hash(
 }
 
 /// Construct [`PolicyInput`] from typed UI defaults (CI fixtures) layered with draft fields.
-pub fn policy_input_from_preview_draft(draft: &PolicyEvalPreviewDraft) -> Result<PolicyInput, SnapshotError> {
+pub fn policy_input_from_preview_draft(
+    draft: &PolicyEvalPreviewDraft,
+) -> Result<PolicyInput, SnapshotError> {
     policy_input_from_preview_draft_inner(
         draft,
         crate::snapshot::sample_repo_ci_policy_input().map_err(SnapshotError::Json)?,
@@ -168,7 +170,8 @@ pub fn build_policy_eval_preview_embedded(
     let decision = engine.evaluate(policy_input);
     let evaluation = evaluation_snapshot(policy_input, &decision).map_err(SnapshotError::Json)?;
 
-    let preview_content_sha256 = compute_preview_hash(&excerpt, &evaluation).map_err(SnapshotError::Json)?;
+    let preview_content_sha256 =
+        compute_preview_hash(&excerpt, &evaluation).map_err(SnapshotError::Json)?;
 
     Ok(PolicyEvalPreview {
         schema_version: POLICY_EVAL_PREVIEW_SCHEMA.to_string(),
@@ -182,7 +185,8 @@ pub fn build_policy_eval_preview_embedded(
 mod tests {
     use super::*;
     use crate::snapshot::{
-        build_policy_engine_state_snapshot_from_embedded_workspace_policies, sample_repo_ci_policy_input,
+        build_policy_engine_state_snapshot_from_embedded_workspace_policies,
+        sample_repo_ci_policy_input,
     };
 
     #[test]
