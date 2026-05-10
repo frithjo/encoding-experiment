@@ -18,4 +18,5 @@ node_modules/
 .codex
 larql-main/target/
 larql-main/output/
+nvme0n1-gpt-backup-*.bin
 Waightslander/

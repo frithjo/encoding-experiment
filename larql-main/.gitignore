@@ -41,3 +41,6 @@ crates/larql-python/python/larql/ui/static/async_runs.js
 
 # Electron/runtime cache
 apps/terminal-runtime/bin/
+
+# Tauri/Cargo build output
+apps/larql-workbench-tauri/src-tauri/target/
