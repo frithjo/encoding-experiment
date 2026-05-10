@@ -27,7 +27,15 @@ pub fn write_binary(
     top_k_count: usize,
 ) -> Result<usize, VindexError> {
     let path = dir.join("down_meta.bin");
-    let file = std::fs::File::create(&path)?;
+    write_binary_to_path(&path, down_meta, top_k_count)
+}
+
+pub(crate) fn write_binary_to_path(
+    path: &Path,
+    down_meta: &[Option<Vec<Option<FeatureMeta>>>],
+    top_k_count: usize,
+) -> Result<usize, VindexError> {
+    let file = std::fs::File::create(path)?;
     let mut w = BufWriter::new(file);
     let mut total = 0usize;
 

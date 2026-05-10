@@ -19,6 +19,7 @@ members = [
     "crates/larql-terminal-batch-dla",
     "crates/larql-terminal-renderer",
     "crates/larql-tty-io",
+    "crates/larql-workbench-core",
 ]
 default-members = [
     "crates/larql-models",
@@ -31,13 +32,14 @@ default-members = [
     "crates/larql-lql",
     "crates/larql-cli",
     "crates/larql-server",
+    "crates/larql-workbench-core",
     "experiments/kv-cache-benchmark",
 ]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.88"
 authors = []
 license = "Apache-2.0"
 repository = "https://github.com/chrishayuk/chuk-larql-rs"

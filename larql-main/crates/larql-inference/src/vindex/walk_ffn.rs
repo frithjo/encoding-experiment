@@ -639,7 +639,7 @@ impl<'a> FfnBackend for WalkFfn<'a> {
         //
         if self.index.has_full_mmap_ffn() {
             let intermediate = self.index.num_features(layer);
-            if intermediate > 0 && self.top_k * 2 < intermediate {
+            if intermediate > 0 && self.top_k.saturating_mul(2) < intermediate {
                 // Low K: per-feature sparse (no matmul, graph walk)
                 if let Some(result) = self.walk_ffn_sparse(layer, x) {
                     return result;

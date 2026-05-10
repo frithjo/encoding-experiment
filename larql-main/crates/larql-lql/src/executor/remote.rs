@@ -49,6 +49,33 @@ fn rows_to_layer_features(rows: &[serde_json::Value]) -> Result<Vec<(usize, usiz
         .collect()
 }
 
+fn select_rows_or_edges(body: &serde_json::Value) -> Vec<serde_json::Value> {
+    body.get("rows")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .or_else(|| body.get("edges").and_then(|v| v.as_array()).cloned())
+        .unwrap_or_default()
+}
+
+fn merge_update_down_meta(
+    target: Option<String>,
+    confidence: Option<f32>,
+    existing_target: Option<String>,
+    existing_confidence: Option<f32>,
+) -> Option<larql_vindex::patch::core::PatchDownMeta> {
+    if target.is_none() && confidence.is_none() {
+        return None;
+    }
+    let resolved_target = target.or(existing_target)?;
+    let resolved_confidence = confidence.or(existing_confidence).unwrap_or(0.0);
+    Some(larql_vindex::patch::core::PatchDownMeta {
+        top_token: resolved_target,
+        // Server-side enrichment resolves token id from top_token.
+        top_token_id: 0,
+        c_score: resolved_confidence,
+    })
+}
+
 /// Format `/v1/explain-infer` JSON (standalone or embedded as `followup_infer` on `/v1/describe`).
 fn format_explain_infer_json_value(
     result: &serde_json::Value,
@@ -946,7 +973,7 @@ impl Session {
 
             let result =
                 self.remote_post_json("/v1/select", &serde_json::Value::Object(body), true)?;
-            let rows = result["rows"].as_array().cloned().unwrap_or_default();
+            let rows = select_rows_or_edges(&result);
             let matches = rows_to_layer_features(&rows)?;
             if matches.is_empty() {
                 return Ok(vec!["  (no matching features found)".into()]);
@@ -1011,21 +1038,46 @@ impl Session {
                 _ => None,
             });
 
-        let down_meta = target
-            .as_ref()
-            .map(|t| larql_vindex::patch::core::PatchDownMeta {
-                top_token: t.clone(),
-                top_token_id: 0,
-                c_score: confidence.unwrap_or(0.9),
-            });
-
         let mut ops = Vec::new();
         if let (Some(layer), Some(feature)) = (layer, feature) {
+            // Preserve existing fields to match local UPDATE semantics:
+            // - target-only UPDATE keeps prior confidence
+            // - confidence-only UPDATE keeps prior target
+            let result = self.remote_post_json(
+                "/v1/select",
+                &serde_json::json!({
+                    "layer": layer,
+                    "limit": 10000,
+                    "fields": ["layer", "feature", "target", "c_score"],
+                }),
+                true,
+            )?;
+            let rows = select_rows_or_edges(&result);
+            let existing = rows.into_iter().find(|row| {
+                row.get("feature")
+                    .and_then(|v| v.as_u64())
+                    .map(|f| f as usize == feature)
+                    .unwrap_or(false)
+            });
+
+            let down_meta = merge_update_down_meta(
+                target.clone(),
+                confidence,
+                existing
+                    .as_ref()
+                    .and_then(|r| r.get("target").and_then(|v| v.as_str()))
+                    .map(|s| s.to_string()),
+                existing
+                    .as_ref()
+                    .and_then(|r| r.get("c_score").and_then(|v| v.as_f64()))
+                    .map(|v| v as f32),
+            );
+
             ops.push(larql_vindex::PatchOp::Update {
                 layer,
                 feature,
                 gate_vector_b64: None,
-                down_meta: down_meta.clone(),
+                down_meta,
             });
         } else {
             let entity = condition_string(conditions, "entity").ok_or_else(|| {
@@ -1034,24 +1086,50 @@ impl Session {
             let mut body = serde_json::Map::new();
             body.insert("entity".into(), serde_json::json!(entity));
             body.insert("limit".into(), serde_json::json!(10000));
-            body.insert("fields".into(), serde_json::json!(["layer", "feature"]));
+            body.insert(
+                "fields".into(),
+                serde_json::json!(["layer", "feature", "target", "c_score"]),
+            );
             if let Some(layer) = layer {
                 body.insert("layer".into(), serde_json::json!(layer));
             }
 
             let result =
                 self.remote_post_json("/v1/select", &serde_json::Value::Object(body), true)?;
-            let rows = result["rows"].as_array().cloned().unwrap_or_default();
-            let matches = rows_to_layer_features(&rows)?;
-            if matches.is_empty() {
+            let rows = select_rows_or_edges(&result);
+            if rows.is_empty() {
                 return Ok(vec!["  (no matching features found)".into()]);
             }
-            for (layer, feature) in matches {
+
+            for row in rows {
+                let layer = row.get("layer").and_then(|v| v.as_u64()).ok_or_else(|| {
+                    LqlError::Execution("remote SELECT row missing numeric 'layer'".into())
+                })? as usize;
+                let feature = row.get("feature").and_then(|v| v.as_u64()).ok_or_else(|| {
+                    LqlError::Execution("remote SELECT row missing numeric 'feature'".into())
+                })? as usize;
+
+                let existing_target = row
+                    .get("target")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let existing_confidence = row
+                    .get("c_score")
+                    .and_then(|v| v.as_f64())
+                    .map(|v| v as f32);
+
+                let down_meta = merge_update_down_meta(
+                    target.clone(),
+                    confidence,
+                    existing_target,
+                    existing_confidence,
+                );
+
                 ops.push(larql_vindex::PatchOp::Update {
                     layer,
                     feature,
                     gate_vector_b64: None,
-                    down_meta: down_meta.clone(),
+                    down_meta,
                 });
             }
         }
@@ -1640,7 +1718,10 @@ impl Session {
 
 #[cfg(test)]
 mod tests {
-    use super::{condition_string, condition_usize, rows_to_layer_features};
+    use super::{
+        condition_string, condition_usize, merge_update_down_meta, rows_to_layer_features,
+        select_rows_or_edges,
+    };
     use crate::ast::{CompareOp, Condition, Value};
     use crate::error::LqlError;
 
@@ -1671,5 +1752,46 @@ mod tests {
         let rows = vec![serde_json::json!({"layer": 3})];
         let err = rows_to_layer_features(&rows).unwrap_err();
         assert!(matches!(err, LqlError::Execution(_)));
+    }
+
+    #[test]
+    fn select_rows_or_edges_accepts_both_shapes() {
+        let rows_body = serde_json::json!({
+            "rows": [{"layer": 1, "feature": 2}]
+        });
+        assert_eq!(select_rows_or_edges(&rows_body).len(), 1);
+
+        let edges_body = serde_json::json!({
+            "edges": [{"layer": 3, "feature": 4}]
+        });
+        assert_eq!(select_rows_or_edges(&edges_body).len(), 1);
+    }
+
+    #[test]
+    fn merge_update_down_meta_preserves_existing_target_for_confidence_only_update() {
+        let dm = merge_update_down_meta(None, Some(0.42), Some("Paris".into()), Some(0.91))
+            .expect("expected down_meta");
+        assert_eq!(dm.top_token, "Paris");
+        assert_eq!(dm.c_score, 0.42);
+        assert_eq!(dm.top_token_id, 0);
+    }
+
+    #[test]
+    fn merge_update_down_meta_preserves_existing_confidence_for_target_only_update() {
+        let dm = merge_update_down_meta(
+            Some("London".into()),
+            None,
+            Some("Paris".into()),
+            Some(0.91),
+        )
+        .expect("expected down_meta");
+        assert_eq!(dm.top_token, "London");
+        assert_eq!(dm.c_score, 0.91);
+        assert_eq!(dm.top_token_id, 0);
+    }
+
+    #[test]
+    fn merge_update_down_meta_returns_none_when_no_assignments() {
+        assert!(merge_update_down_meta(None, None, Some("Paris".into()), Some(0.91)).is_none());
     }
 }

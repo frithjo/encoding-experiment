@@ -4,6 +4,7 @@ pub mod analysis;
 pub mod attention;
 pub mod capture;
 pub mod error;
+pub mod experiments;
 pub mod ffn;
 pub mod forward;
 pub mod graph_ffn;
@@ -41,6 +42,9 @@ pub use capture::{
     CaptureCallbacks, CaptureConfig, InferenceModel, TopKEntry, VectorFileHeader, VectorRecord,
 };
 pub use error::InferenceError;
+pub use experiments::bit_perfect_eraser::{
+    run_bit_perfect_eraser_experiment, BitPerfectEraserRequest, ExperimentReport,
+};
 #[allow(deprecated)]
 pub use ffn::experimental::cached::CachedFfn;
 #[allow(deprecated)]

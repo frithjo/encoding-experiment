@@ -3,6 +3,7 @@
 pub mod build;
 pub mod build_from_vectors;
 pub mod callbacks;
+pub mod resume;
 pub mod streaming;
 pub mod template_cache;
 

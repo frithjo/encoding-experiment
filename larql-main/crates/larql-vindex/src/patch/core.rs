@@ -629,7 +629,8 @@ impl PatchedVindex {
         residual: &Array1<f32>,
         top_k: usize,
     ) -> Vec<(usize, f32)> {
-        let mut hits = self.base.gate_knn(layer, residual, top_k * 2); // oversample
+        let oversample_k = top_k.saturating_mul(2);
+        let mut hits = self.base.gate_knn(layer, residual, oversample_k); // oversample
 
         // Apply gate vector overrides
         for (&(l, f), gate_vec) in &self.overrides_gate {
@@ -1052,5 +1053,13 @@ mod gate_override_tests {
 
         assert_eq!(p.overrides_gate_at(0, 0).unwrap(), &[0.5, 0.5, 0.0, 0.0]);
         assert_eq!(p.overrides_gate_at(0, 1).unwrap(), original_b.as_slice());
+    }
+
+    #[test]
+    fn gate_knn_handles_max_top_k_without_overflow() {
+        let p = make_empty_base();
+        let residual = ndarray::Array1::zeros(4);
+        let hits = p.gate_knn(0, &residual, usize::MAX);
+        assert!(hits.len() <= 3);
     }
 }
