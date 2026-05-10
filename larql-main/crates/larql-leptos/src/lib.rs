@@ -13,6 +13,12 @@ use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_futures::JsFuture;
 
+mod experiment_lab;
+mod lql_console;
+
+use experiment_lab::ExperimentLab;
+use lql_console::LqlConsole;
+
 #[derive(Clone, Serialize, Deserialize)]
 struct AttentionData {
     layer: usize,
@@ -54,6 +60,21 @@ struct AnalyzeInferRequest {
     coherence_markers: Vec<String>,
     max_generated_tokens: Option<usize>,
     ridge_dead_zone: Option<f32>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct BitPerfectEraserRunRequest {
+    workspace_path: String,
+    top_k: usize,
+    output_path: Option<String>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct BitPerfectEraserRunResponse {
+    summary: String,
+    output_path: String,
+    duration_ms: u64,
+    artifact: serde_json::Value,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -158,24 +179,22 @@ pub fn App() -> impl IntoView {
     provide_meta_context();
 
     view! {
-        <Title text="LARQL Workbench (Rust/WASM)"/>
+        <Title text="LARQL Workbench"/>
         <Router>
-            <main class="container">
-                <nav class="top-nav">
-                    <A href="/">"LQL"</A>
-                    <A href="/explorer">"Explorer"</A>
-                    <A href="/batch-dla">"Batch DLA"</A>
-                </nav>
+            <main class="app-shell">
                 <Routes>
-                    <Route path="/" view=LqlConsole/>
+                    <Route path="/" view=TaskChooser/>
+                    <Route path="/lql" view=LqlConsole/>
                     <Route path="/explorer" view=ExplorerDescribe/>
                     <Route path="/batch-dla" view=BatchDlaScan/>
+                    <Route path="/experiments" view=ExperimentLab/>
                 </Routes>
             </main>
         </Router>
     }
 }
 
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen::prelude::wasm_bindgen(start))]
 pub fn main() {
     _ = console_log::init_with_level(log::Level::Debug);
     console_error_panic_hook::set_once();
@@ -183,93 +202,76 @@ pub fn main() {
 }
 
 #[component]
-fn LqlConsole() -> impl IntoView {
-    let (workspace_path, set_workspace_path) = create_signal(String::new());
-    let (query, set_query) = create_signal("STATS".to_string());
-    let (loading, set_loading) = create_signal(false);
-    let (error, set_error) = create_signal(None::<String>);
-    let (lines, set_lines) = create_signal(Vec::<String>::new());
-
-    let run = move |_| {
-        let workspace = workspace_path.get().trim().to_string();
-        let statement = query.get().trim().to_string();
-
-        set_loading.set(true);
-        set_error.set(None);
-        set_lines.set(Vec::new());
-
-        wasm_bindgen_futures::spawn_local(async move {
-            let req = LqlRunRequest {
-                workspace_path: workspace,
-                query: statement,
-            };
-            match invoke_tauri_lql(req).await {
-                Ok(resp) => {
-                    set_lines.set(resp.lines);
-                    set_loading.set(false);
-                }
-                Err(e) => {
-                    set_error.set(Some(e));
-                    set_loading.set(false);
-                }
-            }
-        });
-    };
-
+fn WorkbenchChrome(active_task: &'static str) -> impl IntoView {
     view! {
-        <div class="batch-dla-scan">
-            <h1>"LQL Console"</h1>
-
-            <div class="input-section">
-                <label>"Workspace (.vindex path):"</label>
-                <input
-                    type="text"
-                    prop:value=workspace_path
-                    on:input=move |e| set_workspace_path.set(event_target_value(&e))
-                    placeholder="/path/to/model.vindex"
-                />
-
-                <label style="margin-top: 12px;">"Query:"</label>
-                <textarea
-                    prop:value=query
-                    on:input=move |e| set_query.set(event_target_value(&e))
-                    rows="6"
-                />
-                <button
-                    on:click=run
-                    disabled=loading
-                >
-                    {move || if loading.get() { "Running..." } else { "Run query" }}
-                </button>
+        <header class="chrome-bar">
+            <A class="brand" href="/">"LARQL"</A>
+            <span class="chrome-title">{active_task}</span>
+            <span class="chip">"CPU/Linux"</span>
+            <span class="chrome-spacer"></span>
+            <div class="chrome-actions">
+                <A class="nav-button" href="/">"Tasks"</A>
+                <A class="nav-button" href="/experiments">"Experiment Lab"</A>
+                <A class="nav-button" href="/lql">"LQL Console"</A>
+                <details class="task-menu">
+                    <summary class="ghost-button">"Tools"</summary>
+                    <div class="task-menu-panel">
+                        <A class="nav-button" href="/explorer">"Explorer Describe"</A>
+                        <A class="nav-button" href="/batch-dla">"Batch DLA"</A>
+                    </div>
+                </details>
             </div>
-
-            {move || {
-                if let Some(err) = error.get() {
-                    view! { <div class="error">{err}</div> }.into_view()
-                } else {
-                    view! {}.into_view()
-                }
-            }}
-
-            {move || {
-                let current = lines.get();
-                if current.is_empty() {
-                    view! {}.into_view()
-                } else {
-                    view! {
-                        <div class="results">
-                            <h2>"Result"</h2>
-                            <pre style="white-space: pre-wrap;">{current.join("\n")}</pre>
-                        </div>
-                    }
-                    .into_view()
-                }
-            }}
-        </div>
+        </header>
     }
 }
 
 #[component]
+fn ArtifactBar(status: String) -> impl IntoView {
+    view! {
+        <footer class="artifact-bar">
+            <span>{status}</span>
+            <span>"launcher: lq"</span>
+        </footer>
+    }
+}
+
+#[component]
+fn TaskChooser() -> impl IntoView {
+    view! {
+        <>
+            <WorkbenchChrome active_task="Task chooser"/>
+            <section class="task-chooser">
+                <div class="task-chooser-inner">
+                    <div class="eyebrow">"Projected work surfaces"</div>
+                    <h1>"LARQL Workbench"</h1>
+                    <p class="muted">
+                        "Pick the task in front of you. Secondary analysis tools stay behind the Tools menu."
+                    </p>
+                    <div class="task-grid">
+                        <A class="task-card" href="/experiments">
+                            <span class="metric">"Scientific protocol"</span>
+                            <h2>"Experiment Lab"</h2>
+                            <p class="muted">
+                                "Run Rust-native experiments and inspect evidence artifacts."
+                            </p>
+                        </A>
+                        <A class="task-card" href="/lql">
+                            <span class="metric">"Query workspace"</span>
+                            <h2>"LQL Console"</h2>
+                            <p class="muted">
+                                "Write, run, save, and inspect LQL queries against a vindex."
+                            </p>
+                        </A>
+                    </div>
+                </div>
+            </section>
+            <ArtifactBar status="projection: choose one focused work surface".to_string()/>
+        </>
+    }
+}
+
+#[component]
+#[allow(non_snake_case)]
 fn ExplorerDescribe() -> impl IntoView {
     let (workspace_path, set_workspace_path) = create_signal(String::new());
     let (entity, set_entity) = create_signal(String::new());
@@ -314,82 +316,97 @@ fn ExplorerDescribe() -> impl IntoView {
     };
 
     view! {
-        <div class="batch-dla-scan">
-            <h1>"Explorer Describe"</h1>
-
-            <div class="input-section">
-                <label>"Workspace (.vindex path):"</label>
-                <input
-                    type="text"
-                    prop:value=workspace_path
-                    on:input=move |e| set_workspace_path.set(event_target_value(&e))
-                    placeholder="/path/to/model.vindex"
-                />
-
-                <label style="margin-top: 12px;">"Entity:"</label>
-                <input
-                    type="text"
-                    prop:value=entity
-                    on:input=move |e| set_entity.set(event_target_value(&e))
-                    placeholder="France"
-                />
-
-                <label style="margin-top: 12px;">"Band:"</label>
-                <select
-                    prop:value=band
-                    on:change=move |e| set_band.set(event_target_value(&e))
-                >
-                    <option value="knowledge">"knowledge"</option>
-                    <option value="all">"all"</option>
-                    <option value="syntax">"syntax"</option>
-                    <option value="output">"output"</option>
-                    <option value="none">"none"</option>
-                </select>
-
-                <label style="margin-top: 12px;">
-                    <input
-                        type="checkbox"
-                        prop:checked=verbose
-                        on:change=move |e| set_verbose.set(event_target_checked(&e))
-                    />
-                    " Verbose"
-                </label>
-
-                <button
-                    on:click=run
-                    disabled=loading
-                >
-                    {move || if loading.get() { "Running..." } else { "Describe" }}
-                </button>
-            </div>
-
-            {move || {
-                if let Some(err) = error.get() {
-                    view! { <div class="error">{err}</div> }.into_view()
-                } else {
-                    view! {}.into_view()
-                }
-            }}
-
-            {move || {
-                let current = lines.get();
-                if current.is_empty() {
-                    view! {}.into_view()
-                } else {
-                    view! {
-                        <div class="results">
-                            <h2>"Result"</h2>
-                            <pre style="white-space: pre-wrap;">{current.join("\n")}</pre>
+        <>
+            <WorkbenchChrome active_task="Explorer Describe"/>
+            <section class="workspace">
+                <div class="work-grid">
+                    <div class="panel">
+                        <div class="eyebrow">"Secondary tool"</div>
+                        <h1>"Explorer Describe"</h1>
+                        <p class="muted">"Projected facade over the Rust describe executor."</p>
+                        <div class="field-stack">
+                            <label>
+                                "Workspace (.vindex path)"
+                                <input
+                                    type="text"
+                                    prop:value=workspace_path
+                                    on:input=move |e| set_workspace_path.set(event_target_value(&e))
+                                    placeholder="/path/to/model.vindex"
+                                />
+                            </label>
+                            <label>
+                                "Entity"
+                                <input
+                                    type="text"
+                                    prop:value=entity
+                                    on:input=move |e| set_entity.set(event_target_value(&e))
+                                    placeholder="France"
+                                />
+                            </label>
+                            <label>
+                                "Band"
+                                <select
+                                    prop:value=band
+                                    on:change=move |e| set_band.set(event_target_value(&e))
+                                >
+                                    <option value="knowledge">"knowledge"</option>
+                                    <option value="all">"all"</option>
+                                    <option value="syntax">"syntax"</option>
+                                    <option value="output">"output"</option>
+                                    <option value="none">"none"</option>
+                                </select>
+                            </label>
+                            <label>
+                                <span>
+                                    <input
+                                        type="checkbox"
+                                        prop:checked=verbose
+                                        on:change=move |e| set_verbose.set(event_target_checked(&e))
+                                    />
+                                    " Verbose"
+                                </span>
+                            </label>
                         </div>
-                    }
-                    .into_view()
-                }
-            }}
-        </div>
+                        <div class="toolbar">
+                            <button class="primary-button" on:click=run disabled=loading>
+                                {move || if loading.get() { "Running..." } else { "Describe" }}
+                            </button>
+                        </div>
+                        {move || {
+                            if let Some(err) = error.get() {
+                                view! { <div class="error">{err}</div> }.into_view()
+                            } else {
+                                view! {}.into_view()
+                            }
+                        }}
+                    </div>
+
+                    <div class="result-panel">
+                        <h2>"Result"</h2>
+                        {move || {
+                            let current = lines.get();
+                            if current.is_empty() {
+                                view! {
+                                    <div class="status-card">
+                                        <strong>"No describe output"</strong>
+                                        <span class="muted">"Run DESCRIBE against a real vindex workspace."</span>
+                                    </div>
+                                }
+                                .into_view()
+                            } else {
+                                view! { <pre>{current.join("\n")}</pre> }.into_view()
+                            }
+                        }}
+                    </div>
+                </div>
+            </section>
+            <ArtifactBar status="projection: Explorer facade over LQL describe".to_string()/>
+        </>
     }
 }
 
 #[component]
+#[allow(non_snake_case)]
 fn BatchDlaScan() -> impl IntoView {
     let (server_url, set_server_url) = create_signal("http://127.0.0.1:8080".to_string());
     let (prompt, set_prompt) = create_signal("".to_string());
@@ -506,8 +523,12 @@ fn BatchDlaScan() -> impl IntoView {
     };
 
     view! {
-        <div class="batch-dla-scan">
-            <h1>"Batch DLA Scan"</h1>
+        <>
+            <WorkbenchChrome active_task="Batch DLA"/>
+            <section class="workspace">
+                <div class="panel">
+                    <div class="eyebrow">"Secondary tool"</div>
+                    <h1>"Batch DLA Scan"</h1>
 
             <div class="input-section">
                 <label>"Server URL:"</label>
@@ -626,7 +647,10 @@ fn BatchDlaScan() -> impl IntoView {
                     view! {}.into_view()
                 }
             }}
-        </div>
+                </div>
+            </section>
+            <ArtifactBar status="projection: Batch DLA facade over analysis transport".to_string()/>
+        </>
     }
 }
 
@@ -656,6 +680,17 @@ async fn invoke_tauri_analyze_infer(
     }
     let request_js = serde_wasm_bindgen::to_value(&request).map_err(|e| e.to_string())?;
     let result = invoke_tauri_command("run_analyze_infer_command", request_js).await?;
+    serde_wasm_bindgen::from_value(result).map_err(|e| e.to_string())
+}
+
+async fn invoke_tauri_bit_perfect_eraser(
+    request: BitPerfectEraserRunRequest,
+) -> Result<BitPerfectEraserRunResponse, String> {
+    if !has_tauri_runtime() {
+        return Err("Bit-Perfect Eraser is only available in the Tauri workbench".to_string());
+    }
+    let request_js = serde_wasm_bindgen::to_value(&request).map_err(|e| e.to_string())?;
+    let result = invoke_tauri_command("run_bit_perfect_eraser_command", request_js).await?;
     serde_wasm_bindgen::from_value(result).map_err(|e| e.to_string())
 }
 
@@ -714,7 +749,9 @@ async fn invoke_http_lql(request: LqlRunRequest) -> Result<LqlRunResponse, Strin
             .iter()
             .map(|line| line.as_str().unwrap_or("").to_string())
             .collect::<Vec<_>>();
-        return Ok(LqlRunResponse { lines: parsed_lines });
+        return Ok(LqlRunResponse {
+            lines: parsed_lines,
+        });
     }
 
     if let Some(err) = payload.get("error").and_then(|e| e.as_str()) {

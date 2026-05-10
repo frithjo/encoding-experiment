@@ -3,126 +3,457 @@
 <head>
     <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>LARQL Leptos - Batch DLA Scan</title>
+    <title>LARQL Workbench</title>
     <link data-trunk rel="rust" data-target-name="larql_leptos" />
     <style>
+        :root {
+            --surface: #041b21;
+            --surface-alt: #072730;
+            --panel: #06232b;
+            --panel-hi: #0c3a34;
+            --ink: #edf7f1;
+            --muted: #a3b9b8;
+            --green: #84e274;
+            --green-soft: #103f30;
+            --gold: #e2b74b;
+            --rust: #e75542;
+            --blue: #60b7d1;
+            --line: #1f4d56;
+            --shadow: rgba(0, 0, 0, 0.28);
+        }
+
         * {
             box-sizing: border-box;
-            margin: 0;
-            padding: 0;
         }
-        
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #1a1a2e;
-            color: #eee;
-            padding: 20px;
+            margin: 0;
+            min-height: 100vh;
+            background: radial-gradient(circle at 18% 0%, rgba(12, 58, 52, 0.54), transparent 32%),
+                linear-gradient(135deg, #031317 0%, var(--surface) 46%, #03171d 100%);
+            color: var(--ink);
+            font-family: Inter, "Segoe UI", sans-serif;
+            font-size: 14px;
         }
-        
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
+
+        button,
+        input,
+        select,
+        textarea {
+            font: inherit;
         }
-        
-        .batch-dla-scan {
-            max-width: 800px;
-            margin: 0 auto;
+
+        a {
+            color: inherit;
         }
-        
-        h1 {
-            margin-bottom: 20px;
-            color: #4ade80;
+
+        .app-shell,
+        .wasm-fallback {
+            min-height: 100vh;
+            display: grid;
+            grid-template-rows: 44px 1fr 36px;
+            background: rgba(4, 27, 33, 0.72);
         }
-        
-        h2 {
-            margin-top: 30px;
-            margin-bottom: 15px;
-            color: #4ade80;
+
+        .chrome-bar,
+        .artifact-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 0 16px;
+            background: rgba(4, 27, 33, 0.96);
+            border-bottom: 1px solid var(--line);
         }
-        
-        .input-section {
-            margin-bottom: 20px;
+
+        .artifact-bar {
+            justify-content: space-between;
+            border-top: 1px solid var(--line);
+            border-bottom: 0;
+            color: var(--muted);
+            font-size: 12px;
         }
-        
+
+        .brand {
+            color: var(--green);
+            font-weight: 800;
+            letter-spacing: 0;
+        }
+
+        .chrome-title {
+            color: var(--ink);
+            font-weight: 700;
+        }
+
+        .chrome-spacer {
+            flex: 1;
+        }
+
+        .chrome-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .chip,
+        .nav-button,
+        .ghost-button,
+        .primary-button,
+        .danger-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 30px;
+            padding: 0 11px;
+            border-radius: 6px;
+            border: 1px solid var(--line);
+            color: var(--ink);
+            background: var(--panel);
+            text-decoration: none;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .chip {
+            min-height: 24px;
+            color: var(--muted);
+            font-size: 12px;
+            cursor: default;
+        }
+
+        .nav-button:hover,
+        .ghost-button:hover {
+            border-color: #2e6970;
+            background: var(--surface-alt);
+        }
+
+        .primary-button {
+            border-color: rgba(132, 226, 116, 0.62);
+            background: var(--green-soft);
+            color: var(--green);
+            font-weight: 800;
+        }
+
+        .danger-button {
+            border-color: rgba(231, 85, 66, 0.62);
+            background: rgba(231, 85, 66, 0.12);
+            color: #ffb6aa;
+        }
+
+        button:disabled {
+            opacity: 0.55;
+            cursor: wait;
+        }
+
+        .task-menu {
+            position: relative;
+        }
+
+        .task-menu summary {
+            list-style: none;
+        }
+
+        .task-menu summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .task-menu-panel {
+            position: absolute;
+            z-index: 20;
+            right: 0;
+            top: 36px;
+            min-width: 230px;
+            display: grid;
+            gap: 6px;
+            padding: 8px;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            box-shadow: 0 16px 36px var(--shadow);
+        }
+
+        .workspace {
+            min-width: 0;
+            padding: 14px;
+        }
+
+        .task-chooser {
+            min-height: 100%;
+            display: grid;
+            place-items: center;
+            padding: 24px;
+        }
+
+        .task-chooser-inner {
+            width: min(920px, 100%);
+        }
+
+        .eyebrow {
+            color: var(--blue);
+            font-size: 12px;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+
+        .task-chooser h1,
+        .workspace h1 {
+            margin: 6px 0 10px;
+            color: var(--ink);
+            font-size: 28px;
+            line-height: 1.1;
+        }
+
+        .muted {
+            color: var(--muted);
+        }
+
+        .task-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            margin-top: 18px;
+        }
+
+        .task-card,
+        .panel,
+        .result-panel,
+        .drawer-panel {
+            background: rgba(6, 35, 43, 0.94);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            box-shadow: 0 10px 28px var(--shadow);
+        }
+
+        .task-card {
+            min-height: 180px;
+            padding: 18px;
+            text-decoration: none;
+        }
+
+        .task-card:hover {
+            border-color: #2e6970;
+            background: rgba(7, 39, 48, 0.98);
+        }
+
+        .task-card h2 {
+            margin: 10px 0 8px;
+            color: var(--green);
+        }
+
+        .task-card .metric {
+            color: var(--gold);
+            font-size: 12px;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+
+        .work-grid {
+            display: grid;
+            grid-template-columns: minmax(320px, 520px) minmax(0, 1fr);
+            gap: 12px;
+            align-items: start;
+        }
+
+        .lql-grid {
+            display: grid;
+            grid-template-columns: minmax(420px, 1.05fr) minmax(320px, 0.95fr);
+            gap: 12px;
+            align-items: stretch;
+        }
+
+        .panel,
+        .result-panel,
+        .drawer-panel {
+            padding: 14px;
+        }
+
+        .panel h2,
+        .result-panel h2,
+        .drawer-panel h2 {
+            margin: 0 0 10px;
+            color: var(--ink);
+            font-size: 16px;
+        }
+
+        .field-stack {
+            display: grid;
+            gap: 10px;
+        }
+
         label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: bold;
+            display: grid;
+            gap: 5px;
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 800;
+            text-transform: uppercase;
         }
-        
+
+        input,
+        select,
         textarea {
             width: 100%;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            background: #03191f;
+            color: var(--ink);
             padding: 10px;
-            border: 1px solid #333;
-            border-radius: 4px;
-            background: #16213e;
-            color: #eee;
-            font-family: monospace;
+            outline: none;
+        }
+
+        input[type="checkbox"] {
+            width: auto;
+        }
+
+        textarea {
             resize: vertical;
+            min-height: 160px;
+            font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
         }
-        
-        button {
+
+        input:focus,
+        select:focus,
+        textarea:focus {
+            border-color: var(--blue);
+            box-shadow: 0 0 0 2px rgba(96, 183, 209, 0.12);
+        }
+
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
             margin-top: 10px;
-            padding: 10px 20px;
-            background: #4ade80;
-            color: #1a1a2e;
-            border: none;
-            border-radius: 4px;
-            font-weight: bold;
-            cursor: pointer;
         }
-        
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        
-        .error {
-            padding: 10px;
-            background: #ef4444;
-            color: white;
-            border-radius: 4px;
-            margin-bottom: 20px;
-        }
-        
-        .stats {
-            margin-bottom: 20px;
-            padding: 10px;
-            background: #16213e;
-            border-radius: 4px;
-        }
-        
+
+        .status-strip,
+        .summary-grid,
         .attention-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 15px;
+            gap: 8px;
         }
-        
+
+        .summary-grid,
+        .attention-grid {
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+        }
+
+        .status-strip {
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            margin: 12px 0;
+        }
+
+        .status-card,
         .layer-card {
-            background: #16213e;
-            padding: 15px;
-            border-radius: 4px;
-            border: 1px solid #333;
+            padding: 10px;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            background: rgba(4, 27, 33, 0.72);
         }
-        
+
+        .status-card strong,
         .layer-card h3 {
-            color: #4ade80;
-            margin-bottom: 10px;
+            display: block;
+            margin: 0 0 4px;
+            color: var(--green);
         }
-        
-        .attention-preview p {
-            margin: 5px 0;
-            color: #aaa;
+
+        .error {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid rgba(231, 85, 66, 0.68);
+            border-radius: 6px;
+            background: rgba(231, 85, 66, 0.14);
+            color: #ffd1ca;
+        }
+
+        pre {
+            max-height: 460px;
+            overflow: auto;
+            margin: 0;
+            padding: 12px;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            background: #031317;
+            color: var(--ink);
+            white-space: pre-wrap;
+        }
+
+        details.drawer-panel summary {
+            cursor: pointer;
+            color: var(--green);
+            font-weight: 800;
+        }
+
+        .snippet-list {
+            display: grid;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        @media (max-width: 860px) {
+            .app-shell,
+            .wasm-fallback {
+                grid-template-rows: auto 1fr auto;
+            }
+
+            .chrome-bar,
+            .artifact-bar {
+                flex-wrap: wrap;
+                min-height: 44px;
+                padding: 8px 12px;
+            }
+
+            .task-grid,
+            .work-grid,
+            .lql-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .workspace {
+                padding: 10px;
+            }
         }
     </style>
-</head>
-<body>
-    <div id="root"></div>
-    <script type="module">
-        import init from "/pkg/larql_leptos.js";
-        init().then(() => {
-            console.log("LARQL Leptos initialized");
+    <script>
+        window.addEventListener("TrunkApplicationStarted", function () {
+            const fallback = document.getElementById("wasm-fallback");
+            if (fallback) {
+                fallback.hidden = true;
+            }
         });
     </script>
+</head>
+<body>
+    <main id="wasm-fallback" class="wasm-fallback">
+        <header class="chrome-bar">
+            <span class="brand">LARQL</span>
+            <span class="chrome-title">Task chooser</span>
+            <span class="chrome-spacer"></span>
+            <span class="chip">CPU/Linux</span>
+        </header>
+        <section class="task-chooser">
+            <div class="task-chooser-inner">
+                <div class="eyebrow">Rust/WASM frontend</div>
+                <h1>LARQL Workbench</h1>
+                <p class="muted">Loading the focused Experiment Lab and LQL Console.</p>
+                <div class="task-grid">
+                    <a class="task-card" href="/experiments">
+                        <span class="metric">Scientific protocol</span>
+                        <h2>Experiment Lab</h2>
+                        <p class="muted">Run evidence-producing Rust-native experiments.</p>
+                    </a>
+                    <a class="task-card" href="/lql">
+                        <span class="metric">Query workspace</span>
+                        <h2>LQL Console</h2>
+                        <p class="muted">Write, run, and inspect LQL queries.</p>
+                    </a>
+                </div>
+            </div>
+        </section>
+        <footer class="artifact-bar">
+            <span>runtime: waiting for wasm</span>
+            <span>launch: lq</span>
+        </footer>
+    </main>
+    <div id="root"></div>
 </body>
 </html>

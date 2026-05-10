@@ -35,43 +35,98 @@
         <input type="checkbox" id="studio_verbose" name="verbose" {% if form_data.verbose %}checked{% endif %}>
         <label for="studio_verbose">Verbose</label>
       </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="studio_async_background" name="async_background" {% if form_data.async_background %}checked{% endif %}>
+        <label for="studio_async_background">Background run</label>
+      </div>
     </div>
   </div>
 
   <button type="submit" class="submit-button">Run <kbd>Ctrl+Enter</kbd></button>
 </form>
 
-{% if run %}
-<section class="panel result-panel">
-  <h2>Result</h2>
-  <div class="muted">{{ run.summary }} | {{ run.engine }} | {{ run.duration_ms }} ms</div>
-  {% if run.raw.predictions %}
-  <ul class="predictions">
-    {% for p in run.raw.predictions %}
-    <li><strong>{{ p.token }}</strong> — {{ (p.probability * 100) | round(2) }}%</li>
-    {% endfor %}
-  </ul>
-  {% elif run.raw.edges %}
-  <div class="result-list">
-    {% for edge in run.raw.edges[:15] %}
-    <article class="result-card">
-      <div class="result-main">
-        <strong>{{ edge.relation or "?" }}</strong>
-        <span class="arrow">-&gt;</span>
-        <span>{{ edge.target }}</span>
-      </div>
-      <div class="muted">L{{ edge.layer }} score {{ edge.gate_score | round(1) }}</div>
-    </article>
-    {% endfor %}
-  </div>
-  {% elif run.raw.lines %}
-  <pre>{% for line in run.raw.lines %}{{ line }}
-{% endfor %}</pre>
-  {% endif %}
-  <details class="tty-details">
-    <summary>Raw JSON</summary>
-    <pre>{{ run.raw|to_pretty_json }}</pre>
-  </details>
+<section class="panel result-panel" id="studio-async-panel" {% if not studio_async_poll_id %}hidden{% endif %}>
+  <h2>Background Result</h2>
+  <p class="muted" id="studio-async-status">Waiting...</p>
+  <div id="studio-async-result"></div>
 </section>
-{% endif %}
+
+{% include "partials/studio_result.html" %}
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const form = document.getElementById('studio-form');
+    const asyncCheckbox = document.getElementById('studio_async_background');
+    const panel = document.getElementById('studio-async-panel');
+    const statusEl = document.getElementById('studio-async-status');
+    const resultEl = document.getElementById('studio-async-result');
+    const initialRunId = "{{ studio_async_poll_id or '' }}";
+
+    function asyncClient() {
+      return window.LarqlAsyncRuns || null;
+    }
+
+    function renderMissingClientError() {
+      if (!panel || !statusEl || !resultEl) return;
+      panel.hidden = false;
+      statusEl.textContent = "Background run unavailable.";
+      resultEl.innerHTML = '<p class="banner error" role="alert">Async client failed to load.</p>';
+    }
+
+    function pollExistingRun(runId) {
+      const client = asyncClient();
+      if (!client) {
+        renderMissingClientError();
+        return;
+      }
+      client.pollRun({
+        scope: "studio-page",
+        runId,
+        panel,
+        statusEl,
+        resultEl,
+        resultUrlBuilder: function (rid) {
+          return "/partials/studio-result?run_id=" + encodeURIComponent(rid);
+        }
+      });
+    }
+
+    if (initialRunId) {
+      pollExistingRun(initialRunId);
+    }
+
+    if (!form || !asyncCheckbox) return;
+    form.addEventListener('submit', function (event) {
+      if (!asyncCheckbox.checked) return;
+      const client = asyncClient();
+      if (!client) {
+        event.preventDefault();
+        renderMissingClientError();
+        return;
+      }
+      event.preventDefault();
+      const fd = new FormData(form);
+      client.submitAndPoll({
+        scope: "studio-page",
+        url: "/api/runs",
+        body: {
+          async: true,
+          engine: String(fd.get("engine") || "describe"),
+          rendered: String(fd.get("inline_template") || ""),
+          title: "Studio",
+          band: String(fd.get("band") || "knowledge"),
+          verbose: fd.get("verbose") === "on",
+          infer_top_k_predictions: Number(fd.get("infer_top_k_predictions") || 5),
+          walk_top_k: Number(fd.get("walk_top_k") || 8192)
+        },
+        panel,
+        statusEl,
+        resultEl,
+        resultUrlBuilder: function (rid) {
+          return "/partials/studio-result?run_id=" + encodeURIComponent(rid);
+        }
+      });
+    });
+  });
+</script>
 {% endblock %}

@@ -1,0 +1,33 @@
+{% if run %}
+<section class="panel result-panel">
+  <h2>Result</h2>
+  <div class="muted">{{ run.summary }} | {{ run.engine }} | {{ run.duration_ms }} ms</div>
+  {% if run.raw.predictions %}
+  <ul class="predictions">
+    {% for p in run.raw.predictions %}
+    <li><strong>{{ p.token }}</strong> — {{ (p.probability * 100) | round(2) }}%</li>
+    {% endfor %}
+  </ul>
+  {% elif run.raw.edges %}
+  <div class="result-list">
+    {% for edge in run.raw.edges[:15] %}
+    <article class="result-card">
+      <div class="result-main">
+        <strong>{{ edge.relation or "?" }}</strong>
+        <span class="arrow">-&gt;</span>
+        <span>{{ edge.target }}</span>
+      </div>
+      <div class="muted">L{{ edge.layer }} score {{ edge.gate_score | round(1) }}</div>
+    </article>
+    {% endfor %}
+  </div>
+  {% elif run.raw.lines %}
+  <pre>{% for line in run.raw.lines %}{{ line }}
+{% endfor %}</pre>
+  {% endif %}
+  <details class="tty-details">
+    <summary>Raw JSON</summary>
+    <pre>{{ run.raw|to_pretty_json }}</pre>
+  </details>
+</section>
+{% endif %}

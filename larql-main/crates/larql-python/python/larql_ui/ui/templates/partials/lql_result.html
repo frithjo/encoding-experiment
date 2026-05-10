@@ -1,0 +1,12 @@
+{% if run %}
+<section class="panel result-panel">
+  <h2>Result</h2>
+  <div class="muted">{{ run.summary }} | {{ run.duration_ms }} ms</div>
+  <pre>{% for line in run.raw.lines %}{{ line }}
+{% endfor %}</pre>
+  <details class="tty-details">
+    <summary>Raw JSON</summary>
+    <pre>{{ run.raw|to_pretty_json }}</pre>
+  </details>
+</section>
+{% endif %}

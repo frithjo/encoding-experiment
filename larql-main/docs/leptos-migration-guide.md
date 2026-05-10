@@ -15,8 +15,27 @@ This document describes the migration patterns for moving model-specific tools f
 - Leptos frontend (Rust/WASM)
 - Single larql-server backend handling all tools
 - larql-inference for model-specific computations
+- Optional Tauri shell for desktop-native command invocation
+- Rust command core (`crates/larql-workbench-core`) owns validation/execution for shell-invoked flows
 
-## Migration Pattern: batch_dla_scan (Proof of Concept)
+## Rust-Only Command Boundary (Tauri + WASM)
+
+When running under Tauri:
+- WASM UI submits typed command requests only.
+- Tauri command handlers call Rust command-core functions.
+- Command-core owns workspace path validation, parsing, execution, and error semantics.
+- UI renders returned lines/state and does not duplicate business logic.
+
+First migrated flow:
+- `run_lql_query_command` (Tauri) -> `larql_workbench_core::run_lql_query` -> `larql_lql::Session`.
+- `run_describe_command` (Tauri) -> `larql_workbench_core::run_describe` -> `larql_lql::Session`.
+- `run_analyze_infer_command` (Tauri) -> `larql_workbench_core::run_analyze_infer` -> strict LQL `ANALYZE INFER ... FORMAT JSON`.
+
+## Migration Pattern: batch_dla_scan (Historical Proof of Concept)
+
+> Historical note: the section below captures an early transport-first migration
+> pattern. The current canonical scientific path is LQL-first (`ANALYZE INFER`
+> via `larql-lql`), with `/v1/analyze-infer` retained as a transport adapter.
 
 ### Step 1: Implement Tool Handler in larql-server
 

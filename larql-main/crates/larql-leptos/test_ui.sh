@@ -9,6 +9,8 @@ echo "=========================================="
 echo "Testing backend API behavior that the UI depends on"
 echo ""
 
+STRICT_ANALYSIS_PAYLOAD='{"prompt":"The capital of Freedonia is","top_k":5,"mode":"fact_probe","truth_spans":["Markov"],"materially_false_spans":["Paris","London"],"coherence_markers":["capital","is"],"max_generated_tokens":1,"ridge_dead_zone":0.05}'
+
 # Ensure larql-server is running
 if ! curl -s http://localhost:8080/v1/health > /dev/null; then
     echo "✗ FAIL: larql-server is not running on port 8080"
@@ -38,7 +40,7 @@ echo "Test 2: Valid prompt returns attention data"
 echo "=========================================="
 RESPONSE=$(curl -s -X POST http://localhost:8080/v1/analyze-infer \
     -H "Content-Type: application/json" \
-    -d '{"prompt": "test prompt", "top_k": 5, "mode": "fact_probe", "truth_spans": [], "materially_false_spans": [], "coherence_markers": [], "max_generated_tokens": null, "ridge_dead_zone": null}')
+    -d "$STRICT_ANALYSIS_PAYLOAD")
 
 if echo "$RESPONSE" | grep -q "attention" && echo "$RESPONSE" | grep -q "num_layers"; then
     echo "✓ PASS: Valid prompt returns attention data with num_layers"
@@ -53,7 +55,7 @@ echo "Test 3: Attention data structure validation"
 echo "=========================================="
 RESPONSE=$(curl -s -X POST http://localhost:8080/v1/analyze-infer \
     -H "Content-Type: application/json" \
-    -d '{"prompt": "test prompt", "top_k": 5, "mode": "fact_probe", "truth_spans": [], "materially_false_spans": [], "coherence_markers": [], "max_generated_tokens": null, "ridge_dead_zone": null}')
+    -d "$STRICT_ANALYSIS_PAYLOAD")
 
 if echo "$RESPONSE" | grep -q "layer" && echo "$RESPONSE" | grep -q "heads"; then
     echo "✓ PASS: Attention data contains layer and heads fields"
@@ -68,7 +70,7 @@ echo "Test 4: Token data validation"
 echo "=========================================="
 RESPONSE=$(curl -s -X POST http://localhost:8080/v1/analyze-infer \
     -H "Content-Type: application/json" \
-    -d '{"prompt": "test prompt", "top_k": 5, "mode": "fact_probe", "truth_spans": [], "materially_false_spans": [], "coherence_markers": [], "max_generated_tokens": null, "ridge_dead_zone": null}')
+    -d "$STRICT_ANALYSIS_PAYLOAD")
 
 if echo "$RESPONSE" | grep -q "tokens"; then
     echo "✓ PASS: Response contains tokens array"
@@ -83,12 +85,15 @@ echo "Test 5: Predictions data validation"
 echo "=========================================="
 RESPONSE=$(curl -s -X POST http://localhost:8080/v1/analyze-infer \
     -H "Content-Type: application/json" \
-    -d '{"prompt": "test prompt", "top_k": 5, "mode": "fact_probe", "truth_spans": [], "materially_false_spans": [], "coherence_markers": [], "max_generated_tokens": null, "ridge_dead_zone": null}')
+    -d "$STRICT_ANALYSIS_PAYLOAD")
 
-if echo "$RESPONSE" | grep -q "predictions"; then
-    echo "✓ PASS: Response contains predictions array"
+if echo "$RESPONSE" | grep -q "predictions" && \
+   echo "$RESPONSE" | grep -q "analysis_summary" && \
+   echo "$RESPONSE" | grep -q "ridge_by_layer" && \
+   echo "$RESPONSE" | grep -q "token_analysis"; then
+    echo "✓ PASS: Response contains full scientific analysis fields"
 else
-    echo "✗ FAIL: Response should contain predictions array"
+    echo "✗ FAIL: Response should contain full scientific analysis fields"
     echo "Response: $RESPONSE"
 fi
 echo ""

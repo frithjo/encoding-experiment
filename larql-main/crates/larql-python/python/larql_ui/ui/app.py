@@ -15,7 +15,10 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 
-from .api import build_api_routes, schedule_studio_background_job
+from .api import (
+    build_api_routes,
+    schedule_studio_background_job,
+)
 from .execution import UiExecutor
 from .models import RecipeRecord, WorkspaceSummary, render_template, template_fields, validate_recipe
 from .runtime_cache import LarqlRuntimeCache, workspace_paths_differ
@@ -146,6 +149,7 @@ def create_app(store: UiStore | None = None) -> Starlette:
         inline_template: str,
         band: str,
         verbose: bool,
+        async_background: bool,
         infer_top_k_predictions: int,
         walk_top_k: int,
         compare_subjects: str,
@@ -156,6 +160,7 @@ def create_app(store: UiStore | None = None) -> Starlette:
             "inline_template": inline_template,
             "band": band,
             "verbose": verbose,
+            "async_background": async_background,
             "infer_top_k_predictions": infer_top_k_predictions,
             "walk_top_k": walk_top_k,
             "compare_subjects": compare_subjects,
@@ -278,6 +283,33 @@ def create_app(store: UiStore | None = None) -> Starlette:
             {"request": request, "run": run},
         )
 
+    async def partial_studio_result(request: Request):
+        run_id = str(request.query_params.get("run_id", "")).strip()
+        run = ui_store.get_run(run_id) if run_id else None
+        return templates.TemplateResponse(
+            request,
+            "partials/studio_result.html",
+            {"request": request, "run": run},
+        )
+
+    async def partial_explorer_result(request: Request):
+        run_id = str(request.query_params.get("run_id", "")).strip()
+        run = ui_store.get_run(run_id) if run_id else None
+        return templates.TemplateResponse(
+            request,
+            "partials/explorer_result.html",
+            {"request": request, "run": run},
+        )
+
+    async def partial_lql_result(request: Request):
+        run_id = str(request.query_params.get("run_id", "")).strip()
+        run = ui_store.get_run(run_id) if run_id else None
+        return templates.TemplateResponse(
+            request,
+            "partials/lql_result.html",
+            {"request": request, "run": run},
+        )
+
     async def partial_run_controls(request: Request):
         try:
             ws = workspace_manager.get_current()
@@ -314,6 +346,7 @@ def create_app(store: UiStore | None = None) -> Starlette:
                 inline_template="{subject}",
                 band="knowledge",
                 verbose=False,
+                async_background=False,
                 infer_top_k_predictions=5,
                 walk_top_k=8192,
                 compare_subjects="",
@@ -335,6 +368,7 @@ def create_app(store: UiStore | None = None) -> Starlette:
         form_engine = str(form.get("engine", "")).strip()
         band = str(form.get("band", "knowledge")).strip() or "knowledge"
         verbose = form.get("verbose") == "on"
+        async_background = form.get("async_background") == "on"
         infer_top = _form_positive_int(form, "infer_top_k_predictions", 5)
         walk_k = _form_positive_int(form, "walk_top_k", 8192)
 
@@ -360,7 +394,7 @@ def create_app(store: UiStore | None = None) -> Starlette:
 
             engine = _studio_resolve_engine(form_engine=form_engine, recipe=recipe)
 
-            if form.get("async_background") == "on":
+            if async_background:
                 rid = schedule_studio_background_job(
                     app_holder,
                     ui_store,
@@ -384,6 +418,7 @@ def create_app(store: UiStore | None = None) -> Starlette:
                         inline_template=str(form.get("inline_template", "")),
                         band=band,
                         verbose=verbose,
+                        async_background=async_background,
                         infer_top_k_predictions=infer_top,
                         walk_top_k=walk_k,
                         compare_subjects=str(form.get("compare_subjects", "")),
@@ -413,6 +448,7 @@ def create_app(store: UiStore | None = None) -> Starlette:
                     inline_template=str(form.get("inline_template", "")),
                     band=band,
                     verbose=verbose,
+                    async_background=async_background,
                     infer_top_k_predictions=infer_top,
                     walk_top_k=walk_k,
                     compare_subjects=str(form.get("compare_subjects", "")),
@@ -430,6 +466,7 @@ def create_app(store: UiStore | None = None) -> Starlette:
                 inline_template=str(form.get("inline_template", "")),
                 band=band,
                 verbose=verbose,
+                async_background=async_background,
                 infer_top_k_predictions=infer_top,
                 walk_top_k=walk_k,
                 compare_subjects=str(form.get("compare_subjects", "")),
@@ -452,6 +489,7 @@ def create_app(store: UiStore | None = None) -> Starlette:
         form_engine = str(form.get("engine", "")).strip()
         band = str(form.get("band", "knowledge")).strip() or "knowledge"
         verbose = form.get("verbose") == "on"
+        async_background = form.get("async_background") == "on"
         infer_top = _form_positive_int(form, "infer_top_k_predictions", 5)
         walk_k = _form_positive_int(form, "walk_top_k", 8192)
         raw_lines = str(form.get("compare_subjects", "")).splitlines()
@@ -462,6 +500,9 @@ def create_app(store: UiStore | None = None) -> Starlette:
         base_vars: dict[str, str] = {}
 
         try:
+            if async_background:
+                raise ValueError("Background run is not supported for Compare batch.")
+
             if recipe_id:
                 recipe = ui_store.get_recipe(recipe_id)
                 if recipe is None:
@@ -525,6 +566,7 @@ def create_app(store: UiStore | None = None) -> Starlette:
                     inline_template=str(form.get("inline_template", "")),
                     band=band,
                     verbose=verbose,
+                    async_background=async_background,
                     infer_top_k_predictions=infer_top,
                     walk_top_k=walk_k,
                     compare_subjects=str(form.get("compare_subjects", "")),
@@ -547,6 +589,7 @@ def create_app(store: UiStore | None = None) -> Starlette:
                 inline_template=str(form.get("inline_template", "")),
                 band=band,
                 verbose=verbose,
+                async_background=async_background,
                 infer_top_k_predictions=infer_top,
                 walk_top_k=walk_k,
                 compare_subjects=str(form.get("compare_subjects", "")),
@@ -568,7 +611,7 @@ def create_app(store: UiStore | None = None) -> Starlette:
             title="Explorer",
             current_page="explorer",
             shell_workspace=workspace,
-            form_data={"entity": "", "band": "knowledge", "verbose": False},
+            form_data={"entity": "", "band": "knowledge", "verbose": False, "async_background": False},
             run=None,
         )
 
@@ -585,6 +628,7 @@ def create_app(store: UiStore | None = None) -> Starlette:
         entity = str(form.get("entity", "")).strip()
         band = str(form.get("band", "knowledge")).strip() or "knowledge"
         verbose = form.get("verbose") == "on"
+        async_background = form.get("async_background") == "on"
         if not entity:
             return render(
                 request,
@@ -592,7 +636,12 @@ def create_app(store: UiStore | None = None) -> Starlette:
                 title="Explorer",
                 current_page="explorer",
                 shell_workspace=workspace,
-                form_data={"entity": entity, "band": band, "verbose": verbose},
+                form_data={
+                    "entity": entity,
+                    "band": band,
+                    "verbose": verbose,
+                    "async_background": async_background,
+                },
                 run=None,
                 page_error="Entity required.",
             )
@@ -611,7 +660,12 @@ def create_app(store: UiStore | None = None) -> Starlette:
                 title="Explorer",
                 current_page="explorer",
                 shell_workspace=workspace,
-                form_data={"entity": entity, "band": band, "verbose": verbose},
+                form_data={
+                    "entity": entity,
+                    "band": band,
+                    "verbose": verbose,
+                    "async_background": async_background,
+                },
                 run=None,
                 page_error=str(exc),
             )
@@ -621,7 +675,12 @@ def create_app(store: UiStore | None = None) -> Starlette:
             title="Explorer",
             current_page="explorer",
             shell_workspace=workspace,
-            form_data={"entity": entity, "band": band, "verbose": verbose},
+            form_data={
+                "entity": entity,
+                "band": band,
+                "verbose": verbose,
+                "async_background": async_background,
+            },
             run=run,
         )
 
@@ -639,6 +698,7 @@ def create_app(store: UiStore | None = None) -> Starlette:
             current_page="lql",
             shell_workspace=workspace,
             query="STATS",
+            async_background=False,
             run=None,
         )
 
@@ -653,6 +713,7 @@ def create_app(store: UiStore | None = None) -> Starlette:
 
         form = await request.form()
         query = str(form.get("query", "")).strip()
+        async_background = form.get("async_background") == "on"
         if not query:
             return render(
                 request,
@@ -661,6 +722,7 @@ def create_app(store: UiStore | None = None) -> Starlette:
                 current_page="lql",
                 shell_workspace=workspace,
                 query=query,
+                async_background=async_background,
                 run=None,
                 page_error="Query required.",
             )
@@ -675,6 +737,7 @@ def create_app(store: UiStore | None = None) -> Starlette:
                 current_page="lql",
                 shell_workspace=workspace,
                 query=query,
+                async_background=async_background,
                 run=None,
                 page_error=str(exc),
             )
@@ -685,6 +748,7 @@ def create_app(store: UiStore | None = None) -> Starlette:
             current_page="lql",
             shell_workspace=workspace,
             query=query,
+            async_background=async_background,
             run=run,
         )
 
@@ -1052,6 +1116,9 @@ def create_app(store: UiStore | None = None) -> Starlette:
         Route("/partials/runs-table", partial_runs_table, methods=["GET"]),
         Route("/partials/trace-summary", partial_trace_summary, methods=["GET"]),
         Route("/partials/result-panel", partial_result_panel, methods=["GET"]),
+        Route("/partials/studio-result", partial_studio_result, methods=["GET"]),
+        Route("/partials/explorer-result", partial_explorer_result, methods=["GET"]),
+        Route("/partials/lql-result", partial_lql_result, methods=["GET"]),
         Route("/partials/run-controls", partial_run_controls, methods=["GET"]),
         Route("/partials/recipe-editor", partial_recipe_editor, methods=["GET"]),
         Route("/studio", studio_page, methods=["GET"]),

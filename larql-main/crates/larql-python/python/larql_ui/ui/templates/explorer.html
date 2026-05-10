@@ -22,39 +22,71 @@
         <input type="checkbox" id="explorer_verbose" name="verbose" {% if form_data.verbose %}checked{% endif %}>
         <label for="explorer_verbose">Verbose</label>
       </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="explorer_async_background" name="async_background" {% if form_data.async_background %}checked{% endif %}>
+        <label for="explorer_async_background">Background run</label>
+      </div>
     </div>
   </div>
 
   <button type="submit" class="submit-button">Describe <kbd>Ctrl+Enter</kbd></button>
 </form>
 
-{% if run %}
-<section class="panel result-panel">
-  <h2>Result</h2>
-  <div class="muted">{{ run.summary }} | {{ run.duration_ms }} ms</div>
-  {% if run.raw.edges %}
-  <div class="result-list">
-    {% for edge in run.raw.edges %}
-    <article class="result-card">
-      <div class="result-main">
-        <strong>{{ edge.relation or "?" }}</strong>
-        <span class="arrow">-&gt;</span>
-        <span>{{ edge.target }}</span>
-      </div>
-      <div class="muted">score {{ edge.gate_score | round(1) }} | layer {{ edge.layer }} | feature {{ edge.feature }} | {{ edge.source }}</div>
-      {% if edge.also %}
-      <div class="muted">also: {{ edge.also|join(", ") }}</div>
-      {% endif %}
-    </article>
-    {% endfor %}
-  </div>
-  {% else %}
-  <p>No edges returned.</p>
-  {% endif %}
-  <details class="tty-details">
-    <summary>Raw JSON</summary>
-    <pre>{{ run.raw|to_pretty_json }}</pre>
-  </details>
+<section class="panel result-panel" id="explorer-async-panel" hidden>
+  <h2>Background Result</h2>
+  <p class="muted" id="explorer-async-status">Waiting...</p>
+  <div id="explorer-async-result"></div>
 </section>
-{% endif %}
+
+{% include "partials/explorer_result.html" %}
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const form = document.getElementById('explorer-form');
+    const asyncCheckbox = document.getElementById('explorer_async_background');
+    const panel = document.getElementById('explorer-async-panel');
+    const statusEl = document.getElementById('explorer-async-status');
+    const resultEl = document.getElementById('explorer-async-result');
+
+    function asyncClient() {
+      return window.LarqlAsyncRuns || null;
+    }
+
+    function renderMissingClientError() {
+      if (!panel || !statusEl || !resultEl) return;
+      panel.hidden = false;
+      statusEl.textContent = "Background run unavailable.";
+      resultEl.innerHTML = '<p class="banner error" role="alert">Async client failed to load.</p>';
+    }
+
+    if (!form || !asyncCheckbox) return;
+    form.addEventListener('submit', function (event) {
+      if (!asyncCheckbox.checked) return;
+      const client = asyncClient();
+      if (!client) {
+        event.preventDefault();
+        renderMissingClientError();
+        return;
+      }
+      event.preventDefault();
+      const fd = new FormData(form);
+      client.submitAndPoll({
+        scope: "explorer-page",
+        url: "/api/explorer/describe",
+        body: {
+          async: true,
+          entity: String(fd.get("entity") || ""),
+          band: String(fd.get("band") || "knowledge"),
+          verbose: fd.get("verbose") === "on"
+        },
+        panel,
+        statusEl,
+        resultEl,
+        resultUrlBuilder: function (rid) {
+          return "/partials/explorer-result?run_id=" + encodeURIComponent(rid);
+        }
+      });
+    });
+  });
+</script>
 {% endblock %}

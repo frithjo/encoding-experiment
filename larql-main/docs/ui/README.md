@@ -61,10 +61,11 @@ larql-workbench --host 127.0.0.1 --port 8000
 
 **Implementation:** `crates/larql-leptos`
 **Status:** Active migration target from React
-**Technology:** Leptos (Rust/WASM)
+**Technology:** Leptos (Rust/WASM), optional Tauri shell (`apps/larql-workbench-tauri`)
 
 **Description:**
 Rust/WASM frontend being developed as the migration target from the React-based chuk-kv-anatomist. Provides model-specific tools with larql-server backend.
+For desktop-shell flows, Tauri commands call Rust command-core (`crates/larql-workbench-core`) and the WASM layer remains projection-only.
 
 **Use Cases:**
 - Model-specific tool interfaces
@@ -91,6 +92,27 @@ Vite + React UI for inspecting KV/context maps against a Lazarus backend. Being 
 **Migration Path:** See `docs/leptos-migration-guide.md` for migration status and timeline.
 
 **Note:** This interface should not be used for new work. Use Leptos or other active interfaces.
+
+### Python Workbench Experiment Lab
+
+**Implementation:** `crates/larql-python` (routes + templates in `ui/templates/experiments.html`)
+**Status:** Active (first scientific protocol path)
+**Technology:** Starlette + Jinja2 + async run polling
+
+**Description:**
+The Python workbench now includes an experiment lab page at `GET /experiments` with an async-capable
+submission form that executes **Rust-native** experiments only.
+
+The first supported protocol is **Bit-Perfect Eraser**, implemented in:
+- `crates/larql-inference/examples/bit_perfect_eraser.rs`
+- `cargo run --release -p larql-inference --example bit_perfect_eraser`
+
+**Reproducibility protocol (UI-native):**
+- Open a workspace and navigate to **Experiments**.
+- Run with explicit `top_k` and optional `output_path`.
+- Use the background checkbox to launch asynchronous runs and poll run status via `/api/experiments/run` and `/api/runs/{run_id}`.
+- Review persisted artifacts in `docs/scientific-alignment/` and raw run payload in `/runs/{id}`.
+- Re-run any experiment artifact through the same route to keep comparisons grounded in immutable vindex files.
 
 ---
 
