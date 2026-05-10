@@ -4,11 +4,15 @@ on:
   pull_request:
   push:
     branches:
+      - strict-stage0
       - main
 
 jobs:
   source-line-limit:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: larql-main
     steps:
       - name: Checkout
         uses: actions/checkout@v4
