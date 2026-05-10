@@ -1,0 +1,17 @@
+name: Source Line Limit
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  source-line-limit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Enforce source line limit
+        run: python3 scripts/check_source_line_limits.py

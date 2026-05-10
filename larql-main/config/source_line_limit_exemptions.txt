@@ -1,0 +1,24 @@
+# Temporary source-file line-limit exemptions (>999 lines).
+# CI will fail if an entry here is <=999 lines (stale) or missing.
+# Format: path|max_lines
+# Exempt files are capped; line count cannot increase above max_lines.
+
+crates/larql-compute/tests/test_metal_shaders.rs|2228
+crates/larql-inference/src/analysis.rs|1106
+crates/larql-lql/src/executor/lifecycle.rs|2333
+crates/larql-lql/src/executor/query.rs|2581
+crates/larql-lql/src/executor/remote.rs|1797
+crates/larql-lql/src/executor/tests.rs|1730
+crates/larql-lql/src/parser/tests.rs|2012
+crates/larql-models/src/detect.rs|1093
+crates/larql-models/tests/test_architectures.rs|1017
+crates/larql-python/python/larql_ui/ui/app.py|1162
+crates/larql-python/src/vindex.rs|1388
+crates/larql-server/tests/test_api.rs|1409
+crates/larql-terminal-batch-dla/src/lib.rs|1405
+crates/larql-vindex/src/patch/core.rs|1065
+crates/larql-vindex/tests/test_vindex.rs|3050
+experiments/05_syntax_circuit_routing/syntax_circuit_routing.py|1144
+experiments/06_backprop_insert/experiment_attention_anatomy.py|1014
+experiments/06_backprop_insert/experiment_v10b_attention_transfer.py|1080
+experiments/kv-cache-benchmark/tests/test_real_model.rs|1281
