@@ -3,7 +3,7 @@ use leptos::*;
 use super::*;
 
 #[component]
-pub(crate) fn ExperimentLab() -> impl IntoView {
+pub(crate) fn ExperimentLab(#[prop(optional)] embedded: bool) -> impl IntoView {
     let (workspace_path, set_workspace_path) = create_signal(String::new());
     let (top_k_raw, set_top_k_raw) = create_signal("40".to_string());
     let (output_path, set_output_path) = create_signal(String::new());
@@ -53,10 +53,20 @@ pub(crate) fn ExperimentLab() -> impl IntoView {
         });
     };
 
+    let workspace_class = if embedded {
+        "workspace stacked-surface"
+    } else {
+        "workspace"
+    };
+
     view! {
         <>
-            <WorkbenchChrome active_task="Experiment Lab"/>
-            <section class="workspace">
+            {if embedded {
+                view! {}.into_view()
+            } else {
+                view! { <WorkbenchChrome active_task="Experiment Lab"/> }.into_view()
+            }}
+            <section class=workspace_class>
                 <div class="work-grid">
                     <div class="panel">
                         <div class="eyebrow">"Rust-native experiment"</div>
@@ -258,7 +268,11 @@ pub(crate) fn ExperimentLab() -> impl IntoView {
                     </div>
                 </div>
             </section>
-            <ArtifactBar status="projection: Experiment Lab facade over Rust evidence artifact".to_string()/>
+            {if embedded {
+                view! {}.into_view()
+            } else {
+                view! { <ArtifactBar status="projection: Experiment Lab facade over Rust evidence artifact".to_string()/> }.into_view()
+            }}
         </>
     }
 }

@@ -40,7 +40,7 @@ cargo build --release
 
 ### Tauri flow (Rust-only command boundary)
 
-- The `LQL Console` route (`/`) invokes Tauri command `run_lql_query_command`.
+- The `LQL Console` route (`/lql`) invokes Tauri command `run_lql_query_command`.
 - The `Explorer` route (`/explorer`) invokes Tauri command `run_describe_command`.
 - The `Batch DLA` route (`/batch-dla`) invokes Tauri command `run_analyze_infer_command`.
 - The command calls `larql-workbench-core::run_lql_query`, which owns:

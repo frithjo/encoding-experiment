@@ -9,6 +9,8 @@ use gloo_net::http::Request;
 #[cfg(target_arch = "wasm32")]
 use js_sys::{Function, Object, Promise, Reflect};
 #[cfg(target_arch = "wasm32")]
+use wasm_bindgen::closure::Closure;
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_futures::JsFuture;
@@ -181,23 +183,70 @@ pub fn App() -> impl IntoView {
     view! {
         <Title text="LARQL Workbench"/>
         <Router>
+            <RouteBootstrap/>
             <main class="app-shell">
                 <Routes>
-                    <Route path="/" view=TaskChooser/>
-                    <Route path="/lql" view=LqlConsole/>
+                    <Route path="/" view=StackedWorkbench/>
+                    <Route path="/tasks" view=TaskChooser/>
+                    <Route path="/lql" view=|| view! { <LqlConsole/> }/>
                     <Route path="/explorer" view=ExplorerDescribe/>
                     <Route path="/batch-dla" view=BatchDlaScan/>
-                    <Route path="/experiments" view=ExperimentLab/>
+                    <Route path="/experiments" view=|| view! { <ExperimentLab/> }/>
                 </Routes>
             </main>
         </Router>
     }
 }
 
+#[component]
+fn RouteBootstrap() -> impl IntoView {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let navigate = use_navigate();
+        create_effect(move |_| {
+            let Ok(search) = window().location().search() else {
+                return;
+            };
+            let query = search.strip_prefix('?').unwrap_or(search.as_str());
+            let target = query.split('&').find_map(|pair| {
+                let mut parts = pair.splitn(2, '=');
+                let key = parts.next().unwrap_or_default();
+                let value = parts.next().unwrap_or_default();
+                if key != "route" {
+                    return None;
+                }
+                match value {
+                    "lql" => Some("/lql"),
+                    "experiments" => Some("/experiments"),
+                    "explorer" => Some("/explorer"),
+                    "batch-dla" => Some("/batch-dla"),
+                    _ => None,
+                }
+            });
+
+            if let Some(target) = target {
+                navigate(
+                    target,
+                    NavigateOptions {
+                        resolve: false,
+                        replace: true,
+                        ..Default::default()
+                    },
+                );
+            }
+        });
+    }
+
+    view! {}
+}
+
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen::prelude::wasm_bindgen(start))]
 pub fn main() {
-    _ = console_log::init_with_level(log::Level::Debug);
+    if console_log::init_with_level(log::Level::Debug).is_ok() {
+        log::info!("LARQL WASM logging enabled on activation (level=debug)");
+    }
     console_error_panic_hook::set_once();
+    log::info!("LARQL WASM mounting app shell");
     leptos::mount_to_body(App);
 }
 
@@ -205,23 +254,56 @@ pub fn main() {
 fn WorkbenchChrome(active_task: &'static str) -> impl IntoView {
     view! {
         <header class="chrome-bar">
-            <A class="brand" href="/">"LARQL"</A>
+            <RouteAnchor class="brand" href="/">"LARQL"</RouteAnchor>
             <span class="chrome-title">{active_task}</span>
             <span class="chip">"CPU/Linux"</span>
             <span class="chrome-spacer"></span>
             <div class="chrome-actions">
-                <A class="nav-button" href="/">"Tasks"</A>
-                <A class="nav-button" href="/experiments">"Experiment Lab"</A>
-                <A class="nav-button" href="/lql">"LQL Console"</A>
+                <RouteAnchor class="nav-button" href="/">"Tasks"</RouteAnchor>
+                <RouteAnchor class="nav-button" href="/experiments">"Experiment Lab"</RouteAnchor>
+                <RouteAnchor class="nav-button" href="/lql">"LQL Console"</RouteAnchor>
                 <details class="task-menu">
                     <summary class="ghost-button">"Tools"</summary>
                     <div class="task-menu-panel">
-                        <A class="nav-button" href="/explorer">"Explorer Describe"</A>
-                        <A class="nav-button" href="/batch-dla">"Batch DLA"</A>
+                        <RouteAnchor class="nav-button" href="/explorer">"Explorer Describe"</RouteAnchor>
+                        <RouteAnchor class="nav-button" href="/batch-dla">"Batch DLA"</RouteAnchor>
                     </div>
                 </details>
             </div>
         </header>
+    }
+}
+
+#[component]
+fn RouteAnchor(class: &'static str, href: &'static str, children: Children) -> impl IntoView {
+    let navigate = use_navigate();
+
+    view! {
+        <a
+            class=class
+            href=href
+            on:click=move |ev| {
+                if ev.default_prevented()
+                    || ev.button() != 0
+                    || ev.meta_key()
+                    || ev.ctrl_key()
+                    || ev.shift_key()
+                    || ev.alt_key()
+                {
+                    return;
+                }
+                ev.prevent_default();
+                navigate(
+                    href,
+                    NavigateOptions {
+                        resolve: false,
+                        ..Default::default()
+                    },
+                );
+            }
+        >
+            {children()}
+        </a>
     }
 }
 
@@ -248,25 +330,124 @@ fn TaskChooser() -> impl IntoView {
                         "Pick the task in front of you. Secondary analysis tools stay behind the Tools menu."
                     </p>
                     <div class="task-grid">
-                        <A class="task-card" href="/experiments">
+                        <RouteAnchor class="task-card" href="/experiments">
                             <span class="metric">"Scientific protocol"</span>
                             <h2>"Experiment Lab"</h2>
                             <p class="muted">
                                 "Run Rust-native experiments and inspect evidence artifacts."
                             </p>
-                        </A>
-                        <A class="task-card" href="/lql">
+                        </RouteAnchor>
+                        <RouteAnchor class="task-card" href="/lql">
                             <span class="metric">"Query workspace"</span>
                             <h2>"LQL Console"</h2>
                             <p class="muted">
                                 "Write, run, save, and inspect LQL queries against a vindex."
                             </p>
-                        </A>
+                        </RouteAnchor>
                     </div>
                 </div>
             </section>
             <ArtifactBar status="projection: choose one focused work surface".to_string()/>
         </>
+    }
+}
+
+#[component]
+fn StackedWorkbench() -> impl IntoView {
+    let (active_task, set_active_task) = create_signal("Experiment Lab");
+
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ = set_active_task;
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        let set_active_task = set_active_task;
+        create_effect(move |_| {
+            let win = window();
+
+            let update_active: std::rc::Rc<dyn Fn()> = {
+                let win = win.clone();
+                std::rc::Rc::new(move || {
+                    let viewport_mid = win
+                        .inner_height()
+                        .ok()
+                        .and_then(|height| height.as_f64())
+                        .unwrap_or(0.0)
+                        / 2.0;
+                    let scroll_y = win.scroll_y().ok().unwrap_or(0.0);
+                    let viewport_mid_in_doc = scroll_y + viewport_mid;
+                    let shared_taskbar_mid = win
+                        .inner_height()
+                        .ok()
+                        .and_then(|height| height.as_f64())
+                        .map(|height| height - 22.0)
+                        .unwrap_or(0.0);
+                    if viewport_mid_in_doc < shared_taskbar_mid {
+                        set_active_task.set("Experiment Lab");
+                    } else {
+                        set_active_task.set("LQL Console");
+                    }
+                })
+            };
+
+            update_active();
+
+            let scroll_update = update_active.clone();
+            let scroll_listener = Closure::<dyn FnMut()>::new(move || {
+                scroll_update();
+            });
+            let resize_update = update_active.clone();
+            let resize_listener = Closure::<dyn FnMut()>::new(move || {
+                resize_update();
+            });
+
+            let _ = win.add_event_listener_with_callback(
+                "scroll",
+                scroll_listener.as_ref().unchecked_ref(),
+            );
+            let _ = win.add_event_listener_with_callback(
+                "resize",
+                resize_listener.as_ref().unchecked_ref(),
+            );
+
+            on_cleanup(move || {
+                let _ = win.remove_event_listener_with_callback(
+                    "scroll",
+                    scroll_listener.as_ref().unchecked_ref(),
+                );
+                let _ = win.remove_event_listener_with_callback(
+                    "resize",
+                    resize_listener.as_ref().unchecked_ref(),
+                );
+                drop(scroll_listener);
+                drop(resize_listener);
+            });
+        });
+    }
+
+    view! {
+        <div class="stacked-workbench">
+            <ExperimentLab embedded=true/>
+            <header class="chrome-bar shared-taskbar">
+                <RouteAnchor class="brand" href="/">"LARQL"</RouteAnchor>
+                <span class="chrome-title">{move || active_task.get()}</span>
+                <span class="chip">"CPU/Linux"</span>
+                <span class="chrome-spacer"></span>
+                <div class="chrome-actions">
+                    <RouteAnchor class="nav-button" href="/tasks">"Tasks"</RouteAnchor>
+                    <RouteAnchor class="nav-button" href="/experiments">"Experiment Lab"</RouteAnchor>
+                    <RouteAnchor class="nav-button" href="/lql">"LQL Console"</RouteAnchor>
+                    <details class="task-menu">
+                        <summary class="ghost-button">"Tools"</summary>
+                        <div class="task-menu-panel">
+                            <RouteAnchor class="nav-button" href="/explorer">"Explorer Describe"</RouteAnchor>
+                            <RouteAnchor class="nav-button" href="/batch-dla">"Batch DLA"</RouteAnchor>
+                        </div>
+                    </details>
+                </div>
+            </header>
+            <LqlConsole embedded=true/>
+        </div>
     }
 }
 

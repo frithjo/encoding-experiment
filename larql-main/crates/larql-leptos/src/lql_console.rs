@@ -3,7 +3,7 @@ use leptos::*;
 use super::*;
 
 #[component]
-pub(crate) fn LqlConsole() -> impl IntoView {
+pub(crate) fn LqlConsole(#[prop(optional)] embedded: bool) -> impl IntoView {
     let (workspace_path, set_workspace_path) = create_signal(String::new());
     let (query, set_query) = create_signal("STATS".to_string());
     let (loading, set_loading) = create_signal(false);
@@ -65,10 +65,20 @@ pub(crate) fn LqlConsole() -> impl IntoView {
         set_error.set(None);
     };
 
+    let workspace_class = if embedded {
+        "workspace stacked-surface"
+    } else {
+        "workspace"
+    };
+
     view! {
         <>
-            <WorkbenchChrome active_task="LQL Console"/>
-            <section class="workspace">
+            {if embedded {
+                view! {}.into_view()
+            } else {
+                view! { <WorkbenchChrome active_task="LQL Console"/> }.into_view()
+            }}
+            <section class=workspace_class>
                 <div class="lql-grid">
                     <div class="panel">
                         <div class="eyebrow">"Projected query surface"</div>
@@ -188,7 +198,11 @@ pub(crate) fn LqlConsole() -> impl IntoView {
                     </details>
                 </div>
             </section>
-            <ArtifactBar status="projection: LQL query facade over Rust executor".to_string()/>
+            {if embedded {
+                view! {}.into_view()
+            } else {
+                view! { <ArtifactBar status="projection: LQL query facade over Rust executor".to_string()/> }.into_view()
+            }}
         </>
     }
 }

@@ -47,7 +47,11 @@
             color: inherit;
         }
 
-        .app-shell,
+        .app-shell {
+            min-height: 100vh;
+            background: rgba(4, 27, 33, 0.72);
+        }
+
         .wasm-fallback {
             min-height: 100vh;
             display: grid;
@@ -174,6 +178,21 @@
         .workspace {
             min-width: 0;
             padding: 14px;
+        }
+
+        .stacked-workbench {
+            min-height: calc((100svh - 44px) * 2 + 44px);
+        }
+
+        .stacked-surface {
+            min-height: calc(100svh - 44px);
+            padding-top: 10px;
+            padding-bottom: 16px;
+        }
+
+        .shared-taskbar {
+            border-top: 1px solid var(--line);
+            border-bottom: 1px solid var(--line);
         }
 
         .task-chooser {
@@ -390,7 +409,6 @@
         }
 
         @media (max-width: 860px) {
-            .app-shell,
             .wasm-fallback {
                 grid-template-rows: auto 1fr auto;
             }
@@ -411,10 +429,19 @@
             .workspace {
                 padding: 10px;
             }
+
+            .stacked-workbench {
+                min-height: 0;
+            }
+
+            .stacked-surface {
+                min-height: auto;
+            }
         }
     </style>
     <script>
         window.addEventListener("TrunkApplicationStarted", function () {
+            console.info("[LARQL] WASM activated; runtime logging enabled.");
             const fallback = document.getElementById("wasm-fallback");
             if (fallback) {
                 fallback.hidden = true;
@@ -436,12 +463,12 @@
                 <h1>LARQL Workbench</h1>
                 <p class="muted">Loading the focused Experiment Lab and LQL Console.</p>
                 <div class="task-grid">
-                    <a class="task-card" href="/experiments">
+                    <a class="task-card" href="?route=experiments">
                         <span class="metric">Scientific protocol</span>
                         <h2>Experiment Lab</h2>
                         <p class="muted">Run evidence-producing Rust-native experiments.</p>
                     </a>
-                    <a class="task-card" href="/lql">
+                    <a class="task-card" href="?route=lql">
                         <span class="metric">Query workspace</span>
                         <h2>LQL Console</h2>
                         <p class="muted">Write, run, and inspect LQL queries.</p>
