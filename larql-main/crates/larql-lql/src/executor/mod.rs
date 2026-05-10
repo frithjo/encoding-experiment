@@ -53,6 +53,14 @@ pub(crate) enum Backend {
     None,
 }
 
+/// Output format mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OutputMode {
+    #[default]
+    Text,
+    Json,
+}
+
 /// Session state for the REPL / batch executor.
 pub struct Session {
     pub(crate) backend: Backend,
@@ -77,10 +85,8 @@ pub struct Session {
     /// `refine_demo` 10-fact run where every prompt returned the
     /// last-installed target before this cache existed).
     #[allow(dead_code)]
-    pub(crate) raw_install_residuals: std::collections::HashMap<
-        (usize, usize),
-        larql_vindex::ndarray::Array1<f32>,
-    >,
+    pub(crate) raw_install_residuals:
+        std::collections::HashMap<(usize, usize), larql_vindex::ndarray::Array1<f32>>,
 }
 
 /// Active patch recording session (between BEGIN PATCH and SAVE PATCH).
@@ -104,6 +110,17 @@ impl Session {
             decoy_residual_cache: std::collections::HashMap::new(),
             raw_install_residuals: std::collections::HashMap::new(),
         }
+    }
+
+    /// Connect to a remote LQL server. This is a convenience method that
+    /// parses and executes a USE REMOTE statement, eliminating the need
+    /// for callers to manually construct and parse the statement.
+    pub fn connect_remote(&mut self, url: &str) -> Result<(), LqlError> {
+        let use_remote = crate::parse(&format!("USE REMOTE {};", crate::ast::quote_string(url)))
+            .map_err(|e| LqlError::exec("Failed to parse USE REMOTE statement", e))?;
+        self.execute(&use_remote)
+            .map_err(|e| LqlError::exec("Failed to connect to remote server", e))?;
+        Ok(())
     }
 
     /// Ensure a patch session is active. If not, auto-start an anonymous one.
@@ -134,62 +151,168 @@ impl Session {
             }
             Statement::Use { target } => self.exec_use(target),
             Statement::Stats { vindex } => self.exec_stats(vindex.as_deref()),
-            Statement::Walk { prompt, top, layers, mode, compare } => {
-                self.exec_walk(prompt, *top, layers.as_ref(), *mode, *compare)
-            }
-            Statement::Describe { entity, band, layer, relations_only, mode } => {
-                self.exec_describe(entity, *band, *layer, *relations_only, *mode)
-            }
-            Statement::Select { source, fields, conditions, nearest, order, limit } => {
-                match source {
-                    SelectSource::Edges => self.exec_select(fields, conditions, nearest.as_ref(), order.as_ref(), *limit),
-                    SelectSource::Features => self.exec_select_features(conditions, *limit),
-                    SelectSource::Entities => self.exec_select_entities(conditions, *limit),
-                    SelectSource::Tokens => self.exec_select_tokens(conditions, *limit),
+            Statement::Walk {
+                prompt,
+                top,
+                layers,
+                mode,
+                compare,
+            } => self.exec_walk(prompt, *top, layers.as_ref(), *mode, *compare),
+            Statement::Describe {
+                entity,
+                band,
+                layer,
+                relations_only,
+                mode,
+                stream,
+            } => self.exec_describe(entity, *band, *layer, *relations_only, *mode, *stream),
+            Statement::Select {
+                source,
+                fields,
+                conditions,
+                nearest,
+                order,
+                limit,
+            } => match source {
+                SelectSource::Edges => {
+                    self.exec_select(fields, conditions, nearest.as_ref(), order.as_ref(), *limit)
                 }
-            }
-            Statement::Explain { prompt, mode, layers, band, verbose, top, relations_only, with_attention } => {
-                match mode {
-                    ExplainMode::Walk => self.exec_explain(prompt, layers.as_ref(), *verbose),
-                    ExplainMode::Infer => self.exec_infer_trace(prompt, *top, *band, *relations_only, *with_attention),
+                SelectSource::Features => self.exec_select_features(conditions, *limit),
+                SelectSource::Entities => self.exec_select_entities(conditions, *limit),
+                SelectSource::Tokens => self.exec_select_tokens(conditions, *limit),
+            },
+            Statement::Explain {
+                prompt,
+                mode,
+                layers,
+                band,
+                verbose,
+                top,
+                relations_only,
+                with_attention,
+            } => match mode {
+                ExplainMode::Walk => self.exec_explain(prompt, layers.as_ref(), *verbose),
+                ExplainMode::Infer => {
+                    self.exec_infer_trace(prompt, *top, *band, *relations_only, *with_attention)
                 }
-            }
-            Statement::ShowRelations { layer, with_examples, mode } => {
-                self.exec_show_relations(*layer, *with_examples, *mode)
-            }
+            },
+            Statement::ShowRelations {
+                layer,
+                with_examples,
+                mode,
+            } => self.exec_show_relations(*layer, *with_examples, *mode),
             Statement::ShowLayers { range } => self.exec_show_layers(range.as_ref()),
-            Statement::ShowFeatures { layer, conditions, limit } => {
-                self.exec_show_features(*layer, conditions, *limit)
-            }
-            Statement::ShowEntities { layer, limit } => {
-                self.exec_show_entities(*layer, *limit)
-            }
-            Statement::ShowTokens { layer, conditions, verbose, group_by, order_by, limit, export_format } => {
-                self.exec_show_tokens(*layer, conditions, *verbose, *group_by, *order_by, *limit, *export_format)
-            }
+            Statement::ShowFeatures {
+                layer,
+                conditions,
+                limit,
+            } => self.exec_show_features(*layer, conditions, *limit),
+            Statement::ShowEntities { layer, limit } => self.exec_show_entities(*layer, *limit),
+            Statement::ShowTokens {
+                layer,
+                conditions,
+                verbose,
+                group_by,
+                order_by,
+                limit,
+                export_format,
+            } => self.exec_show_tokens(
+                *layer,
+                conditions,
+                *verbose,
+                *group_by,
+                *order_by,
+                *limit,
+                *export_format,
+            ),
             Statement::ShowModels => self.exec_show_models(),
-            Statement::Extract { model, output, components, layers, extract_level } => {
-                self.exec_extract(model, output, components.as_deref(), layers.as_ref(), *extract_level)
-            }
-            Statement::Compile { vindex, output, format, target, on_conflict } => {
-                self.exec_compile(
-                    vindex, output, *format, *target, *on_conflict,
-                )
-            }
-            Statement::Diff { a, b, layer, relation, limit, into_patch } => {
-                self.exec_diff(a, b, *layer, relation.as_deref(), *limit, into_patch.as_deref())
-            }
-            Statement::Insert { entity, relation, target, layer, confidence, alpha } => {
+            Statement::Extract {
+                model,
+                output,
+                components,
+                layers,
+                extract_level,
+            } => self.exec_extract(
+                model,
+                output,
+                components.as_deref(),
+                layers.as_ref(),
+                *extract_level,
+            ),
+            Statement::Compile {
+                vindex,
+                output,
+                format,
+                target,
+                on_conflict,
+            } => self.exec_compile(vindex, output, *format, *target, *on_conflict),
+            Statement::Diff {
+                a,
+                b,
+                layer,
+                relation,
+                limit,
+                into_patch,
+                into_report,
+            } => self.exec_diff(
+                a,
+                b,
+                *layer,
+                relation.as_deref(),
+                *limit,
+                into_patch.as_deref(),
+                into_report.as_deref(),
+            ),
+            Statement::Export {
+                vindex,
+                output,
+                format,
+            } => self.exec_export(vindex, output, *format),
+            Statement::Insert {
+                entity,
+                relation,
+                target,
+                layer,
+                confidence,
+                alpha,
+            } => {
                 let mut out = self.ensure_patch_session();
                 out.extend(self.exec_insert(
-                    entity, relation, target,
-                    *layer, *confidence, *alpha,
+                    entity,
+                    relation,
+                    target,
+                    *layer,
+                    *confidence,
+                    *alpha,
                 )?);
                 Ok(out)
             }
-            Statement::Infer { prompt, top, compare } => {
-                self.exec_infer(prompt, *top, *compare)
-            }
+            Statement::Infer {
+                prompt,
+                top,
+                compare,
+            } => self.exec_infer(prompt, *top, *compare),
+            Statement::AnalyzeInfer {
+                prompt,
+                mode,
+                truth_spans,
+                materially_false_spans,
+                coherence_markers,
+                max_generated_tokens,
+                ridge_dead_zone,
+                top,
+                format,
+            } => self.exec_analyze_infer(
+                prompt,
+                *mode,
+                truth_spans,
+                materially_false_spans,
+                coherence_markers,
+                *max_generated_tokens,
+                *ridge_dead_zone,
+                *top,
+                *format,
+            ),
             Statement::Delete { conditions } => {
                 let mut out = self.ensure_patch_session();
                 out.extend(self.exec_delete(conditions)?);
@@ -200,9 +323,11 @@ impl Session {
                 out.extend(self.exec_update(set, conditions)?);
                 Ok(out)
             }
-            Statement::Merge { source, target, conflict } => {
-                self.exec_merge(source, target.as_deref(), *conflict)
-            }
+            Statement::Merge {
+                source,
+                target,
+                conflict,
+            } => self.exec_merge(source, target.as_deref(), *conflict),
             // ── Patch commands ──
             Statement::BeginPatch { path } => self.exec_begin_patch(path),
             Statement::SavePatch => self.exec_save_patch(),
@@ -210,9 +335,21 @@ impl Session {
             Statement::ShowPatches => self.exec_show_patches(),
             Statement::RemovePatch { path } => self.exec_remove_patch(path),
             // ── Trace commands ──
-            Statement::Trace { prompt, answer, decompose, layers, positions, save } => {
-                self.exec_trace(prompt, answer.as_deref(), *decompose, layers.as_ref(), *positions, save.as_deref())
-            }
+            Statement::Trace {
+                prompt,
+                answer,
+                decompose,
+                layers,
+                positions,
+                save,
+            } => self.exec_trace(
+                prompt,
+                answer.as_deref(),
+                *decompose,
+                layers.as_ref(),
+                *positions,
+                save.as_deref(),
+            ),
         }
     }
 
@@ -220,49 +357,129 @@ impl Session {
     fn execute_remote(&mut self, stmt: &Statement) -> Result<Vec<String>, LqlError> {
         match stmt {
             Statement::Use { target } => self.exec_use(target),
-            Statement::Describe { entity, band, layer, relations_only, mode } => {
-                self.remote_describe(entity, *band, *layer, *relations_only, *mode)
-            }
-            Statement::Walk { prompt, top, layers, .. } => {
-                self.remote_walk(prompt, *top, layers.as_ref())
-            }
-            Statement::Infer { prompt, top, compare } => {
-                self.remote_infer(prompt, *top, *compare)
-            }
+            Statement::Describe {
+                entity,
+                band,
+                layer,
+                relations_only,
+                mode,
+                stream,
+            } => self.remote_describe(entity, *band, *layer, *relations_only, *mode, *stream),
+            Statement::Walk {
+                prompt,
+                top,
+                layers,
+                mode,
+                compare,
+            } => self.remote_walk(prompt, *top, layers.as_ref(), *mode, *compare),
+            Statement::Infer {
+                prompt,
+                top,
+                compare,
+            } => self.remote_infer(prompt, *top, *compare),
+            Statement::AnalyzeInfer {
+                prompt,
+                mode,
+                truth_spans,
+                materially_false_spans,
+                coherence_markers,
+                max_generated_tokens,
+                ridge_dead_zone,
+                top,
+                format,
+            } => self.remote_analyze_infer(
+                prompt,
+                *mode,
+                truth_spans,
+                materially_false_spans,
+                coherence_markers,
+                *max_generated_tokens,
+                *ridge_dead_zone,
+                *top,
+                *format,
+            ),
             Statement::Stats { .. } => self.remote_stats(),
-            Statement::ShowRelations { mode, with_examples, .. } => self.remote_show_relations(*mode, *with_examples),
+            Statement::ShowRelations {
+                mode,
+                with_examples,
+                ..
+            } => self.remote_show_relations(*mode, *with_examples),
             Statement::ShowLayers { range } => self.remote_show_layers(range.as_ref()),
-            Statement::ShowFeatures { layer, conditions, limit } => {
-                self.remote_show_features(*layer, conditions, *limit)
-            }
-            Statement::ShowEntities { layer, limit } => {
-                self.remote_show_entities(*layer, *limit)
-            }
-            Statement::Insert { entity, relation, target, layer, confidence, alpha } => {
-                self.remote_insert(entity, relation, target, *layer, *confidence, *alpha)
-            }
+            Statement::ShowFeatures {
+                layer,
+                conditions,
+                limit,
+            } => self.remote_show_features(*layer, conditions, *limit),
+            Statement::ShowEntities { layer, limit } => self.remote_show_entities(*layer, *limit),
+            Statement::Insert {
+                entity,
+                relation,
+                target,
+                layer,
+                confidence,
+                alpha,
+            } => self.remote_insert(entity, relation, target, *layer, *confidence, *alpha),
             Statement::Delete { conditions } => self.remote_delete(conditions),
             Statement::Update { set, conditions } => self.remote_update(set, conditions),
-            Statement::Select { source: _, fields, conditions, nearest, order, limit } => {
-                let field_names: Vec<String> = fields.iter().map(|f| match f {
-                    crate::ast::Field::Named(s) => s.clone(),
-                    crate::ast::Field::Star => "*".to_string(),
-                }).collect();
-                self.remote_select(conditions, *limit, &field_names, nearest.as_ref(), order.as_ref())
+            Statement::Select {
+                source: _,
+                fields,
+                conditions,
+                nearest,
+                order,
+                limit,
+            } => {
+                let field_names: Vec<String> = fields
+                    .iter()
+                    .map(|f| match f {
+                        crate::ast::Field::Named(s) => s.clone(),
+                        crate::ast::Field::Star => "*".to_string(),
+                    })
+                    .collect();
+                self.remote_select(
+                    conditions,
+                    *limit,
+                    &field_names,
+                    nearest.as_ref(),
+                    order.as_ref(),
+                )
             }
-            Statement::Explain { prompt, mode, layers, band, verbose: _, top, relations_only, with_attention } => {
-                match mode {
-                    ExplainMode::Infer => self.remote_explain_infer(prompt, *top, *band, *relations_only, *with_attention),
-                    ExplainMode::Walk => self.remote_walk(prompt, *top, layers.as_ref()),
+            Statement::Explain {
+                prompt,
+                mode,
+                layers,
+                band,
+                verbose: _,
+                top,
+                relations_only,
+                with_attention,
+            } => match mode {
+                ExplainMode::Infer => {
+                    self.remote_explain_infer(prompt, *top, *band, *relations_only, *with_attention)
                 }
-            }
+                ExplainMode::Walk => self.remote_walk(prompt, *top, layers.as_ref(), None, false),
+            },
             Statement::ApplyPatch { path } => self.remote_apply_local_patch(path),
             Statement::ShowPatches => self.remote_show_patches(),
             Statement::RemovePatch { path } => self.remote_remove_local_patch(path),
             Statement::ShowModels => self.remote_show_models(),
-            Statement::ShowTokens { layer, conditions, verbose, group_by, order_by, limit, export_format } => {
-                self.remote_show_tokens(*layer, conditions, *verbose, *group_by, *order_by, *limit, *export_format)
-            }
+            Statement::ShowTokens {
+                layer,
+                conditions,
+                verbose,
+                group_by,
+                order_by,
+                limit,
+                export_format,
+            } => self.remote_show_tokens(
+                *layer,
+                conditions,
+                *verbose,
+                *group_by,
+                *order_by,
+                *limit,
+                *export_format,
+            ),
             Statement::Pipe { left, right } => {
                 let mut out = self.execute(left)?;
                 out.extend(self.execute(right)?);
@@ -270,7 +487,7 @@ impl Session {
             }
             _ => Err(LqlError::Execution(
                 "this statement is not supported on a remote backend. \
-                 Supported: DESCRIBE, WALK, INFER, EXPLAIN INFER, EXPLAIN WALK, SELECT, STATS, \
+                 Supported: DESCRIBE, WALK, INFER, ANALYZE INFER, EXPLAIN INFER, EXPLAIN WALK, SELECT, STATS, \
                  SHOW RELATIONS, SHOW MODELS, SHOW TOKENS, INSERT, DELETE, UPDATE, \
                  APPLY PATCH, SHOW PATCHES, REMOVE PATCH, USE. \
                  TRACE requires a local vindex (USE \"path.vindex\")."
@@ -292,7 +509,10 @@ impl Session {
             path: path.to_string(),
             operations: if self.auto_patch {
                 // Keep existing operations from auto-patch
-                self.patch_recording.take().map(|r| r.operations).unwrap_or_default()
+                self.patch_recording
+                    .take()
+                    .map(|r| r.operations)
+                    .unwrap_or_default()
             } else {
                 Vec::new()
             },
@@ -331,14 +551,18 @@ impl Session {
 
         let (ins, upd, del) = patch.counts();
         let path = PathBuf::from(&recording.path);
-        patch.save(&path)
+        patch
+            .save(&path)
             .map_err(|e| LqlError::exec("failed to save patch", e))?;
 
         self.auto_patch = false;
 
         Ok(vec![format!(
             "Saved: {} ({} inserts, {} updates, {} deletes)",
-            path.display(), ins, upd, del,
+            path.display(),
+            ins,
+            upd,
+            del,
         )])
     }
 
@@ -379,22 +603,41 @@ impl Session {
                 let name = patch.description.as_deref().unwrap_or("(unnamed)");
                 out.push(format!(
                     "  {}. {:<40} {} ops ({} ins, {} upd, {} del)",
-                    i + 1, name, patch.len(), ins, upd, del,
+                    i + 1,
+                    name,
+                    patch.len(),
+                    ins,
+                    upd,
+                    del,
                 ));
             }
             if patched.num_overrides() > 0 && patched.patches.is_empty() {
-                out.push(format!("  (anonymous session: {} overrides)", patched.num_overrides()));
+                out.push(format!(
+                    "  (anonymous session: {} overrides)",
+                    patched.num_overrides()
+                ));
             }
             let file_total: usize = patched.patches.iter().map(|p| p.len()).sum();
             let overlay_total = patched.num_overrides();
             if file_total > 0 || overlay_total > 0 {
-                out.push(format!("  Total: {} from files, {} in session", file_total, overlay_total));
+                out.push(format!(
+                    "  Total: {} from files, {} in session",
+                    file_total, overlay_total
+                ));
             }
         }
 
         if let Some(ref recording) = self.patch_recording {
-            let label = if recording.path.is_empty() { "(anonymous)" } else { &recording.path };
-            out.push(format!("  Recording: {} ({} ops pending)", label, recording.operations.len()));
+            let label = if recording.path.is_empty() {
+                "(anonymous)"
+            } else {
+                &recording.path
+            };
+            out.push(format!(
+                "  Recording: {} ({} ops pending)",
+                label,
+                recording.operations.len()
+            ));
         }
 
         Ok(out)
@@ -406,9 +649,10 @@ impl Session {
             _ => return Err(LqlError::NoBackend),
         };
 
-        let pos = patched.patches.iter().position(|p| {
-            p.description.as_deref() == Some(path)
-        });
+        let pos = patched
+            .patches
+            .iter()
+            .position(|p| p.description.as_deref() == Some(path));
         match pos {
             Some(i) => {
                 patched.remove_patch(i);
@@ -421,9 +665,7 @@ impl Session {
     // ── Backend accessors ──
 
     /// Get readonly access to the patched vindex (base + overlay).
-    pub(crate) fn require_patched(
-        &self,
-    ) -> Result<&larql_vindex::PatchedVindex, LqlError> {
+    pub(crate) fn require_patched(&self) -> Result<&larql_vindex::PatchedVindex, LqlError> {
         match &self.backend {
             Backend::Vindex { patched, .. } => Ok(patched),
             Backend::Weight { model_id, .. } => Err(LqlError::Execution(format!(
@@ -439,9 +681,21 @@ impl Session {
     /// Get mutable access to the patched overlay.
     pub(crate) fn require_patched_mut(
         &mut self,
-    ) -> Result<(&Path, &larql_vindex::VindexConfig, &mut larql_vindex::PatchedVindex), LqlError> {
+    ) -> Result<
+        (
+            &Path,
+            &larql_vindex::VindexConfig,
+            &mut larql_vindex::PatchedVindex,
+        ),
+        LqlError,
+    > {
         match &mut self.backend {
-            Backend::Vindex { path, config, patched, .. } => Ok((path, config, patched)),
+            Backend::Vindex {
+                path,
+                config,
+                patched,
+                ..
+            } => Ok((path, config, patched)),
             Backend::Weight { model_id, .. } => Err(LqlError::Execution(format!(
                 "mutation requires a vindex. Extract first:\n  \
                  EXTRACT MODEL \"{}\" INTO \"{}.vindex\"",
@@ -455,10 +709,21 @@ impl Session {
     /// Get readonly access to path + config + base index.
     pub(crate) fn require_vindex(
         &self,
-    ) -> Result<(&Path, &larql_vindex::VindexConfig, &larql_vindex::PatchedVindex), LqlError>
-    {
+    ) -> Result<
+        (
+            &Path,
+            &larql_vindex::VindexConfig,
+            &larql_vindex::PatchedVindex,
+        ),
+        LqlError,
+    > {
         match &self.backend {
-            Backend::Vindex { path, config, patched, .. } => Ok((path, config, patched)),
+            Backend::Vindex {
+                path,
+                config,
+                patched,
+                ..
+            } => Ok((path, config, patched)),
             Backend::Weight { model_id, .. } => Err(LqlError::Execution(format!(
                 "this operation requires a vindex. Extract first:\n  \
                  EXTRACT MODEL \"{}\" INTO \"{}.vindex\"",
@@ -471,7 +736,10 @@ impl Session {
 
     pub(crate) fn relation_classifier(&self) -> Option<&RelationClassifier> {
         match &self.backend {
-            Backend::Vindex { relation_classifier, .. } => relation_classifier.as_ref(),
+            Backend::Vindex {
+                relation_classifier,
+                ..
+            } => relation_classifier.as_ref(),
             _ => None,
         }
     }
@@ -518,4 +786,3 @@ pub(crate) const CANONICAL_DECOY_PROMPTS: &[&str] = &[
     "He looked at the sky",
     "The children played in the",
 ];
-

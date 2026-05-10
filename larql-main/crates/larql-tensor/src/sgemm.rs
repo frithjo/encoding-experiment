@@ -24,12 +24,20 @@ pub fn matmul_f32(a: ArrayView2<f32>, b: ArrayView2<f32>) -> Array2<f32> {
 
     unsafe {
         matrixmultiply::sgemm(
-            m, k, n,
+            m,
+            k,
+            n,
             1.0,
-            a.as_ptr(), arsc, acsc,
-            b.as_ptr(), brsc, bcsc,
+            a.as_ptr(),
+            arsc,
+            acsc,
+            b.as_ptr(),
+            brsc,
+            bcsc,
             0.0,
-            c.as_mut_ptr(), crsc, ccsc,
+            c.as_mut_ptr(),
+            crsc,
+            ccsc,
         );
     }
 
@@ -41,7 +49,11 @@ pub fn matmul_f32(a: ArrayView2<f32>, b: ArrayView2<f32>) -> Array2<f32> {
 pub fn matmul_transb_f32(a: ArrayView2<f32>, b: ArrayView2<f32>) -> Array2<f32> {
     let (m, k) = (a.nrows(), a.ncols());
     let (n, kb) = (b.nrows(), b.ncols());
-    assert_eq!(k, kb, "matmul_transb shape mismatch: {}x{} * ({}x{})^T", m, k, n, kb);
+    assert_eq!(
+        k, kb,
+        "matmul_transb shape mismatch: {}x{} * ({}x{})^T",
+        m, k, n, kb
+    );
 
     let mut c = Array2::<f32>::zeros((m, n));
 
@@ -53,12 +65,20 @@ pub fn matmul_transb_f32(a: ArrayView2<f32>, b: ArrayView2<f32>) -> Array2<f32> 
 
     unsafe {
         matrixmultiply::sgemm(
-            m, k, n,
+            m,
+            k,
+            n,
             1.0,
-            a.as_ptr(), arsc, acsc,
-            b.as_ptr(), brsc_trans, bcsc_trans,
+            a.as_ptr(),
+            arsc,
+            acsc,
+            b.as_ptr(),
+            brsc_trans,
+            bcsc_trans,
             0.0,
-            c.as_mut_ptr(), crsc, ccsc,
+            c.as_mut_ptr(),
+            crsc,
+            ccsc,
         );
     }
 

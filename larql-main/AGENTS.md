@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 LARQL decompiles transformer model weights into a **vindex** — a directory of mmap'd files that can be queried like a graph database. **LQL** (Lazarus Query Language) is the SQL-like surface for browsing, mutating, and recompiling that knowledge. The core claim: the model *is* the database, so edits are structural (patch overlays on gate/down matrices), not fine-tuning.
 
+See [VISION.md](VISION.md) for the core analytic framework vision. See [docs/ui/README.md](docs/ui/README.md) for UI strategy and interface guidance.
+
 Three extraction levels gate which LQL statements work: `browse` (DESCRIBE/WALK/SELECT), `inference` (+INFER), `all` (+COMPILE). Patches (`.vlp` JSON files) stack onto a readonly base vindex — INSERT/DELETE/UPDATE auto-start a patch; base files are never mutated.
 
 ## Workspace layout
@@ -20,15 +22,23 @@ larql-compute     CPU/Metal matmul backends, pipeline
 larql-vindex      vindex lifecycle: extract, load, query, mutate, patch, save, Vindexfile
     ↓
 larql-core        graph algorithms (merge, diff, BFS, pagerank, shortest-path)
-larql-inference   forward pass, BLAS-fused attention, Metal GPU, WalkFfn, trace
+larql-inference   forward pass, BLAS-fused attention, Metal GPU, WalkFfn, trace,
+                  structured analysis API for scientific attribution
     ↓
-larql-lql         lexer/parser/executor/REPL + USE REMOTE client
+larql-lql         lexer/parser/executor/REPL + USE REMOTE client + ANALYZE statements
     ↓
-larql-server      HTTP + gRPC server serving vindexes
+larql-server      HTTP + gRPC server serving vindexes (transport adapter for analysis)
 larql-cli         top-level `larql` binary (every subcommand lives in commands/)
 larql-python      PyO3 bindings (maturin-built, module name `larql._native`)
-kv-cache-benchmark    standalone benchmark crate
 ```
+
+**Canonical Flow for Scientific Analysis:**
+- `larql-inference`: Exposes structured analysis API (e.g., batch_dla_scan semantics)
+- `larql-lql`: Parses ANALYZE statements, executes via structured analysis API, formats output
+- `larql-server`: Tool routes become transport adapters over the same analysis API
+- `larql-terminal-batch-dla`: Consumes analysis via LQL or server adapter
+
+**Key Invariant:** One experiment engine, one language surface, one transport surface. Scientific analysis semantics live in core crates (larql-inference), not in server routes or UI code.
 
 The CLI is a thin dispatcher: each `larql <cmd>` lives in [crates/larql-cli/src/commands/extraction/](crates/larql-cli/src/commands/extraction/) or [crates/larql-cli/src/commands/query/](crates/larql-cli/src/commands/query/) and is wired into the `Commands` enum in [crates/larql-cli/src/main.rs](crates/larql-cli/src/main.rs). `larql serve` exec's into `larql-server`. `larql repl` and `larql lql` delegate to `larql_lql::run_repl`/`run_statement`.
 
@@ -61,17 +71,96 @@ uv run --no-sync pytest tests/                       # binding + UI tests
 
 Or via the Makefile: `make python-setup | python-build | python-test | python-clean`.
 
+## Python SDK vs UI Split
+
+The Python package has been split into SDK-only and SDK+UI installation modes:
+
+**SDK only (minimal footprint):**
+```bash
+pip install larql
+```
+Installs only core bindings (numpy dependency). Use for programmatic access, data science, and integrations.
+
+**SDK + UI (interactive workbench):**
+```bash
+pip install "larql[ui]"
+```
+Installs SDK plus workbench UI (starlette, jinja2, uvicorn, python-multipart). Required for `larql-workbench` CLI.
+
+**Namespace migration:**
+- The `larql.ui` namespace has been removed. Use `larql_ui.ui` for UI imports.
+- The `larql` namespace remains stable for core SDK APIs (load, session, Vindex, WalkModel, etc.).
+- See [crates/larql-python/README.md](crates/larql-python/README.md), [docs/larql-python.md](docs/larql-python.md) for installation patterns and design details.
+
 ## Key architectural invariants
 
-- **Base vindexes are immutable.** All mutation flows through `PatchedVindex` (overlay) — see [crates/larql-vindex/src/patch/core.rs](crates/larql-vindex/src/patch/). `INSERT/DELETE/UPDATE` auto-start a patch; `SAVE PATCH` persists it as `.vlp` JSON. Never write through to base files.
+- **Provenance funds governance.** Runtime-admitted governance records must carry
+  hashes and capsules, not raw prose authority. User/model intent may enter the
+  system as channel-specific input, but it must be decomposed into governed,
+  hash-addressed records before it can authorize runtime change.
+- **Machines enter through enforceable policy.** Governed machine behavior lives
+  in `larql-governance` and is exposed through `larql machine ...`. New machine
+  rules should drain into deterministic CLI enforcement immediately; do not leave
+  production runtime rules as loose prose.
+- **Minted Rust is not innocent.** Public structs can become API, storage,
+  serialization, FFI, or authority surfaces. Machine-minted structs must carry
+  a type-need hash, classification, policy evidence hashes, compiler/parser
+  checks, and receipt capsules before admission.
+- **Encapsulation is a runtime invariant.** Production-facing runtime code should
+  keep emitters and callsites structured around expected records/capsules. Avoid
+  loose prose in runtime records, and split production files before they exceed
+  999 lines.
+- **Base vindexes are immutable.** All mutation flows through `PatchedVindex` (overlay) — see [crates/larql-vindex/src/patch/core.rs](crates/larql-vindex/src/patch/core.rs). `INSERT/DELETE/UPDATE` auto-start a patch; `SAVE PATCH` persists it as `.vlp` JSON. Never write through to base files.
 - **`COMPILE CURRENT INTO VINDEX`** bakes patches into a new standalone vindex by hardlinking base weight files (APFS fast path) and rewriting only `down_weights.bin` column-wise. No sidecar at load time.
 - **Storage is mmap-first.** Gate vectors, embeddings, down weights are zero-copy `mmap`'d. f16 is the default dtype (`--f16` halves size with negligible accuracy loss). Don't load entire tensors into RAM unless an operation requires it.
 - **Three extraction levels, not features.** `browse` (~3 GB), `inference` (~6 GB), `all` (~10 GB) — gated by `ExtractLevel` enum in [crates/larql-vindex/src/config/types.rs](crates/larql-vindex/src/config/types.rs). Check level before attempting an operation; fail loudly if weights aren't present.
 - **Walk FFN is sparse-by-design and can beat dense** (517ms vs 535ms on Gemma 4B) because gate KNN (K≈10) skips most of the 10,240 features per layer. If you touch FFN code, preserve this invariant — see [docs/ffn-graph-layer.md](docs/ffn-graph-layer.md).
 - **MXFP4 quantized MoE (GPT-OSS) has degraded DESCRIBE/WALK** due to 4-bit precision; `INFER` is the supported path. Don't assume all model families are equivalent — see [docs/vindex-operations-spec.md](docs/vindex-operations-spec.md).
 
+## Configuration System
+
+LARQL uses a centralized configuration system to eliminate hardcoded values and path dependencies. Configuration is loaded from multiple sources in priority order:
+
+1. Default values from config structs
+2. `config/default.toml` (committed defaults)
+3. `config/local.toml` (git-ignored local overrides)
+4. `.env` file (dotenv format, git-ignored)
+5. Environment variables with `LARQL__` prefix
+
+**Canonical Environment Variables:**
+- `LARQL_VINDEX__PATH` - Vindex path for loading vector index
+- `LARQL_MODEL__PATH` - Model path (HuggingFace model ID or local path)
+- `LARQL_HUGGINGFACE__TOKEN` - HuggingFace API token
+- `LARQL_HUGGINGFACE__CACHE_DIR` - HuggingFace cache directory (relative to home)
+- `LARQL_PATHS__HOME_DIR` - Home directory
+
+**Loading Configuration in Code:**
+```rust
+use larql_core::{load_config, AppConfig};
+
+let config = load_config()?;
+let vindex_path = &config.vindex.path;
+let model_path = &config.models.path;
+```
+
+**Breaking Changes (no backward compatibility):**
+- `HF_TOKEN` → Use `LARQL_HUGGINGFACE__TOKEN`
+- `HOME` → Use `LARQL_PATHS__HOME_DIR`
+- `VINDEX_PATH` → Use `LARQL_VINDEX__PATH`
+- `MODEL_PATH` → Use `LARQL_MODEL__PATH`
+
+See [docs/configuration.md](docs/configuration.md) for complete configuration guide.
+
+## Model Representation
+
+- **Equal model representation:** All experiments, tests, and documentation must support both bitnet and gemma models equally. When adding new experiments, ensure they work with both model families or clearly document model-specific requirements.
+- **Environment variable configuration:** Never hardcode model paths. Use `LARQL_VINDEX__PATH` or `LARQL_MODEL__PATH` environment variables with sensible defaults. See `.env.example` for standard environment variables.
+- **Model-agnostic defaults:** When providing default paths in code, prefer environment variable patterns over hardcoded paths. Document which models are supported in experiment READMEs.
+- **Multi-model testing:** When adding tests or experiments, verify they work with at least two different model families before considering the implementation complete.
+
 ## Where to find things
 
+- Configuration guide: [docs/configuration.md](docs/configuration.md)
 - LQL language spec: [docs/lql-spec.md](docs/lql-spec.md) (v0.3)
 - Vindex file format: [docs/vindex-format-spec.md](docs/vindex-format-spec.md)
 - Operations + patches: [docs/vindex-operations-spec.md](docs/vindex-operations-spec.md)

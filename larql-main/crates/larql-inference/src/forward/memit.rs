@@ -21,9 +21,9 @@
 //! distribution across L8-L12 on v11 TinyStories 115M. See
 //! `experiments/15_v11_model/RESULTS.md §20`.
 
-use ndarray::{Array1, Array2};
-use crate::model::ModelWeights;
 use super::trace::{capture_ffn_activation_matrix, estimate_ffn_covariance};
+use crate::model::ModelWeights;
+use ndarray::{Array1, Array2};
 
 /// A single fact to be compiled via MEMIT.
 #[derive(Debug, Clone)]
@@ -121,12 +121,7 @@ pub fn run_memit(
     // Tokenise covariance prompts once.
     let cov_tokens: Vec<Vec<u32>> = COVARIANCE_PROMPTS
         .iter()
-        .filter_map(|p| {
-            tokenizer
-                .encode(*p, true)
-                .ok()
-                .map(|e| e.ids.clone())
-        })
+        .filter_map(|p| tokenizer.encode(*p, true).ok().map(|e| e.ids.clone()))
         .collect();
 
     let mut results = Vec::new();
@@ -203,7 +198,9 @@ fn memit_solve_layer(
     // Verify W_down exists at this layer (the delta will be added to it).
     let w_down_key = weights.arch.ffn_down_key(layer);
     if !weights.tensors.contains_key(&w_down_key) {
-        return Err(format!("MEMIT: W_down not found at layer {layer} (key: {w_down_key})"));
+        return Err(format!(
+            "MEMIT: W_down not found at layer {layer} (key: {w_down_key})"
+        ));
     }
 
     // ── Step 3+4: Compute R (deltas) and K matrices ──
@@ -225,7 +222,11 @@ fn memit_solve_layer(
     for (i, fact) in facts.iter().enumerate() {
         let embed_row = weights.embed.row(fact.target_token_id as usize);
         let embed_norm: f32 = embed_row.iter().map(|v| v * v).sum::<f32>().sqrt();
-        let scale = if embed_norm > 1e-8 { target_alpha / embed_norm } else { 0.0 };
+        let scale = if embed_norm > 1e-8 {
+            target_alpha / embed_norm
+        } else {
+            0.0
+        };
         for j in 0..hidden {
             r_mat[[i, j]] = (embed_row[j] * scale) as f64;
         }

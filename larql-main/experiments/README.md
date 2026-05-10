@@ -1,0 +1,67 @@
+# Experiments
+
+Hypothesis-driven experiments using the vindex Python bindings.
+Each directory tests one idea.
+
+## Data Organization
+
+Model-specific data is organized in the `data/` directory:
+
+```
+data/
+├── bitnet_b1_58-large/
+│   ├── vindex/              # Vindex files for this model
+│   ├── results/             # Experiment results for this model
+│   └── config.json          # Model metadata
+└── <other-model>/
+    ├── vindex/
+    ├── results/
+    └── config.json
+```
+
+## Setup
+
+```bash
+cd crates/larql-python
+maturin develop --release
+```
+
+## Model Support
+
+All experiments support both BitNet and Gemma models. Set the `VINDEX_PATH` environment variable to select your model:
+
+```bash
+export VINDEX_PATH=data/bitnet_b1_58-large/vindex  # BitNet
+export VINDEX_PATH=output/gemma3-4b-v2.vindex      # Gemma
+```
+
+See [docs/model-governance.md](../docs/model-governance.md) for details on model representation policy and configuration.
+
+## Running Experiments
+
+Experiments take a vindex path as an argument:
+
+```bash
+python experiments/01_gate_synthesis/compare.py data/bitnet_b1_58-large/vindex
+```
+
+Results are automatically saved to the model-specific results directory.
+
+## Experiments
+
+### 01 — Gate Synthesis
+Can you synthesise a gate vector from scratch and have it match a forward pass residual?
+Compare heuristic synthesis (entity_embed * scale + relation_centre * weight) vs captured residual.
+
+### 02 — Manifold Dimensionality
+What's the true rank of the knowledge manifold? SVD of all gate vectors from knowledge layers.
+If 99% variance in 15D, compress 71 GB to 416 MB.
+
+### 07 — WASM Compute Engine
+Can embedding deterministic solvers (arithmetic, algebra, constraint satisfaction) directly in the
+inference path improve math benchmark accuracy? Phase 1: token-level interception with Python solvers.
+Phase 2: residual-level dispatch (research question). Phase 3: WASM runtime in Rust (conditional).
+
+### 03 — Build Knowledge Layer
+Can you construct L14-27 from Wikidata triples? Embed entities, assign to layers by relation type,
+write gate+down vectors. Run INFER — does "The capital of France is" produce Paris?

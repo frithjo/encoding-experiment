@@ -4,8 +4,8 @@
 //! from larql-models and wiring them into larql-compute's FullPipelineLayer.
 //! Both GPU and CPU paths use this — no duplicated param extraction.
 
-use larql_compute::{QuantWeight, QuantFormat, FullPipelineLayer};
 use crate::model::ModelWeights;
+use larql_compute::{FullPipelineLayer, QuantFormat, QuantWeight};
 
 /// Extract per-layer architecture parameters into a FullPipelineLayer.
 ///
@@ -33,28 +33,48 @@ pub fn build_arch_params<'a>(
     let layer_nq = arch.num_q_heads_for_layer(layer);
     let layer_nkv = arch.num_kv_heads_for_layer(layer);
     let rotary_frac = arch.rotary_fraction_for_layer(layer);
-    let rotary_dim = if rotary_frac >= 1.0 { 0 } else { (layer_hd as f64 * rotary_frac) as usize };
+    let rotary_dim = if rotary_frac >= 1.0 {
+        0
+    } else {
+        (layer_hd as f64 * rotary_frac) as usize
+    };
     let sw = if arch.is_sliding_window_layer(layer) {
         arch.sliding_window_size().unwrap_or(0)
     } else {
         0
     };
-    let layer_scalar = arch.layer_scalar_key(layer)
+    let layer_scalar = arch
+        .layer_scalar_key(layer)
         .and_then(|k| weights.vectors.get(&k))
         .and_then(|v| v.first().copied())
         .unwrap_or(0.0);
 
     FullPipelineLayer {
-        wq, wk, wv, wo,
-        gate, up, down,
-        input_norm: weights.vectors.get(&arch.input_layernorm_key(layer))
-            .map(|v| v.as_slice()).unwrap_or(&[]),
-        post_attn_norm: weights.vectors.get(&arch.post_attention_layernorm_key(layer))
-            .map(|v| v.as_slice()).unwrap_or(&[]),
-        pre_ffn_norm: arch.pre_feedforward_layernorm_key(layer)
-            .and_then(|k| weights.vectors.get(&k)).map(|v| v.as_slice()),
-        post_ffn_norm: arch.post_feedforward_layernorm_key(layer)
-            .and_then(|k| weights.vectors.get(&k)).map(|v| v.as_slice()),
+        wq,
+        wk,
+        wv,
+        wo,
+        gate,
+        up,
+        down,
+        input_norm: weights
+            .vectors
+            .get(&arch.input_layernorm_key(layer))
+            .map(|v| v.as_slice())
+            .unwrap_or(&[]),
+        post_attn_norm: weights
+            .vectors
+            .get(&arch.post_attention_layernorm_key(layer))
+            .map(|v| v.as_slice())
+            .unwrap_or(&[]),
+        pre_ffn_norm: arch
+            .pre_feedforward_layernorm_key(layer)
+            .and_then(|k| weights.vectors.get(&k))
+            .map(|v| v.as_slice()),
+        post_ffn_norm: arch
+            .post_feedforward_layernorm_key(layer)
+            .and_then(|k| weights.vectors.get(&k))
+            .map(|v| v.as_slice()),
         norm_offset: arch.norm_weight_offset(),
         has_post_norms: arch.has_post_norms(),
         activation: match arch.activation() {
@@ -82,10 +102,14 @@ pub fn build_arch_params<'a>(
         layer_scalar,
         input_norm_bias: None,
         post_attn_norm_bias: None,
-        ffn_up_bias: arch.ffn_up_bias_key(layer)
-            .and_then(|k| weights.vectors.get(&k)).map(|v| v.as_slice()),
-        ffn_down_bias: arch.ffn_down_bias_key(layer)
-            .and_then(|k| weights.vectors.get(&k)).map(|v| v.as_slice()),
+        ffn_up_bias: arch
+            .ffn_up_bias_key(layer)
+            .and_then(|k| weights.vectors.get(&k))
+            .map(|v| v.as_slice()),
+        ffn_down_bias: arch
+            .ffn_down_bias_key(layer)
+            .and_then(|k| weights.vectors.get(&k))
+            .map(|v| v.as_slice()),
     }
 }
 
@@ -93,24 +117,64 @@ pub fn build_arch_params<'a>(
 pub fn resolve_attn_weights<'a>(
     index: &'a larql_vindex::VectorIndex,
     layer: usize,
-) -> Option<(QuantWeight<'a>, QuantWeight<'a>, QuantWeight<'a>, QuantWeight<'a>)> {
+) -> Option<(
+    QuantWeight<'a>,
+    QuantWeight<'a>,
+    QuantWeight<'a>,
+    QuantWeight<'a>,
+)> {
     fn to_format(s: &str) -> QuantFormat {
-        match s { "Q6_K" => QuantFormat::Q6_K, _ => QuantFormat::Q4_K }
+        match s {
+            "Q6_K" => QuantFormat::Q6_K,
+            _ => QuantFormat::Q4_K,
+        }
     }
 
     if let Some([q, k, v, o]) = index.attn_q4k_layer_data(layer) {
         Some((
-            QuantWeight { data: q.0, scales: None, format: to_format(q.1) },
-            QuantWeight { data: k.0, scales: None, format: to_format(k.1) },
-            QuantWeight { data: v.0, scales: None, format: to_format(v.1) },
-            QuantWeight { data: o.0, scales: None, format: to_format(o.1) },
+            QuantWeight {
+                data: q.0,
+                scales: None,
+                format: to_format(q.1),
+            },
+            QuantWeight {
+                data: k.0,
+                scales: None,
+                format: to_format(k.1),
+            },
+            QuantWeight {
+                data: v.0,
+                scales: None,
+                format: to_format(v.1),
+            },
+            QuantWeight {
+                data: o.0,
+                scales: None,
+                format: to_format(o.1),
+            },
         ))
     } else if let Some([q, k, v, o]) = index.attn_q8_layer_data(layer) {
         Some((
-            QuantWeight { data: q.0, scales: Some(q.1), format: QuantFormat::Q8_0 },
-            QuantWeight { data: k.0, scales: Some(k.1), format: QuantFormat::Q8_0 },
-            QuantWeight { data: v.0, scales: Some(v.1), format: QuantFormat::Q8_0 },
-            QuantWeight { data: o.0, scales: Some(o.1), format: QuantFormat::Q8_0 },
+            QuantWeight {
+                data: q.0,
+                scales: Some(q.1),
+                format: QuantFormat::Q8_0,
+            },
+            QuantWeight {
+                data: k.0,
+                scales: Some(k.1),
+                format: QuantFormat::Q8_0,
+            },
+            QuantWeight {
+                data: v.0,
+                scales: Some(v.1),
+                format: QuantFormat::Q8_0,
+            },
+            QuantWeight {
+                data: o.0,
+                scales: Some(o.1),
+                format: QuantFormat::Q8_0,
+            },
         ))
     } else {
         None
@@ -127,9 +191,21 @@ pub fn resolve_ffn_weights<'a>(
     let q4_ffn_per_layer = q4_ffn_per_matrix * 3;
     let fs = layer * q4_ffn_per_layer;
     (
-        QuantWeight { data: &q4_ffn_mmap[fs..fs + q4_ffn_per_matrix], scales: None, format: ffn_format },
-        QuantWeight { data: &q4_ffn_mmap[fs + q4_ffn_per_matrix..fs + 2 * q4_ffn_per_matrix], scales: None, format: ffn_format },
-        QuantWeight { data: &q4_ffn_mmap[fs + 2 * q4_ffn_per_matrix..fs + 3 * q4_ffn_per_matrix], scales: None, format: ffn_format },
+        QuantWeight {
+            data: &q4_ffn_mmap[fs..fs + q4_ffn_per_matrix],
+            scales: None,
+            format: ffn_format,
+        },
+        QuantWeight {
+            data: &q4_ffn_mmap[fs + q4_ffn_per_matrix..fs + 2 * q4_ffn_per_matrix],
+            scales: None,
+            format: ffn_format,
+        },
+        QuantWeight {
+            data: &q4_ffn_mmap[fs + 2 * q4_ffn_per_matrix..fs + 3 * q4_ffn_per_matrix],
+            scales: None,
+            format: ffn_format,
+        },
     )
 }
 
@@ -144,10 +220,13 @@ pub fn build_pipeline_layers<'a>(
     q4_ffn_per_matrix: usize,
     ffn_format: QuantFormat,
 ) -> Vec<FullPipelineLayer<'a>> {
-    layer_range.map(|layer| {
-        let (wq, wk, wv, wo) = resolve_attn_weights(index, layer)
-            .expect("No attention weights available for layer");
-        let (gate, up, down) = resolve_ffn_weights(q4_ffn_mmap, layer, q4_ffn_per_matrix, ffn_format);
-        build_arch_params(weights, layer, wq, wk, wv, wo, gate, up, down)
-    }).collect()
+    layer_range
+        .map(|layer| {
+            let (wq, wk, wv, wo) = resolve_attn_weights(index, layer)
+                .expect("No attention weights available for layer");
+            let (gate, up, down) =
+                resolve_ffn_weights(q4_ffn_mmap, layer, q4_ffn_per_matrix, ffn_format);
+            build_arch_params(weights, layer, wq, wk, wv, wo, gate, up, down)
+        })
+        .collect()
 }

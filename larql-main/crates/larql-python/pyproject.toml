@@ -12,10 +12,11 @@ authors = []
 keywords = ["knowledge-graph", "llm", "interpretability", "vindex", "mechanistic-interpretability"]
 dependencies = [
     "numpy>=1.26",
+    "scikit-learn>=1.8.0",
 ]
 
 [project.scripts]
-larql-ui = "larql.ui.__main__:main"
+larql-workbench = "larql_ui.ui.__main__:main"
 
 [project.optional-dependencies]
 mlx = ["mlx-lm"]
@@ -25,6 +26,9 @@ ui = [
     "python-multipart>=0.0.26",
     "uvicorn>=0.44.0",
 ]
+# Split staging: keep a single wheel for now, but expose a dedicated
+# workbench-facing namespace (`larql_ui`) as a compatibility-preserving bridge
+# toward independent SDK/UI packaging.
 
 # Dev-only tools. The workbench stack lives in `[project.optional-dependencies] ui`;
 # use `uv sync --group dev --extra ui` (see README) so `ui` is not duplicated here.
@@ -32,6 +36,7 @@ ui = [
 dev = [
     "httpx>=0.28.1",
     "maturin>=1.7",
+    "pytest-cov>=6.0",
     "pytest>=8",
 ]
 

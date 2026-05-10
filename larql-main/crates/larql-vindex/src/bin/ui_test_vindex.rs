@@ -36,7 +36,10 @@ fn make_synthetic_model() -> larql_models::ModelWeights {
         for i in 0..intermediate {
             up[[i, (i + 1) % hidden]] = 0.5;
         }
-        tensors.insert(format!("layers.{layer}.mlp.up_proj.weight"), up.into_shared());
+        tensors.insert(
+            format!("layers.{layer}.mlp.up_proj.weight"),
+            up.into_shared(),
+        );
 
         let mut down = ndarray::Array2::<f32>::zeros((hidden, intermediate));
         for i in 0..intermediate {

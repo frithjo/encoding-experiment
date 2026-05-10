@@ -93,7 +93,7 @@ jobs:
         run: cargo install cargo-deny --locked
 
       - name: Run cargo deny (JSON report)
-        run: cargo deny --manifest-path Cargo.toml --config deny.toml check --format json > cargo-deny-report.json
+        run: cargo deny --manifest-path Cargo.toml check --config deny.toml --format json > cargo-deny-report.json
 
       - name: Upload cargo-deny report
         if: always()

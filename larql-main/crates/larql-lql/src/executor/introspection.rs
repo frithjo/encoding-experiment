@@ -2,12 +2,12 @@
 
 use std::collections::HashMap;
 
+use super::helpers::{collect_token_hits, KindInfo, ShapeInfo, TokenFilters, TokenHit};
+use super::helpers::{dir_size, format_bytes, format_number, is_content_token};
+use super::helpers::{token_shape_name, TokenShape};
+use super::Session;
 use crate::ast::*;
 use crate::error::LqlError;
-use super::Session;
-use super::helpers::{format_number, format_bytes, dir_size, is_content_token};
-use super::helpers::{token_shape_name, TokenShape};
-use super::helpers::{collect_token_hits, KindInfo, ShapeInfo, TokenFilters, TokenHit};
 
 impl Session {
     pub(crate) fn exec_show_relations(
@@ -22,7 +22,11 @@ impl Session {
         let scan_layers: Vec<usize> = if let Some(l) = layer_filter {
             vec![l as usize]
         } else {
-            all_layers.iter().copied().filter(|l| *l >= 14 && *l <= 27).collect()
+            all_layers
+                .iter()
+                .copied()
+                .filter(|l| *l >= 14 && *l <= 27)
+                .collect()
         };
 
         // ── Probe-confirmed relations (skip for Raw mode) ──
@@ -68,7 +72,9 @@ impl Session {
                             continue;
                         }
                         let key = tok.to_lowercase();
-                        let examples: Vec<String> = meta.top_k.iter()
+                        let examples: Vec<String> = meta
+                            .top_k
+                            .iter()
                             .filter(|t| t.token.trim() != tok && is_content_token(t.token.trim()))
                             .take(3)
                             .map(|t| t.token.trim().to_string())
@@ -106,14 +112,21 @@ impl Session {
         // ── Probe-confirmed section ──
         if !probe_relations.is_empty() {
             let total_labels: usize = probe_relations.values().sum();
-            out.push(format!("Probe-confirmed relations ({} labels):", total_labels));
+            out.push(format!(
+                "Probe-confirmed relations ({} labels):",
+                total_labels
+            ));
             out.push(format!("{:<25} {:>8}", "Relation", "Features"));
             out.push("-".repeat(35));
 
             let mut probe_sorted: Vec<(&String, &usize)> = probe_relations.iter().collect();
             probe_sorted.sort_by(|a, b| b.1.cmp(a.1));
 
-            let limit = if mode == DescribeMode::Brief { 30 } else { probe_sorted.len() };
+            let limit = if mode == DescribeMode::Brief {
+                30
+            } else {
+                probe_sorted.len()
+            };
             for (name, count) in probe_sorted.into_iter().take(limit) {
                 out.push(format!("{:<25} {:>8}", name, count));
             }
@@ -125,18 +138,20 @@ impl Session {
                 out.push(String::new());
             }
 
-            let mut sorted: Vec<(&str, &TokenInfo)> = tokens.values()
+            let mut sorted: Vec<(&str, &TokenInfo)> = tokens
+                .values()
                 .map(|info| (info.original.as_str(), info))
                 .collect();
             sorted.sort_by(|a, b| b.1.count.cmp(&a.1.count));
 
-            let limit = if mode == DescribeMode::Verbose { 50 } else { 30 };
+            let limit = if mode == DescribeMode::Verbose {
+                50
+            } else {
+                30
+            };
             sorted.truncate(limit);
 
-            out.push(format!(
-                "Top output tokens ({}):",
-                layer_label
-            ));
+            out.push(format!("Top output tokens ({}):", layer_label));
             out.push(format!(
                 "{:<25} {:>8} {:>8} {:>10}",
                 "Token", "Count", "Score", "Layers"
@@ -151,12 +166,7 @@ impl Session {
                 };
                 out.push(format!(
                     "{:<25} {:>8} {:>8.2} {:>5}-{}{}",
-                    tok,
-                    info.count,
-                    info.max_score,
-                    info.min_layer,
-                    info.max_layer,
-                    examples_str,
+                    tok, info.count, info.max_score, info.min_layer, info.max_layer, examples_str,
                 ));
             }
         }
@@ -232,16 +242,24 @@ impl Session {
         let limit = limit.unwrap_or(config.num_layers as u32) as usize;
 
         // Extract filters from WHERE conditions
-        let token_filter = conditions.iter().find(|c| c.field == "relation" || c.field == "token").and_then(|c| {
-            if let Value::String(ref s) = c.value { Some(s.as_str()) } else { None }
-        });
-        let confidence_floor = conditions.iter().find(|c| c.field == "confidence" || c.field == "c_score").and_then(|c| {
-            match &c.value {
+        let token_filter = conditions
+            .iter()
+            .find(|c| c.field == "relation" || c.field == "token")
+            .and_then(|c| {
+                if let Value::String(ref s) = c.value {
+                    Some(s.as_str())
+                } else {
+                    None
+                }
+            });
+        let confidence_floor = conditions
+            .iter()
+            .find(|c| c.field == "confidence" || c.field == "c_score")
+            .and_then(|c| match &c.value {
                 Value::Number(n) => Some(*n as f32),
                 Value::Integer(n) => Some(*n as f32),
                 _ => None,
-            }
-        });
+            });
 
         let nf = patched.num_features(layer as usize);
         if nf == 0 {
@@ -353,8 +371,10 @@ impl Session {
         } else {
             format!(" across {} layers", scan_layers.len())
         };
-        out.push(format!("Distinct entities{layer_note} ({} total, showing top {limit}):",
-            entities.len().max(limit)));
+        out.push(format!(
+            "Distinct entities{layer_note} ({} total, showing top {limit}):",
+            entities.len().max(limit)
+        ));
         out.push(format!(
             "{:<24} {:>10} {:>10}",
             "Entity", "Features", "Max Score"
@@ -362,10 +382,7 @@ impl Session {
         out.push("-".repeat(48));
 
         for (tok, count, max_score) in &entities {
-            out.push(format!(
-                "{:<24} {:>10} {:>10.4}",
-                tok, count, max_score
-            ));
+            out.push(format!("{:<24} {:>10} {:>10.4}", tok, count, max_score));
         }
 
         if entities.is_empty() {
@@ -392,99 +409,99 @@ impl Session {
         } else {
             (0..config.num_layers).collect()
         };
-    let bands = super::query::describe_resolve_bands(config);
-    let filters = parse_token_filters(conditions);
+        let bands = super::query::describe_resolve_bands(config);
+        let filters = parse_token_filters(conditions);
 
-    // If export format is specified, collect all data and return in specified format
-    if let Some(fmt) = export_format {
-        let hits = collect_token_hits(patched, &scan_layers, &bands, &filters);
-        return Ok(export_token_summary(hits, fmt, verbose, order_by, limit));
-    }
-
-    match group_by {
-        Some(TokenGroupBy::Layer) => {
-            let mut out = Vec::new();
-            let mut rendered = 0usize;
-            let mut skipped = 0usize;
-            for layer in &scan_layers {
-                let hits = collect_token_hits(patched, &[*layer], &bands, &filters);
-                if hits.is_empty() {
-                    skipped += 1;
-                    continue;
-                }
-                if rendered > 0 {
-                    out.push(String::new());
-                }
-                out.extend(render_token_summary(
-                    format!("at layer {}", layer),
-                    hits,
-                    verbose,
-                    order_by,
-                    limit,
-                ));
-                rendered += 1;
-            }
-            if rendered == 0 {
-                return Ok(vec!["  (no tokens found)".into()]);
-            }
-            if skipped > 0 {
-                out.push(String::new());
-                out.push(format!("Skipped {} empty layer summaries.", skipped));
-            }
-            Ok(out)
-        }
-        Some(TokenGroupBy::Band) => {
-            let mut out = Vec::new();
-            let mut rendered = 0usize;
-            let mut skipped = 0usize;
-            let groups = [
-                ("syntax", bands.syntax.0, bands.syntax.1),
-                ("knowledge", bands.knowledge.0, bands.knowledge.1),
-                ("output", bands.output.0, bands.output.1),
-            ];
-            for (name, start, end) in groups {
-                let group_layers: Vec<usize> = scan_layers
-                    .iter()
-                    .copied()
-                    .filter(|l| *l >= start && *l <= end)
-                    .collect();
-                let hits = collect_token_hits(patched, &group_layers, &bands, &filters);
-                if hits.is_empty() {
-                    skipped += 1;
-                    continue;
-                }
-                if rendered > 0 {
-                    out.push(String::new());
-                }
-                out.extend(render_token_summary(
-                    format!("for {} band (L{}-{})", name, start, end),
-                    hits,
-                    verbose,
-                    order_by,
-                    limit,
-                ));
-                rendered += 1;
-            }
-            if rendered == 0 {
-                return Ok(vec!["  (no tokens found)".into()]);
-            }
-            if skipped > 0 {
-                out.push(String::new());
-                out.push(format!("Skipped {} empty band summaries.", skipped));
-            }
-            Ok(out)
-        }
-        None => {
+        // If export format is specified, collect all data and return in specified format
+        if let Some(fmt) = export_format {
             let hits = collect_token_hits(patched, &scan_layers, &bands, &filters);
-            let scope = if let Some(l) = layer_filter {
-                format!("at layer {}", l)
-            } else {
-                format!("across {} layers", scan_layers.len())
-            };
-            Ok(render_token_summary(scope, hits, verbose, order_by, limit))
+            return Ok(export_token_summary(hits, fmt, verbose, order_by, limit));
+        }
+
+        match group_by {
+            Some(TokenGroupBy::Layer) => {
+                let mut out = Vec::new();
+                let mut rendered = 0usize;
+                let mut skipped = 0usize;
+                for layer in &scan_layers {
+                    let hits = collect_token_hits(patched, &[*layer], &bands, &filters);
+                    if hits.is_empty() {
+                        skipped += 1;
+                        continue;
+                    }
+                    if rendered > 0 {
+                        out.push(String::new());
+                    }
+                    out.extend(render_token_summary(
+                        format!("at layer {}", layer),
+                        hits,
+                        verbose,
+                        order_by,
+                        limit,
+                    ));
+                    rendered += 1;
+                }
+                if rendered == 0 {
+                    return Ok(vec!["  (no tokens found)".into()]);
+                }
+                if skipped > 0 {
+                    out.push(String::new());
+                    out.push(format!("Skipped {} empty layer summaries.", skipped));
+                }
+                Ok(out)
+            }
+            Some(TokenGroupBy::Band) => {
+                let mut out = Vec::new();
+                let mut rendered = 0usize;
+                let mut skipped = 0usize;
+                let groups = [
+                    ("syntax", bands.syntax.0, bands.syntax.1),
+                    ("knowledge", bands.knowledge.0, bands.knowledge.1),
+                    ("output", bands.output.0, bands.output.1),
+                ];
+                for (name, start, end) in groups {
+                    let group_layers: Vec<usize> = scan_layers
+                        .iter()
+                        .copied()
+                        .filter(|l| *l >= start && *l <= end)
+                        .collect();
+                    let hits = collect_token_hits(patched, &group_layers, &bands, &filters);
+                    if hits.is_empty() {
+                        skipped += 1;
+                        continue;
+                    }
+                    if rendered > 0 {
+                        out.push(String::new());
+                    }
+                    out.extend(render_token_summary(
+                        format!("for {} band (L{}-{})", name, start, end),
+                        hits,
+                        verbose,
+                        order_by,
+                        limit,
+                    ));
+                    rendered += 1;
+                }
+                if rendered == 0 {
+                    return Ok(vec!["  (no tokens found)".into()]);
+                }
+                if skipped > 0 {
+                    out.push(String::new());
+                    out.push(format!("Skipped {} empty band summaries.", skipped));
+                }
+                Ok(out)
+            }
+            None => {
+                let hits = collect_token_hits(patched, &scan_layers, &bands, &filters);
+                let scope = if let Some(l) = layer_filter {
+                    format!("at layer {}", l)
+                } else {
+                    format!("across {} layers", scan_layers.len())
+                };
+                Ok(render_token_summary(scope, hits, verbose, order_by, limit))
+            }
         }
     }
-}
 
     pub(crate) fn exec_show_models(&self) -> Result<Vec<String>, LqlError> {
         let mut out = Vec::new();
@@ -505,9 +522,7 @@ impl Session {
                             let size = dir_size(&path);
                             out.push(format!(
                                 "{:<35} {:>10} {:>8} {:>12}",
-                                path.file_name()
-                                    .unwrap_or_default()
-                                    .to_string_lossy(),
+                                path.file_name().unwrap_or_default().to_string_lossy(),
                                 format_bytes(size),
                                 config.num_layers,
                                 "ready",
@@ -536,16 +551,38 @@ fn parse_token_filters(conditions: &[Condition]) -> TokenFilters {
             .iter()
             .find(|c| c.field == "token" || c.field == "entity")
             .and_then(|c| {
-                if let Value::String(ref s) = c.value { Some(s.clone()) } else { None }
+                if let Value::String(ref s) = c.value {
+                    Some(s.clone())
+                } else {
+                    None
+                }
             }),
-        shape_filter: conditions.iter().find(|c| c.field == "shape").and_then(|c| {
-            if let Value::String(ref s) = c.value { Some(s.to_lowercase()) } else { None }
-        }),
-        type_filter: conditions.iter().find(|c| c.field == "type" || c.field == "kind").and_then(|c| {
-            if let Value::String(ref s) = c.value { Some(s.to_lowercase()) } else { None }
-        }),
+        shape_filter: conditions
+            .iter()
+            .find(|c| c.field == "shape")
+            .and_then(|c| {
+                if let Value::String(ref s) = c.value {
+                    Some(s.to_lowercase())
+                } else {
+                    None
+                }
+            }),
+        type_filter: conditions
+            .iter()
+            .find(|c| c.field == "type" || c.field == "kind")
+            .and_then(|c| {
+                if let Value::String(ref s) = c.value {
+                    Some(s.to_lowercase())
+                } else {
+                    None
+                }
+            }),
         band_filter: conditions.iter().find(|c| c.field == "band").and_then(|c| {
-            if let Value::String(ref s) = c.value { Some(s.to_lowercase()) } else { None }
+            if let Value::String(ref s) = c.value {
+                Some(s.to_lowercase())
+            } else {
+                None
+            }
         }),
     }
 }
@@ -590,20 +627,23 @@ pub(crate) fn export_token_summary(
             shape_rows.sort_by(|a, b| {
                 let score_a = shape_max_scores.get(&a.0).unwrap_or(&0.0);
                 let score_b = shape_max_scores.get(&b.0).unwrap_or(&0.0);
-                score_b.partial_cmp(score_a)
+                score_b
+                    .partial_cmp(score_a)
                     .unwrap_or(std::cmp::Ordering::Equal)
                     .then_with(|| token_shape_name(a.0).cmp(token_shape_name(b.0)))
             });
         }
         Some(TokenSortBy::Distinct) => {
             shape_rows.sort_by(|a, b| {
-                b.1.distinct.cmp(&a.1.distinct)
+                b.1.distinct
+                    .cmp(&a.1.distinct)
                     .then_with(|| token_shape_name(a.0).cmp(token_shape_name(b.0)))
             });
         }
         Some(TokenSortBy::EntityLike) => {
             shape_rows.sort_by(|a, b| {
-                b.1.entity_like.cmp(&a.1.entity_like)
+                b.1.entity_like
+                    .cmp(&a.1.entity_like)
                     .then_with(|| token_shape_name(a.0).cmp(token_shape_name(b.0)))
             });
         }
@@ -612,7 +652,8 @@ pub(crate) fn export_token_summary(
         }
         None => {
             shape_rows.sort_by(|a, b| {
-                b.1.feature_hits.cmp(&a.1.feature_hits)
+                b.1.feature_hits
+                    .cmp(&a.1.feature_hits)
                     .then_with(|| token_shape_name(a.0).cmp(token_shape_name(b.0)))
             });
         }
@@ -625,11 +666,14 @@ pub(crate) fn export_token_summary(
         crate::ast::ExportFormat::Csv => {
             let mut out = vec!["shape,distinct,feature_hits,entity_like,examples".to_string()];
             for (shape, info) in shape_rows {
-                let examples = info.examples.iter()
+                let examples = info
+                    .examples
+                    .iter()
                     .map(|e| e.replace(',', "\\,"))
                     .collect::<Vec<_>>()
                     .join(",");
-                out.push(format!("{},{},{},{},{}",
+                out.push(format!(
+                    "{},{},{},{},{}",
                     token_shape_name(shape),
                     info.distinct,
                     info.feature_hits,
@@ -640,15 +684,18 @@ pub(crate) fn export_token_summary(
             out
         }
         crate::ast::ExportFormat::Json => {
-            let rows: Vec<serde_json::Value> = shape_rows.iter().map(|(shape, info)| {
-                serde_json::json!({
-                    "shape": token_shape_name(*shape),
-                    "distinct": info.distinct,
-                    "feature_hits": info.feature_hits,
-                    "entity_like": info.entity_like,
-                    "examples": info.examples,
+            let rows: Vec<serde_json::Value> = shape_rows
+                .iter()
+                .map(|(shape, info)| {
+                    serde_json::json!({
+                        "shape": token_shape_name(*shape),
+                        "distinct": info.distinct,
+                        "feature_hits": info.feature_hits,
+                        "entity_like": info.entity_like,
+                        "examples": info.examples,
+                    })
                 })
-            }).collect();
+                .collect();
             vec![serde_json::to_string_pretty(&rows).unwrap_or("[]".to_string())]
         }
     }
@@ -717,20 +764,23 @@ pub(crate) fn render_token_summary(
             shape_rows.sort_by(|a, b| {
                 let score_a = shape_max_scores.get(&a.0).unwrap_or(&0.0);
                 let score_b = shape_max_scores.get(&b.0).unwrap_or(&0.0);
-                score_b.partial_cmp(score_a)
+                score_b
+                    .partial_cmp(score_a)
                     .unwrap_or(std::cmp::Ordering::Equal)
                     .then_with(|| token_shape_name(a.0).cmp(token_shape_name(b.0)))
             });
         }
         Some(TokenSortBy::Distinct) => {
             shape_rows.sort_by(|a, b| {
-                b.1.distinct.cmp(&a.1.distinct)
+                b.1.distinct
+                    .cmp(&a.1.distinct)
                     .then_with(|| token_shape_name(a.0).cmp(token_shape_name(b.0)))
             });
         }
         Some(TokenSortBy::EntityLike) => {
             shape_rows.sort_by(|a, b| {
-                b.1.entity_like.cmp(&a.1.entity_like)
+                b.1.entity_like
+                    .cmp(&a.1.entity_like)
                     .then_with(|| token_shape_name(a.0).cmp(token_shape_name(b.0)))
             });
         }
@@ -739,7 +789,8 @@ pub(crate) fn render_token_summary(
         }
         None => {
             shape_rows.sort_by(|a, b| {
-                b.1.feature_hits.cmp(&a.1.feature_hits)
+                b.1.feature_hits
+                    .cmp(&a.1.feature_hits)
                     .then_with(|| token_shape_name(a.0).cmp(token_shape_name(b.0)))
             });
         }
@@ -768,7 +819,8 @@ pub(crate) fn render_token_summary(
         out.push("-".repeat(62));
         let mut kind_rows: Vec<(&'static str, KindInfo)> = kinds.into_iter().collect();
         kind_rows.sort_by(|a, b| {
-            b.1.feature_hits.cmp(&a.1.feature_hits)
+            b.1.feature_hits
+                .cmp(&a.1.feature_hits)
                 .then_with(|| b.1.distinct.cmp(&a.1.distinct))
                 .then_with(|| a.0.cmp(&b.0))
         });

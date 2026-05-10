@@ -4,6 +4,10 @@ The model IS the database. Query neural network weights like a graph database. N
 
 LARQL decompiles transformer models into a queryable format called a **vindex** (vector index), then provides **LQL** (Lazarus Query Language) to browse, edit, and recompile the model's knowledge.
 
+## Vision
+
+LARQL views transformer models as graph-like databases, enabling analytic tools that provide deep insights into model internals. The framework provides analysis capabilities across model weights, token attributes, edges, heads, and residual stream artifacts. See [VISION.md](VISION.md) for the complete vision statement.
+
 ```sql
 larql> USE "gemma3-4b.vindex";
 Using: gemma3-4b.vindex (34 layers, 348.2K features, relations: 512 types)
@@ -29,6 +33,10 @@ larql> INFER "The capital of France is" TOP 3;
 ## Quick Start
 
 ```bash
+# Set configuration (optional, see .env.example for all options)
+export LARQL_MODEL__PATH=google/gemma-3-4b-it
+export LARQL_VINDEX__PATH=gemma3-4b.vindex
+
 # Build
 cargo build --release
 
@@ -40,6 +48,12 @@ larql extract-index google/gemma-3-4b-it -o gemma3-4b.vindex --level inference -
 
 # Or convert from GGUF
 larql convert gguf-to-vindex model.gguf -o model.vindex --f16
+
+# Or extract and prove raw GGUF attention tensors without tokenizer/dequantization
+larql convert gguf-attention-proof model.gguf -o attention-proof --attention-scope all
+
+# Or prove separated attention runtime over TCP with a real GGUF tensor graph
+larql attention-runtime proof --gguf model.gguf --seq-len 2 -o separated-attention-gguf-layer-proof.json
 
 # Or download from HuggingFace
 larql hf download chrishayuk/gemma-3-4b-it-vindex
@@ -72,28 +86,44 @@ Three extraction levels:
 | Level | CLI Flag | LQL Syntax | Size (f16) | Enables |
 |-------|----------|-----------|-----------|---------|
 | Browse | `--level browse` (default) | `EXTRACT MODEL ... INTO ...` | ~3 GB | DESCRIBE, WALK, SELECT |
-| Inference | `--level inference` | `... WITH INFERENCE` | ~6 GB | + INFER |
+| Inference | `--level inference` | `... WITH INFERENCE` | ~6 GB | + INFER, EXPLAIN INFER, ANALYZE INFER |
 | All | `--level all` | `... WITH ALL` | ~10 GB | + COMPILE |
 
 Add `--f16` to halve file sizes with negligible accuracy loss.
 
 ## Architecture
 
-Eight crates. Clean dependency chain.
+Core crates in `crates/` with clean dependency chain. Experimental work in `experiments/`. The core value is the analytic framework (vindex + LQL); UIs are interfaces to access these capabilities.
 
 ```
-larql-models      Model config, architecture traits, weight loading, quant/dequant
-    ↓
-larql-vindex      Vindex lifecycle: extract, load, query, mutate, patch, save
-    ↓
-larql-core        Graph algorithms, merge, diff
-larql-inference   Forward pass, BLAS-fused attention, Metal GPU, WalkFfn
-    ↓
-larql-lql         LQL parser, executor, REPL, USE REMOTE client
-    ↓
-larql-server      HTTP/gRPC server: serve vindexes over the network
-larql-cli         CLI commands (extract-index, build, serve, repl, convert, hf, verify)
+crates/
+  larql-models      Model config, architecture traits, weight loading, quant/dequant
+      ↓
+  larql-vindex      Vindex lifecycle: extract, load, query, mutate, patch, save
+      ↓
+  larql-core        Graph algorithms, merge, diff
+  larql-inference   Forward pass, BLAS-fused attention, Metal GPU, WalkFfn
+      ↓
+  larql-lql         LQL parser, executor, REPL, USE REMOTE client
+      ↓
+  larql-server      HTTP/gRPC server: serve vindexes over the network
+  larql-cli         CLI commands (extract-index, build, serve, repl, convert, hf, verify)
+  larql-python      PyO3 bindings and workbench UI
+  larql-terminal-browser  Terminal browser client (primary interface)
+
+experiments/
+  kv-cache-benchmark    KV strategy benchmarking and prototyping
 ```
+
+### Interfaces
+
+The LARQL analytic framework is accessible through multiple interfaces. See [docs/ui/README.md](docs/ui/README.md) for detailed information on each interface and their current status.
+
+- **CLI**: Command-line tools for extraction, querying, and serving
+- **Python SDK**: Programmatic access for data scientists and researchers
+- **Server**: HTTP/gRPC API for remote access
+- **Terminal Browser**: Primary interface for interactive exploration in the terminal
+- **Python Workbench**: Web-based UI for recipe-driven analysis
 
 ### larql-vindex
 
@@ -120,7 +150,7 @@ LQL parser and executor. 20+ statement types across 5 categories:
 
 - **Lifecycle**: EXTRACT, COMPILE, DIFF, USE
 - **Browse**: WALK, DESCRIBE, SELECT, EXPLAIN WALK
-- **Inference**: INFER, EXPLAIN INFER
+- **Inference**: INFER, EXPLAIN INFER, ANALYZE INFER
 - **Mutation**: INSERT, DELETE, UPDATE, MERGE
 - **Patches**: BEGIN PATCH, SAVE PATCH, APPLY PATCH, SHOW PATCHES, REMOVE PATCH
 - **Introspection**: SHOW RELATIONS/LAYERS/FEATURES/MODELS/PATCHES, STATS
@@ -144,6 +174,16 @@ WALK "The capital of France is" TOP 10;
 
 -- Run inference (needs model weights in vindex)
 INFER "The capital of France is" TOP 5 COMPARE;
+
+-- Scientific attribution with explicit truth/false annotations
+ANALYZE INFER "The capital of Freedonia is"
+    MODE FACT_PROBE
+    TRUTH_SPANS ("Markov")
+    FALSE_SPANS ("Paris", "London")
+    COHERENCE_MARKERS ("The", "capital", "of", "is")
+    MAX_GENERATED_TOKENS 1
+    RIDGE_DEAD_ZONE 0.05
+    TOP 5;
 
 -- Trace the residual stream (decomposed forward pass)
 TRACE "The capital of France is" FOR "Paris";
@@ -343,10 +383,13 @@ See [docs/residual-trace.md](docs/residual-trace.md) for the full writeup.
 | [docs/cli.md](docs/cli.md) | CLI reference |
 | [docs/inference-engine.md](docs/inference-engine.md) | Inference engine — BLAS-fused attention, Metal GPU, auto-calibration |
 | [docs/ffn-graph-layer.md](docs/ffn-graph-layer.md) | FFN graph layer — mmap walk faster than dense (517ms vs 535ms), all 34 layers |
-| [docs/walk-boundary-sweep.md](docs/walk-boundary-sweep.md) | Walk boundary sweep — correctness proof across all layer boundaries |
+| [docs/perf/walk-boundary-sweep.md](docs/perf/walk-boundary-sweep.md) | Walk boundary sweep — correctness proof across all layer boundaries |
 | [docs/knowledge-pipeline.md](docs/knowledge-pipeline.md) | Knowledge labelling pipeline |
 | [docs/residual-trace.md](docs/residual-trace.md) | Residual stream trace — decomposition, storage, tiered context |
 | [docs/trace-format-spec.md](docs/trace-format-spec.md) | Trace file format specification (.bin, .bndx, .ctxt) |
+| [docs/architecture/README.md](docs/architecture/README.md) | Productized structure, release surface, and crate role matrix |
+| [docs/perf/README.md](docs/perf/README.md) | Performance and benchmark documentation index |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Zone/dependency rules and contribution checklist |
 
 ## Building & Testing
 

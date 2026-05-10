@@ -5,8 +5,8 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use ndarray::{Array1, Array2};
 use larql_core::mmap::Mmap;
+use ndarray::{Array1, Array2};
 
 use crate::error::VindexError;
 use larql_models::TopKEntry;
@@ -101,6 +101,8 @@ pub struct VectorIndex {
     pub(crate) attn_q8_mmap: Option<Arc<Mmap>>,
     /// Per-matrix (offset, vals_len, scales_len) in attn_q8_mmap.
     pub(crate) attn_q8_manifest: Option<Vec<(usize, usize, usize)>>,
+    /// Cached residuals store for template-based fast inference (Inference level only).
+    pub cache_store: Option<crate::cache_residuals::CacheStore>,
 }
 
 impl Clone for VectorIndex {
@@ -123,10 +125,10 @@ impl Clone for VectorIndex {
             up_features_mmap: self.up_features_mmap.clone(),
             hnsw_cache: Mutex::new((0..self.num_layers).map(|_| None).collect()),
             hnsw_enabled: std::sync::atomic::AtomicBool::new(
-                self.hnsw_enabled.load(Ordering::Relaxed)
+                self.hnsw_enabled.load(Ordering::Relaxed),
             ),
             hnsw_ef_search: std::sync::atomic::AtomicUsize::new(
-                self.hnsw_ef_search.load(Ordering::Relaxed)
+                self.hnsw_ef_search.load(Ordering::Relaxed),
             ),
             lm_head_mmap: self.lm_head_mmap.clone(),
             vocab_size: self.vocab_size,
@@ -142,6 +144,7 @@ impl Clone for VectorIndex {
             attn_q4_manifest: self.attn_q4_manifest.clone(),
             attn_q8_mmap: self.attn_q8_mmap.clone(),
             attn_q8_manifest: self.attn_q8_manifest.clone(),
+            cache_store: None, // Cannot clone Mmap, so cache is not preserved in clones
         }
     }
 }
@@ -186,6 +189,7 @@ impl VectorIndex {
             attn_q4_manifest: None,
             attn_q8_mmap: None,
             attn_q8_manifest: None,
+            cache_store: None,
         }
     }
 
@@ -231,6 +235,7 @@ impl VectorIndex {
             attn_q4_manifest: None,
             attn_q8_mmap: None,
             attn_q8_manifest: None,
+            cache_store: None,
         }
     }
 
@@ -244,7 +249,8 @@ impl VectorIndex {
         if self.is_mmap() {
             return 0;
         }
-        self.gate_vectors.iter()
+        self.gate_vectors
+            .iter()
             .filter_map(|v| v.as_ref())
             .map(|m| m.len() * std::mem::size_of::<f32>())
             .sum()
@@ -404,6 +410,7 @@ impl VectorIndex {
             attn_q4_manifest: None,
             attn_q8_mmap: None,
             attn_q8_manifest: None,
+            cache_store: None,
             num_layers,
             hidden_size,
         })
@@ -495,7 +502,6 @@ impl VectorIndex {
 
         Ok(count)
     }
-
 }
 
 impl GateIndex for VectorIndex {
@@ -512,11 +518,15 @@ impl GateIndex for VectorIndex {
     }
 
     fn down_override(&self, layer: usize, feature: usize) -> Option<&[f32]> {
-        self.down_overrides.get(&(layer, feature)).map(|v| v.as_slice())
+        self.down_overrides
+            .get(&(layer, feature))
+            .map(|v| v.as_slice())
     }
 
     fn up_override(&self, layer: usize, feature: usize) -> Option<&[f32]> {
-        self.up_overrides.get(&(layer, feature)).map(|v| v.as_slice())
+        self.up_overrides
+            .get(&(layer, feature))
+            .map(|v| v.as_slice())
     }
 
     fn has_overrides_at(&self, layer: usize) -> bool {
@@ -604,7 +614,9 @@ impl GateIndex for VectorIndex {
     }
 
     fn interleaved_q4_mmap_ref(&self) -> Option<&[u8]> {
-        self.interleaved_q4_mmap.as_ref().map(|m| m.as_ref() as &[u8])
+        self.interleaved_q4_mmap
+            .as_ref()
+            .map(|m| m.as_ref() as &[u8])
     }
 
     fn has_interleaved_q4k(&self) -> bool {
@@ -612,6 +624,12 @@ impl GateIndex for VectorIndex {
     }
 
     fn interleaved_q4k_mmap_ref(&self) -> Option<&[u8]> {
-        self.interleaved_q4k_mmap.as_ref().map(|m| m.as_ref() as &[u8])
+        self.interleaved_q4k_mmap
+            .as_ref()
+            .map(|m| m.as_ref() as &[u8])
+    }
+
+    fn cache_store(&self) -> Option<&crate::cache_residuals::CacheStore> {
+        self.cache_store.as_ref()
     }
 }

@@ -6,7 +6,9 @@ pub mod quant;
 pub mod vectors;
 pub mod weights;
 
-pub use config::{Activation, ExpertFormat, FfnType, ModelArchitecture, ModelConfig, NormType, RopeScaling};
+pub use config::{
+    Activation, ExpertFormat, FfnType, ModelArchitecture, ModelConfig, NormType, RopeScaling,
+};
 pub use detect::{detect_architecture, detect_from_json, ModelError};
 
 pub use architectures::deepseek::DeepSeekArch;
@@ -29,4 +31,4 @@ pub use vectors::{
 };
 pub use weights::{ModelWeights, WeightArray};
 
-pub use loading::{load_model_dir, resolve_model_path, load_gguf};
+pub use loading::{load_gguf, load_model_dir, resolve_model_path};

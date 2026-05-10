@@ -37,7 +37,9 @@ impl VectorIndex {
     pub fn down_feature_vector(&self, layer: usize, feature: usize) -> Option<&[f32]> {
         let mmap = self.down_features_mmap.as_ref()?;
         let intermediate = self.num_features(layer);
-        if intermediate == 0 || feature >= intermediate { return None; }
+        if intermediate == 0 || feature >= intermediate {
+            return None;
+        }
 
         let layer_floats = intermediate * self.hidden_size;
         let layer_offset = layer * layer_floats * 4;
@@ -45,7 +47,9 @@ impl VectorIndex {
         let start = layer_offset + feature_offset;
         let end = start + self.hidden_size * 4;
 
-        if end > mmap.len() { return None; }
+        if end > mmap.len() {
+            return None;
+        }
 
         let data = unsafe {
             let ptr = mmap[start..end].as_ptr() as *const f32;
@@ -58,13 +62,17 @@ impl VectorIndex {
     pub fn down_layer_matrix(&self, layer: usize) -> Option<ndarray::ArrayView2<'_, f32>> {
         let mmap = self.down_features_mmap.as_ref()?;
         let intermediate = self.num_features(layer);
-        if intermediate == 0 { return None; }
+        if intermediate == 0 {
+            return None;
+        }
 
         let floats_per_layer = intermediate * self.hidden_size;
         let bytes_per_layer = floats_per_layer * 4;
         let start = layer * bytes_per_layer;
         let end = start + bytes_per_layer;
-        if end > mmap.len() { return None; }
+        if end > mmap.len() {
+            return None;
+        }
 
         let data = unsafe {
             let ptr = mmap[start..end].as_ptr() as *const f32;
@@ -91,12 +99,16 @@ impl VectorIndex {
     pub fn up_layer_matrix(&self, layer: usize) -> Option<ndarray::ArrayView2<'_, f32>> {
         let mmap = self.up_features_mmap.as_ref()?;
         let intermediate = self.num_features(layer);
-        if intermediate == 0 { return None; }
+        if intermediate == 0 {
+            return None;
+        }
         let floats_per_layer = intermediate * self.hidden_size;
         let bytes_per_layer = floats_per_layer * 4;
         let start = layer * bytes_per_layer;
         let end = start + bytes_per_layer;
-        if end > mmap.len() { return None; }
+        if end > mmap.len() {
+            return None;
+        }
         let data = unsafe {
             let ptr = mmap[start..end].as_ptr() as *const f32;
             std::slice::from_raw_parts(ptr, floats_per_layer)
@@ -135,13 +147,17 @@ impl VectorIndex {
     pub fn interleaved_gate(&self, layer: usize) -> Option<ndarray::ArrayView2<'_, f32>> {
         let mmap = self.interleaved_mmap.as_ref()?;
         let intermediate = self.num_features(layer);
-        if intermediate == 0 { return None; }
+        if intermediate == 0 {
+            return None;
+        }
         let matrix_floats = intermediate * self.hidden_size;
         let matrix_bytes = matrix_floats * 4;
         let layer_bytes = matrix_bytes * 3; // gate + up + down
         let start = layer * layer_bytes; // gate is first
         let end = start + matrix_bytes;
-        if end > mmap.len() { return None; }
+        if end > mmap.len() {
+            return None;
+        }
         let data = unsafe {
             let ptr = mmap[start..end].as_ptr() as *const f32;
             std::slice::from_raw_parts(ptr, matrix_floats)
@@ -153,13 +169,17 @@ impl VectorIndex {
     pub fn interleaved_up(&self, layer: usize) -> Option<ndarray::ArrayView2<'_, f32>> {
         let mmap = self.interleaved_mmap.as_ref()?;
         let intermediate = self.num_features(layer);
-        if intermediate == 0 { return None; }
+        if intermediate == 0 {
+            return None;
+        }
         let matrix_floats = intermediate * self.hidden_size;
         let matrix_bytes = matrix_floats * 4;
         let layer_bytes = matrix_bytes * 3;
         let start = layer * layer_bytes + matrix_bytes; // up is second
         let end = start + matrix_bytes;
-        if end > mmap.len() { return None; }
+        if end > mmap.len() {
+            return None;
+        }
         let data = unsafe {
             let ptr = mmap[start..end].as_ptr() as *const f32;
             std::slice::from_raw_parts(ptr, matrix_floats)
@@ -171,13 +191,17 @@ impl VectorIndex {
     pub fn interleaved_down(&self, layer: usize) -> Option<ndarray::ArrayView2<'_, f32>> {
         let mmap = self.interleaved_mmap.as_ref()?;
         let intermediate = self.num_features(layer);
-        if intermediate == 0 { return None; }
+        if intermediate == 0 {
+            return None;
+        }
         let matrix_floats = intermediate * self.hidden_size;
         let matrix_bytes = matrix_floats * 4;
         let layer_bytes = matrix_bytes * 3;
         let start = layer * layer_bytes + matrix_bytes * 2; // down is third
         let end = start + matrix_bytes;
-        if end > mmap.len() { return None; }
+        if end > mmap.len() {
+            return None;
+        }
         let data = unsafe {
             let ptr = mmap[start..end].as_ptr() as *const f32;
             std::slice::from_raw_parts(ptr, matrix_floats)
@@ -190,12 +214,16 @@ impl VectorIndex {
         #[cfg(unix)]
         if let Some(ref mmap) = self.interleaved_mmap {
             let intermediate = self.num_features(layer);
-            if intermediate == 0 { return; }
+            if intermediate == 0 {
+                return;
+            }
             let matrix_bytes = intermediate * self.hidden_size * 4;
             let layer_bytes = matrix_bytes * 3;
             let start = layer * layer_bytes;
             let end = (start + layer_bytes).min(mmap.len());
-            if start >= mmap.len() { return; }
+            if start >= mmap.len() {
+                return;
+            }
             unsafe {
                 let ptr = mmap[start..].as_ptr() as *mut libc::c_void;
                 libc::madvise(ptr, end - start, libc::MADV_WILLNEED);
@@ -242,7 +270,9 @@ impl VectorIndex {
     fn dequant_q4_matrix(&self, layer: usize, component: usize) -> Option<ndarray::Array2<f32>> {
         let mmap = self.interleaved_q4_mmap.as_ref()?;
         let intermediate = self.num_features(layer);
-        if intermediate == 0 { return None; }
+        if intermediate == 0 {
+            return None;
+        }
 
         let floats_per_matrix = intermediate * self.hidden_size;
         let q4_bytes_per_matrix = floats_per_matrix / 32 * 18; // Q4_0: 18 bytes per 32 elements
@@ -250,10 +280,38 @@ impl VectorIndex {
 
         let start = layer * q4_bytes_per_layer + component * q4_bytes_per_matrix;
         let end = start + q4_bytes_per_matrix;
-        if end > mmap.len() { return None; }
+        if end > mmap.len() {
+            return None;
+        }
 
         let q4_data = &mmap[start..end];
         let floats = larql_models::quant::ggml::dequantize_q4_0(q4_data, floats_per_matrix).ok()?;
+        ndarray::Array2::from_shape_vec((intermediate, self.hidden_size), floats).ok()
+    }
+
+    /// Dequantize one matrix from Q4_K interleaved file → f32 Array2.
+    /// component: 0=gate, 1=up, 2=down
+    fn dequant_q4k_matrix(&self, layer: usize, component: usize) -> Option<ndarray::Array2<f32>> {
+        let mmap = self.interleaved_q4k_mmap.as_ref()?;
+        let intermediate = self.num_features(layer);
+        if intermediate == 0 {
+            return None;
+        }
+
+        let floats_per_matrix = intermediate * self.hidden_size;
+        // Q4_K: 144 bytes per 256 floats (GGUF format)
+        let q4k_bytes_per_matrix = (floats_per_matrix / 256) * 144;
+        let q4k_bytes_per_layer = q4k_bytes_per_matrix * 3;
+
+        let start = layer * q4k_bytes_per_layer + component * q4k_bytes_per_matrix;
+        let end = start + q4k_bytes_per_matrix;
+        if end > mmap.len() {
+            return None;
+        }
+
+        let q4k_data = &mmap[start..end];
+        let floats =
+            larql_models::quant::ggml::dequantize_q4_k(q4k_data, floats_per_matrix).ok()?;
         ndarray::Array2::from_shape_vec((intermediate, self.hidden_size), floats).ok()
     }
 
@@ -272,17 +330,36 @@ impl VectorIndex {
         self.dequant_q4_matrix(layer, 2)
     }
 
+    /// Get gate matrix from Q4_K interleaved file, dequantized to f32.
+    pub fn interleaved_q4k_gate(&self, layer: usize) -> Option<ndarray::Array2<f32>> {
+        self.dequant_q4k_matrix(layer, 0)
+    }
+
+    /// Get up matrix from Q4_K interleaved file, dequantized to f32.
+    pub fn interleaved_q4k_up(&self, layer: usize) -> Option<ndarray::Array2<f32>> {
+        self.dequant_q4k_matrix(layer, 1)
+    }
+
+    /// Get down matrix from Q4_K interleaved file, dequantized to f32.
+    pub fn interleaved_q4k_down(&self, layer: usize) -> Option<ndarray::Array2<f32>> {
+        self.dequant_q4k_matrix(layer, 2)
+    }
+
     /// Prefetch next layer's Q4 data.
     pub fn prefetch_interleaved_q4_layer(&self, layer: usize) {
         #[cfg(unix)]
         if let Some(ref mmap) = self.interleaved_q4_mmap {
             let intermediate = self.num_features(layer);
-            if intermediate == 0 { return; }
+            if intermediate == 0 {
+                return;
+            }
             let q4_bytes_per_matrix = intermediate * self.hidden_size / 32 * 18;
             let q4_bytes_per_layer = q4_bytes_per_matrix * 3;
             let start = layer * q4_bytes_per_layer;
             let end = (start + q4_bytes_per_layer).min(mmap.len());
-            if start >= mmap.len() { return; }
+            if start >= mmap.len() {
+                return;
+            }
             unsafe {
                 let ptr = mmap[start..].as_ptr() as *mut libc::c_void;
                 libc::madvise(ptr, end - start, libc::MADV_WILLNEED);
@@ -337,9 +414,13 @@ impl VectorIndex {
     pub fn gate_q4_data(&self, layer: usize) -> Option<&[u8]> {
         let mmap = self.gate_q4_mmap.as_ref()?;
         let slice = self.gate_q4_slices.get(layer)?;
-        if slice.byte_len == 0 { return None; }
+        if slice.byte_len == 0 {
+            return None;
+        }
         let end = slice.byte_offset + slice.byte_len;
-        if end > mmap.len() { return None; }
+        if end > mmap.len() {
+            return None;
+        }
         Some(&mmap[slice.byte_offset..end])
     }
 
@@ -357,10 +438,12 @@ impl VectorIndex {
         if manifest_path.exists() {
             let json: Vec<serde_json::Value> = serde_json::from_str(
                 &std::fs::read_to_string(&manifest_path)
-                    .map_err(|e| VindexError::Parse(e.to_string()))?
-            ).map_err(|e| VindexError::Parse(e.to_string()))?;
+                    .map_err(|e| VindexError::Parse(e.to_string()))?,
+            )
+            .map_err(|e| VindexError::Parse(e.to_string()))?;
 
-            let entries: Vec<(usize, usize, usize)> = json.iter()
+            let entries: Vec<(usize, usize, usize)> = json
+                .iter()
                 .map(|e| {
                     let offset = e["q8_offset"].as_u64().unwrap_or(0) as usize;
                     let vals_len = e["q8_vals_len"].as_u64().unwrap_or(0) as usize;
@@ -379,7 +462,9 @@ impl VectorIndex {
         let manifest = self.attn_q8_manifest.as_ref()?;
 
         let base = layer * 4;
-        if base + 3 >= manifest.len() { return None; }
+        if base + 3 >= manifest.len() {
+            return None;
+        }
 
         let mut result = [(&[] as &[u8], &[] as &[f32]); 4];
         for i in 0..4 {
@@ -388,10 +473,7 @@ impl VectorIndex {
             let scales_start = offset + vals_len;
             let scales_data = &mmap[scales_start..scales_start + scales_len];
             let scales = unsafe {
-                std::slice::from_raw_parts(
-                    scales_data.as_ptr() as *const f32,
-                    scales_len / 4,
-                )
+                std::slice::from_raw_parts(scales_data.as_ptr() as *const f32, scales_len / 4)
             };
             result[i] = (vals, scales);
         }
@@ -411,11 +493,13 @@ impl VectorIndex {
         if manifest_path.exists() {
             let json: Vec<serde_json::Value> = serde_json::from_str(
                 &std::fs::read_to_string(&manifest_path)
-                    .map_err(|e| VindexError::Parse(e.to_string()))?
-            ).map_err(|e| VindexError::Parse(e.to_string()))?;
+                    .map_err(|e| VindexError::Parse(e.to_string()))?,
+            )
+            .map_err(|e| VindexError::Parse(e.to_string()))?;
 
             // Each entry: {key, shape, format, offset, length}
-            let entries: Vec<(usize, usize, String)> = json.iter()
+            let entries: Vec<(usize, usize, String)> = json
+                .iter()
                 .map(|e| {
                     let offset = e["offset"].as_u64().unwrap_or(0) as usize;
                     let length = e["length"].as_u64().unwrap_or(0) as usize;
@@ -434,7 +518,9 @@ impl VectorIndex {
         let mmap = self.attn_q4k_mmap.as_ref()?;
         let manifest = self.attn_q4k_manifest.as_ref()?;
         let base = layer * 4;
-        if base + 3 >= manifest.len() { return None; }
+        if base + 3 >= manifest.len() {
+            return None;
+        }
 
         let mut result: [(&[u8], &str); 4] = [(&[], ""); 4];
         for i in 0..4 {
@@ -459,10 +545,12 @@ impl VectorIndex {
         if manifest_path.exists() {
             let json: Vec<serde_json::Value> = serde_json::from_str(
                 &std::fs::read_to_string(&manifest_path)
-                    .map_err(|e| VindexError::Parse(e.to_string()))?
-            ).map_err(|e| VindexError::Parse(e.to_string()))?;
+                    .map_err(|e| VindexError::Parse(e.to_string()))?,
+            )
+            .map_err(|e| VindexError::Parse(e.to_string()))?;
 
-            let entries: Vec<(usize, usize)> = json.iter()
+            let entries: Vec<(usize, usize)> = json
+                .iter()
                 .map(|e| {
                     let offset = e["q4_offset"].as_u64().unwrap_or(0) as usize;
                     let length = e["q4_length"].as_u64().unwrap_or(0) as usize;
@@ -488,7 +576,9 @@ impl VectorIndex {
 
         // Each layer has 4 tensors: Q, K, V, O
         let base = layer * 4;
-        if base + 3 >= manifest.len() { return None; }
+        if base + 3 >= manifest.len() {
+            return None;
+        }
 
         let q = &manifest[base];
         let k = &manifest[base + 1];
@@ -560,15 +650,19 @@ impl VectorIndex {
                 if vocab > 0 {
                     let x = query.as_slice().unwrap();
                     let (q8_x, q8_scales) = larql_compute::cpu::q4::quantize_to_q8(x);
-                    if let Some(scores_vec) = backend.q4_matvec(
-                        q4_mmap.as_ref(), &q8_x, &q8_scales, vocab, hidden,
-                    ) {
-                        let mut indexed: Vec<(u32, f32)> = scores_vec.iter().copied().enumerate()
+                    if let Some(scores_vec) =
+                        backend.q4_matvec(q4_mmap.as_ref(), &q8_x, &q8_scales, vocab, hidden)
+                    {
+                        let mut indexed: Vec<(u32, f32)> = scores_vec
+                            .iter()
+                            .copied()
+                            .enumerate()
                             .map(|(i, s)| (i as u32, s))
                             .collect();
                         let k = top_k.min(indexed.len());
                         if k > 0 && k < indexed.len() {
-                            indexed.select_nth_unstable_by(k, |a, b| b.1.partial_cmp(&a.1).unwrap());
+                            indexed
+                                .select_nth_unstable_by(k, |a, b| b.1.partial_cmp(&a.1).unwrap());
                             indexed.truncate(k);
                         }
                         indexed.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
@@ -591,10 +685,14 @@ impl VectorIndex {
         };
         let vocab = self.vocab_size;
         let hidden = self.hidden_size;
-        if vocab == 0 { return vec![]; }
+        if vocab == 0 {
+            return vec![];
+        }
 
         let expected = vocab * hidden * 4;
-        if mmap.len() < expected { return vec![]; }
+        if mmap.len() < expected {
+            return vec![];
+        }
 
         // Zero-copy: reinterpret mmap as [vocab, hidden] f32 matrix
         let data = unsafe {
@@ -606,13 +704,17 @@ impl VectorIndex {
         // gemv via larql-compute: scores = query @ lm_head^T → [1, vocab]
         let hidden = self.hidden_size;
         let x = query.view().into_shape_with_order((1, hidden)).unwrap();
-        let cpu = larql_compute::CpuBackend;
+        let cpu = larql_compute::cpu_backend();
+        #[allow(unused_imports)]
         use larql_compute::ComputeBackend;
         let result = cpu.matmul_transb(x, lm_view); // [1, hidden] @ [vocab, hidden]^T → [1, vocab]
         let scores = ndarray::Array1::from_vec(result.into_raw_vec_and_offset().0);
 
         // Top-K selection
-        let mut indexed: Vec<(u32, f32)> = scores.iter().copied().enumerate()
+        let mut indexed: Vec<(u32, f32)> = scores
+            .iter()
+            .copied()
+            .enumerate()
             .map(|(i, s)| (i as u32, s))
             .collect();
         let k = top_k.min(indexed.len());

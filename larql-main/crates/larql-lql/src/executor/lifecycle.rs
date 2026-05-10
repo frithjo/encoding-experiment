@@ -2,11 +2,11 @@
 
 use std::path::PathBuf;
 
+use super::helpers::{dir_size, format_bytes, format_number};
+use super::{Backend, Session};
 use crate::ast::*;
 use crate::error::LqlError;
 use crate::relations::RelationClassifier;
-use super::{Backend, Session};
-use super::helpers::{format_number, format_bytes, dir_size};
 
 impl Session {
     pub(crate) fn exec_use(&mut self, target: &UseTarget) -> Result<Vec<String>, LqlError> {
@@ -75,13 +75,22 @@ impl Session {
                     }
                 }
 
-                self.backend = Backend::Vindex { path, config, patched, relation_classifier, router };
+                self.backend = Backend::Vindex {
+                    path,
+                    config,
+                    patched,
+                    relation_classifier,
+                    router,
+                };
                 // Reset any previous patch session
                 self.patch_recording = None;
                 self.auto_patch = false;
                 Ok(out)
             }
-            UseTarget::Model { id, auto_extract: _ } => {
+            UseTarget::Model {
+                id,
+                auto_extract: _,
+            } => {
                 let mut out = Vec::new();
                 out.push(format!("Loading model: {id}..."));
 
@@ -95,10 +104,7 @@ impl Session {
                 let size_gb = dir_size(&model_path) as f64 / (1024.0 * 1024.0 * 1024.0);
                 out.push(format!(
                     "Using model: {} ({} layers, hidden={}, {:.1} GB, live weights)",
-                    id,
-                    weights.num_layers,
-                    weights.hidden_size,
-                    size_gb,
+                    id, weights.num_layers, weights.hidden_size, size_gb,
                 ));
                 out.push("Supported: INFER, EXPLAIN INFER, STATS. For WALK/DESCRIBE/SELECT, use EXTRACT first.".into());
 
@@ -117,7 +123,13 @@ impl Session {
 
     pub(crate) fn exec_stats(&self, _vindex_path: Option<&str>) -> Result<Vec<String>, LqlError> {
         match &self.backend {
-            Backend::Vindex { path, config, patched, relation_classifier, .. } => {
+            Backend::Vindex {
+                path,
+                config,
+                patched,
+                relation_classifier,
+                ..
+            } => {
                 let index = patched.base();
                 let total_features: usize = config.layers.iter().map(|l| l.num_features).sum();
                 let file_size = dir_size(path);
@@ -195,15 +207,18 @@ impl Session {
 
                 // Layer band breakdown
                 let layers = index.loaded_layers();
-                let syntax_features: usize = layers.iter()
+                let syntax_features: usize = layers
+                    .iter()
                     .filter(|l| **l <= 13)
                     .map(|l| index.num_features(*l))
                     .sum();
-                let knowledge_features: usize = layers.iter()
+                let knowledge_features: usize = layers
+                    .iter()
                     .filter(|l| **l >= 14 && **l <= 27)
                     .map(|l| index.num_features(*l))
                     .sum();
-                let output_features: usize = layers.iter()
+                let output_features: usize = layers
+                    .iter()
                     .filter(|l| **l >= 28)
                     .map(|l| index.num_features(*l))
                     .sum();
@@ -244,15 +259,17 @@ impl Session {
                             0.0
                         };
                         let cluster_pct = (mapped_clusters as f64 / num_clusters as f64) * 100.0;
-                        let total_mapped_pct = ((mapped_clusters as f64 / num_clusters as f64) * 100.0)
-                            .min(100.0);
+                        let total_mapped_pct =
+                            ((mapped_clusters as f64 / num_clusters as f64) * 100.0).min(100.0);
                         let unmapped_pct = 100.0 - total_mapped_pct;
 
                         out.push(String::new());
                         out.push("  Coverage:".into());
                         out.push(format!(
                             "    Probe-confirmed:   {:.2}% of features ({} / {})",
-                            probe_pct, num_probes, format_number(total_features),
+                            probe_pct,
+                            num_probes,
+                            format_number(total_features),
                         ));
                         out.push(format!(
                             "    Cluster-labelled:  {:.0}% of clusters ({} / {})",
@@ -270,7 +287,9 @@ impl Session {
                 out.push(format!("Path:            {}", path.display()));
                 Ok(out)
             }
-            Backend::Weight { model_id, weights, .. } => {
+            Backend::Weight {
+                model_id, weights, ..
+            } => {
                 let mut out = Vec::new();
                 out.push(format!("Model:           {}", model_id));
                 out.push("Backend:         live weights (no vindex)".to_string());
@@ -278,7 +297,10 @@ impl Session {
                 out.push(format!("Layers:          {}", weights.num_layers));
                 out.push(format!("Hidden size:     {}", weights.hidden_size));
                 out.push(format!("Intermediate:    {}", weights.intermediate_size));
-                out.push(format!("Vocab size:      {}", format_number(weights.vocab_size)));
+                out.push(format!(
+                    "Vocab size:      {}",
+                    format_number(weights.vocab_size)
+                ));
                 out.push(String::new());
                 out.push("Supported:       INFER, EXPLAIN INFER, STATS".into());
                 out.push("For WALK/DESCRIBE/SELECT/INSERT: EXTRACT into a vindex first.".into());
@@ -390,12 +412,10 @@ impl Session {
         on_conflict: Option<CompileConflict>,
     ) -> Result<Vec<String>, LqlError> {
         let vindex_path = match vindex {
-            VindexRef::Current => {
-                match &self.backend {
-                    Backend::Vindex { path, .. } => path.clone(),
-                    _ => return Err(LqlError::NoBackend),
-                }
-            }
+            VindexRef::Current => match &self.backend {
+                Backend::Vindex { path, .. } => path.clone(),
+                _ => return Err(LqlError::NoBackend),
+            },
             VindexRef::Path(p) => PathBuf::from(p),
         };
 
@@ -405,7 +425,7 @@ impl Session {
                 output,
                 on_conflict.unwrap_or(CompileConflict::LastWins),
             ),
-            CompileTarget::Model => self.exec_compile_into_model(&vindex_path, output),
+            CompileTarget::Model => self.exec_compile_into_model(&vindex_path, output, _format),
         }
     }
 
@@ -413,6 +433,7 @@ impl Session {
         &self,
         vindex_path: &std::path::Path,
         output: &str,
+        format: Option<OutputFormat>,
     ) -> Result<Vec<String>, LqlError> {
         let config = larql_vindex::load_vindex_config(vindex_path)
             .map_err(|e| LqlError::exec("failed to load vindex config", e))?;
@@ -422,7 +443,8 @@ impl Session {
                 "COMPILE INTO MODEL requires model weights in the vindex.\n\
                  This vindex was built without --include-weights.\n\
                  Rebuild: EXTRACT MODEL \"{}\" INTO \"{}\" WITH ALL",
-                config.model, vindex_path.display()
+                config.model,
+                vindex_path.display()
             )));
         }
 
@@ -455,7 +477,8 @@ impl Session {
             out.push(format!(
                 "MEMIT: {} fact(s) across {} layer(s)",
                 memit_facts.len(),
-                memit_facts.iter()
+                memit_facts
+                    .iter()
                     .map(|f| f.layer)
                     .collect::<std::collections::HashSet<_>>()
                     .len(),
@@ -467,13 +490,11 @@ impl Session {
                 ridge,
                 target_alpha,
                 tokenizer.as_ref(),
-            ).map_err(|e| LqlError::Execution(format!("MEMIT failed: {e}")))?;
+            )
+            .map_err(|e| LqlError::Execution(format!("MEMIT failed: {e}")))?;
 
             for result in &results {
-                let delta_norm: f32 = result.delta_w.iter()
-                    .map(|v| v * v)
-                    .sum::<f32>()
-                    .sqrt();
+                let delta_norm: f32 = result.delta_w.iter().map(|v| v * v).sum::<f32>().sqrt();
                 out.push(format!(
                     "  L{}: ΔW_down applied ({} facts, ‖ΔW‖={:.2})",
                     result.layer,
@@ -493,6 +514,25 @@ impl Session {
             }
         }
 
+        // Handle output format
+        match format {
+            Some(OutputFormat::Gguf) => {
+                return Err(LqlError::Execution(
+                    "GGUF output format is not yet implemented. Use FORMAT SAFETENSORS for now. \
+                    GGUF writer implementation is the next step in Gap 2 of the implementation plan.".to_string()
+                ));
+            }
+            Some(OutputFormat::Safetensors) | None => {
+                // Default to safetensors
+            }
+            Some(OutputFormat::Json) | Some(OutputFormat::Csv) => {
+                return Err(LqlError::Execution(format!(
+                    "Unsupported output format for COMPILE INTO MODEL: {:?}",
+                    format
+                )));
+            }
+        }
+
         let mut build_cb = larql_vindex::SilentBuildCallbacks;
         larql_vindex::write_model_weights(&weights, &output_dir, &mut build_cb)
             .map_err(|e| LqlError::exec("failed to write model", e))?;
@@ -504,7 +544,14 @@ impl Session {
                 .map_err(|e| LqlError::exec("failed to copy tokenizer", e))?;
         }
 
-        out.insert(0, format!("Compiled {} → {}", vindex_path.display(), output_dir.display()));
+        out.insert(
+            0,
+            format!(
+                "Compiled {} → {}",
+                vindex_path.display(),
+                output_dir.display()
+            ),
+        );
         out.push(format!("Model: {}", config.model));
         out.push(format!("Size: {}", format_bytes(dir_size(&output_dir))));
         Ok(out)
@@ -535,14 +582,16 @@ impl Session {
             CompileConflict::LastWins => {}
             CompileConflict::Fail => {
                 if !collisions.is_empty() {
-                    let preview = collisions.iter()
+                    let preview = collisions
+                        .iter()
                         .take(5)
                         .map(|((l, f), n)| format!("L{l}/F{f} ({n} writes)"))
                         .collect::<Vec<_>>()
                         .join(", ");
                     return Err(LqlError::Execution(format!(
                         "COMPILE INTO VINDEX ON CONFLICT FAIL: {} colliding slot(s): {}",
-                        collisions.len(), preview
+                        collisions.len(),
+                        preview
                     )));
                 }
             }
@@ -564,18 +613,15 @@ impl Session {
         // layers, and we deliberately do NOT bake any inserted gate
         // vectors into gate_vectors.bin (see comment further down).
         let baked = patched.base().clone();
-        let layer_infos = baked.save_gate_vectors(&output_dir)
+        let layer_infos = baked
+            .save_gate_vectors(&output_dir)
             .map_err(|e| LqlError::exec("failed to save gate vectors", e))?;
         // We hard-link down_meta.bin from source (in the unchanging-file
         // loop below) rather than calling save_down_meta, because the
         // cloned base is in mmap mode and its heap-side `down_meta` is
         // empty — saving it would produce a 152-byte file with zero
         // features and break WALK / DESCRIBE / SHOW.
-        let dm_count: usize = config
-            .layers
-            .iter()
-            .map(|l| l.num_features)
-            .sum();
+        let dm_count: usize = config.layers.iter().map(|l| l.num_features).sum();
 
         // ── Step 2: hard-link unchanging weight files from the source ──
         //
@@ -627,7 +673,11 @@ impl Session {
         }
 
         // Label files (small, copy is fine).
-        for name in &["relation_clusters.json", "feature_clusters.jsonl", "feature_labels.json"] {
+        for name in &[
+            "relation_clusters.json",
+            "feature_clusters.jsonl",
+            "feature_labels.json",
+        ] {
             let src = path.join(name);
             let dst = output_dir.join(name);
             if src.exists() {
@@ -707,29 +757,42 @@ impl Session {
         // ── Step 5: serialize KNN store (Architecture B) ──
         let knn_count = patched.knn_store.len();
         if knn_count > 0 {
-            patched.knn_store.save(&output_dir.join("knn_store.bin"))
+            patched
+                .knn_store
+                .save(&output_dir.join("knn_store.bin"))
                 .map_err(|e| LqlError::exec("failed to save knn_store", e))?;
         }
 
         let mut out = Vec::new();
-        out.push(format!("Compiled {} → {}", source_path.display(), output_dir.display()));
+        out.push(format!(
+            "Compiled {} → {}",
+            source_path.display(),
+            output_dir.display()
+        ));
         out.push(format!("Features: {}", dm_count));
         if !collisions.is_empty() {
             let strategy = match on_conflict {
                 CompileConflict::LastWins => "LAST_WINS",
-                CompileConflict::HighestConfidence => "HIGHEST_CONFIDENCE (resolves like LAST_WINS for down vectors — see docs)",
+                CompileConflict::HighestConfidence => {
+                    "HIGHEST_CONFIDENCE (resolves like LAST_WINS for down vectors — see docs)"
+                }
                 CompileConflict::Fail => "FAIL",
             };
             out.push(format!(
                 "Conflicts: {} slot(s) touched by multiple patches — strategy: {}",
-                collisions.len(), strategy,
+                collisions.len(),
+                strategy,
             ));
         }
         if overrides_applied > 0 {
             out.push(format!(
                 "Down overrides baked: {} ({} layers touched)",
                 overrides_applied,
-                down_overrides.keys().map(|(l, _)| *l).collect::<std::collections::HashSet<_>>().len(),
+                down_overrides
+                    .keys()
+                    .map(|(l, _)| *l)
+                    .collect::<std::collections::HashSet<_>>()
+                    .len(),
             ));
         }
         if knn_count > 0 {
@@ -749,6 +812,7 @@ impl Session {
         _relation: Option<&str>,
         limit: Option<u32>,
         into_patch: Option<&str>,
+        into_report: Option<&str>,
     ) -> Result<Vec<String>, LqlError> {
         let path_a = self.resolve_vindex_ref(a)?;
         let path_b = self.resolve_vindex_ref(b)?;
@@ -798,12 +862,8 @@ impl Session {
                     break;
                 }
 
-                let meta_a = metas_a
-                    .and_then(|m| m.get(feat))
-                    .and_then(|m| m.as_ref());
-                let meta_b = metas_b
-                    .and_then(|m| m.get(feat))
-                    .and_then(|m| m.as_ref());
+                let meta_a = metas_a.and_then(|m| m.get(feat)).and_then(|m| m.as_ref());
+                let meta_b = metas_b.and_then(|m| m.get(feat)).and_then(|m| m.as_ref());
 
                 let status = match (meta_a, meta_b) {
                     (Some(a), Some(b)) => {
@@ -832,7 +892,10 @@ impl Session {
         if diff_count == 0 {
             out.push("  (no differences found)".into());
         } else {
-            out.push(format!("\n{} differences shown (limit {})", diff_count, limit));
+            out.push(format!(
+                "\n{} differences shown (limit {})",
+                diff_count, limit
+            ));
         }
 
         // If INTO PATCH specified, extract diff as a .vlp file
@@ -842,7 +905,9 @@ impl Session {
             // Re-scan without limit for the full diff
             for layer in &layers_a {
                 if let Some(l) = layer_filter {
-                    if *layer != l as usize { continue; }
+                    if *layer != l as usize {
+                        continue;
+                    }
                 }
                 let metas_a = index_a.down_meta_at(*layer);
                 let metas_b = index_b.down_meta_at(*layer);
@@ -854,7 +919,10 @@ impl Session {
                     let mb = metas_b.and_then(|m| m.get(feat)).and_then(|m| m.as_ref());
 
                     match (ma, mb) {
-                        (Some(_a), Some(b)) if _a.top_token != b.top_token || (_a.c_score - b.c_score).abs() > 0.01 => {
+                        (Some(_a), Some(b))
+                            if _a.top_token != b.top_token
+                                || (_a.c_score - b.c_score).abs() > 0.01 =>
+                        {
                             operations.push(larql_vindex::PatchOp::Update {
                                 layer: *layer,
                                 feature: feat,
@@ -904,23 +972,449 @@ impl Session {
                 version: 1,
                 base_model: model_name,
                 base_checksum: None,
-                created_at: String::new(),
-                description: Some(format!("Diff: {} vs {}", path_a.display(), path_b.display())),
+                created_at: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+                    .to_string(),
+                description: Some(format!(
+                    "Diff from {} to {}",
+                    path_a.display(),
+                    path_b.display()
+                )),
                 author: None,
-                tags: vec![],
+                tags: Vec::new(),
                 operations,
             };
 
             let (ins, upd, del) = patch.counts();
-            patch.save(std::path::Path::new(patch_path))
+            patch
+                .save(std::path::Path::new(patch_path))
                 .map_err(|e| LqlError::exec("failed to save patch", e))?;
             out.push(format!(
                 "Extracted: {} ({} ops: {} inserts, {} updates, {} deletes)",
-                patch_path, patch.len(), ins, upd, del,
+                patch_path,
+                patch.len(),
+                ins,
+                upd,
+                del,
             ));
         }
 
+        // If INTO REPORT specified, generate a markdown report
+        if let Some(report_path) = into_report {
+            let mut report_lines = Vec::new();
+            report_lines.push(format!(
+                "# Diff Report: {} vs {}",
+                path_a.display(),
+                path_b.display()
+            ));
+            report_lines.push(String::new());
+            report_lines.push(format!(
+                "Generated: {}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+            ));
+            report_lines.push(String::new());
+
+            // Summary statistics
+            let mut added_count = 0;
+            let mut removed_count = 0;
+            let mut modified_count = 0;
+
+            for layer in &layers_a {
+                if let Some(l) = layer_filter {
+                    if *layer != l as usize {
+                        continue;
+                    }
+                }
+                let metas_a = index_a.down_meta_at(*layer);
+                let metas_b = index_b.down_meta_at(*layer);
+                let len_a = metas_a.map(|m| m.len()).unwrap_or(0);
+                let len_b = metas_b.map(|m| m.len()).unwrap_or(0);
+
+                for feat in 0..len_a.max(len_b) {
+                    let ma = metas_a.and_then(|m| m.get(feat)).and_then(|m| m.as_ref());
+                    let mb = metas_b.and_then(|m| m.get(feat)).and_then(|m| m.as_ref());
+
+                    match (ma, mb) {
+                        (Some(_a), Some(b))
+                            if _a.top_token != b.top_token
+                                || (_a.c_score - b.c_score).abs() > 0.01 =>
+                        {
+                            modified_count += 1;
+                        }
+                        (Some(_), None) => {
+                            removed_count += 1;
+                        }
+                        (None, Some(_)) => {
+                            added_count += 1;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            report_lines.push("## Summary".to_string());
+            report_lines.push(String::new());
+            report_lines.push(format!("- Added: {}", added_count));
+            report_lines.push(format!("- Removed: {}", removed_count));
+            report_lines.push(format!("- Modified: {}", modified_count));
+            report_lines.push(format!(
+                "- Total changes: {}",
+                added_count + removed_count + modified_count
+            ));
+            report_lines.push(String::new());
+
+            // Detailed changes by layer
+            report_lines.push("## Detailed Changes by Layer".to_string());
+            report_lines.push(String::new());
+
+            for layer in &layers_a {
+                if let Some(l) = layer_filter {
+                    if *layer != l as usize {
+                        continue;
+                    }
+                }
+                let metas_a = index_a.down_meta_at(*layer);
+                let metas_b = index_b.down_meta_at(*layer);
+                let len_a = metas_a.map(|m| m.len()).unwrap_or(0);
+                let len_b = metas_b.map(|m| m.len()).unwrap_or(0);
+
+                let mut layer_changes = Vec::new();
+
+                for feat in 0..len_a.max(len_b) {
+                    let ma = metas_a.and_then(|m| m.get(feat)).and_then(|m| m.as_ref());
+                    let mb = metas_b.and_then(|m| m.get(feat)).and_then(|m| m.as_ref());
+
+                    match (ma, mb) {
+                        (Some(a), Some(b))
+                            if a.top_token != b.top_token
+                                || (a.c_score - b.c_score).abs() > 0.01 =>
+                        {
+                            layer_changes.push(format!(
+                                "  - Modified L{}F{}: '{}' → '{}' (confidence: {:.2} → {:.2})",
+                                layer, feat, a.top_token, b.top_token, a.c_score, b.c_score
+                            ));
+                        }
+                        (Some(a), None) => {
+                            layer_changes.push(format!(
+                                "  - Removed L{}F{}: '{}' (confidence: {:.2})",
+                                layer, feat, a.top_token, a.c_score
+                            ));
+                        }
+                        (None, Some(b)) => {
+                            layer_changes.push(format!(
+                                "  - Added L{}F{}: '{}' (confidence: {:.2})",
+                                layer, feat, b.top_token, b.c_score
+                            ));
+                        }
+                        _ => {}
+                    }
+                }
+
+                if !layer_changes.is_empty() {
+                    report_lines.push(format!("### Layer {}", layer));
+                    report_lines.push(String::new());
+                    for change in layer_changes {
+                        report_lines.push(change);
+                    }
+                    report_lines.push(String::new());
+                }
+            }
+
+            // Write report to file
+            std::fs::write(report_path, report_lines.join("\n"))
+                .map_err(|e| LqlError::exec("failed to write report", e))?;
+            out.push(format!("Report saved: {}", report_path));
+        }
+
         Ok(out)
+    }
+
+    // ── EXPORT ──
+
+    pub(crate) fn exec_export(
+        &self,
+        vindex: &VindexRef,
+        output: &str,
+        format: GraphExportFormat,
+    ) -> Result<Vec<String>, LqlError> {
+        let vindex_path = self.resolve_vindex_ref(vindex)?;
+        let config = larql_vindex::load_vindex_config(&vindex_path)
+            .map_err(|e| LqlError::exec("failed to load vindex config", e))?;
+
+        let mut cb = larql_vindex::SilentLoadCallbacks;
+        let index = larql_vindex::VectorIndex::load_vindex(&vindex_path, &mut cb)
+            .map_err(|e| LqlError::exec("failed to load vindex", e))?;
+
+        let relation_classifier = RelationClassifier::from_vindex(&vindex_path);
+
+        let mut out = Vec::new();
+        out.push(format!(
+            "Exporting {} to {}...",
+            vindex_path.display(),
+            output
+        ));
+
+        // Collect all edges from the knowledge graph
+        let mut edges = Vec::new();
+        let layers = index.loaded_layers();
+
+        for layer in &layers {
+            let metas = index.down_meta_at(*layer);
+            if let Some(metas) = metas {
+                for (feat, meta) in metas.iter().enumerate() {
+                    if let Some(meta) = meta {
+                        // Get relation label if available
+                        let relation = if let Some(rc) = &relation_classifier {
+                            rc.label_for_feature(*layer, feat).unwrap_or("unknown")
+                        } else {
+                            "unknown"
+                        };
+
+                        edges.push((
+                            meta.top_token.clone(),
+                            relation.to_string(),
+                            meta.c_score,
+                            *layer,
+                        ));
+                    }
+                }
+            }
+        }
+
+        out.push(format!("Exported {} edges", edges.len()));
+
+        match format {
+            GraphExportFormat::Turtle => {
+                self.export_turtle(&edges, output, &config)?;
+                out.push(format!("Saved: {} (Turtle RDF format)", output));
+            }
+            GraphExportFormat::Neo4j => {
+                self.export_neo4j(&edges, output)?;
+                out.push(format!("Saved: {} (Neo4j CSV format)", output));
+            }
+            GraphExportFormat::JsonLd => {
+                self.export_jsonld(&edges, output, &config)?;
+                out.push(format!("Saved: {} (JSON-LD format)", output));
+            }
+            GraphExportFormat::Graphml => {
+                self.export_graphml(&edges, output, &config)?;
+                out.push(format!("Saved: {} (GraphML format)", output));
+            }
+        }
+
+        Ok(out)
+    }
+
+    fn export_turtle(
+        &self,
+        edges: &[(String, String, f32, usize)],
+        output: &str,
+        config: &larql_vindex::VindexConfig,
+    ) -> Result<(), LqlError> {
+        use std::io::Write;
+
+        let mut file = std::fs::File::create(output)
+            .map_err(|e| LqlError::exec("failed to create output file", e))?;
+
+        writeln!(file, "# Turtle RDF export from LARQL")
+            .map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(file, "# Model: {}", config.model)
+            .map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(file).map_err(|e| LqlError::exec("failed to write", e))?;
+
+        for (entity, relation, _confidence, _layer) in edges {
+            // RDF triple: <entity> <relation> <target> .
+            // For now, use entity as both subject and object since we only have entity->target edges
+            writeln!(
+                file,
+                "<http://example.org/entity/{}> <http://example.org/relation/{}> <http://example.org/entity/{}> .",
+                entity.replace(' ', "_"),
+                relation.replace(' ', "_"),
+                entity.replace(' ', "_")
+            )
+            .map_err(|e| LqlError::exec("failed to write", e))?;
+        }
+
+        Ok(())
+    }
+
+    fn export_neo4j(
+        &self,
+        edges: &[(String, String, f32, usize)],
+        output: &str,
+    ) -> Result<(), LqlError> {
+        use std::io::Write;
+
+        let output_path = std::path::Path::new(output);
+        let nodes_path = output_path.with_file_name("nodes.csv");
+        let relationships_path = output_path.with_file_name("relationships.csv");
+
+        let mut nodes_file = std::fs::File::create(&nodes_path)
+            .map_err(|e| LqlError::exec("failed to create nodes.csv", e))?;
+        let mut rels_file = std::fs::File::create(&relationships_path)
+            .map_err(|e| LqlError::exec("failed to create relationships.csv", e))?;
+
+        // Neo4j CSV headers
+        writeln!(nodes_file, "id:ID,name").map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(rels_file, ":START_ID,relationship,:END_ID,confidence")
+            .map_err(|e| LqlError::exec("failed to write", e))?;
+
+        // Collect unique entities
+        let mut entities: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for (entity, _, _, _) in edges {
+            entities.insert(entity.clone());
+        }
+
+        // Write nodes
+        for (i, entity) in entities.iter().enumerate() {
+            writeln!(nodes_file, "{},{}", i, entity)
+                .map_err(|e| LqlError::exec("failed to write", e))?;
+        }
+
+        // Write relationships
+        for (entity, relation, confidence, _layer) in edges {
+            // For now, use entity as both source and target
+            writeln!(
+                rels_file,
+                "{},{},{},{}",
+                entity.replace(' ', "_"),
+                relation,
+                entity.replace(' ', "_"),
+                confidence
+            )
+            .map_err(|e| LqlError::exec("failed to write", e))?;
+        }
+
+        Ok(())
+    }
+
+    fn export_jsonld(
+        &self,
+        edges: &[(String, String, f32, usize)],
+        output: &str,
+        _config: &larql_vindex::VindexConfig,
+    ) -> Result<(), LqlError> {
+        use std::io::Write;
+
+        let mut file = std::fs::File::create(output)
+            .map_err(|e| LqlError::exec("failed to create output file", e))?;
+
+        writeln!(file, "{{").map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(file, "  \"@context\": {{").map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(file, "    \"@vocab\": \"http://example.org/\"")
+            .map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(file, "  }},").map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(file, "  \"@graph\": [").map_err(|e| LqlError::exec("failed to write", e))?;
+
+        for (i, (entity, relation, confidence, _layer)) in edges.iter().enumerate() {
+            if i > 0 {
+                writeln!(file, ",").map_err(|e| LqlError::exec("failed to write", e))?;
+            }
+            writeln!(file, "    {{").map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(
+                file,
+                "      \"@id\": \"entity/{}\",",
+                entity.replace(' ', "_")
+            )
+            .map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(file, "      \"{}\": {{", relation)
+                .map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(file, "        \"@value\": \"{}\",", entity)
+                .map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(
+                file,
+                "        \"@type\": \"http://www.w3.org/2001/XMLSchema#string\""
+            )
+            .map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(file, "      }},").map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(file, "      \"confidence\": {}", confidence)
+                .map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(file, "    }}").map_err(|e| LqlError::exec("failed to write", e))?;
+        }
+
+        writeln!(file, "  ]").map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(file, "}}").map_err(|e| LqlError::exec("failed to write", e))?;
+
+        Ok(())
+    }
+
+    fn export_graphml(
+        &self,
+        edges: &[(String, String, f32, usize)],
+        output: &str,
+        config: &larql_vindex::VindexConfig,
+    ) -> Result<(), LqlError> {
+        use std::io::Write;
+
+        let mut file = std::fs::File::create(output)
+            .map_err(|e| LqlError::exec("failed to create output file", e))?;
+
+        writeln!(file, r#"<?xml version="1.0" encoding="UTF-8"?>"#)
+            .map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(
+            file,
+            r#"<graphml xmlns="http://graphml.graphdrawing.org/xmlns""#
+        )
+        .map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(
+            file,
+            r#"  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance""#
+        )
+        .map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(
+            file,
+            r#"  xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">"#
+        )
+        .map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(file, r#"  <graph id="G" edgedefault="directed">"#)
+            .map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(file, r#"    <data key="name">{}</data>"#, config.model)
+            .map_err(|e| LqlError::exec("failed to write", e))?;
+
+        // Collect unique entities as nodes
+        let mut entities: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for (entity, _, _, _) in edges {
+            entities.insert(entity.clone());
+        }
+
+        // Write nodes
+        for (i, entity) in entities.iter().enumerate() {
+            writeln!(file, r#"    <node id="n{}">"#, i)
+                .map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(file, r#"      <data key="name">{}</data>"#, entity)
+                .map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(file, r#"    </node>"#).map_err(|e| LqlError::exec("failed to write", e))?;
+        }
+
+        // Write edges
+        for (entity, relation, confidence, _layer) in edges {
+            writeln!(
+                file,
+                r#"    <edge source="{}" target="{}">"#,
+                entity.replace(' ', "_"),
+                entity.replace(' ', "_")
+            )
+            .map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(file, r#"      <data key="relation">{}</data>"#, relation)
+                .map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(
+                file,
+                r#"      <data key="confidence">{}</data>"#,
+                confidence
+            )
+            .map_err(|e| LqlError::exec("failed to write", e))?;
+            writeln!(file, r#"    </edge>"#).map_err(|e| LqlError::exec("failed to write", e))?;
+        }
+
+        writeln!(file, r#"  </graph>"#).map_err(|e| LqlError::exec("failed to write", e))?;
+        writeln!(file, r#"</graphml>"#).map_err(|e| LqlError::exec("failed to write", e))?;
+
+        Ok(())
     }
 
     /// Resolve a VindexRef to a concrete path.
@@ -971,7 +1465,14 @@ fn collect_memit_facts(
 
     for patch in &patched.patches {
         for op in &patch.operations {
-            if let larql_vindex::PatchOp::Insert { layer, entity, relation, target, .. } = op {
+            if let larql_vindex::PatchOp::Insert {
+                layer,
+                entity,
+                relation,
+                target,
+                ..
+            } = op
+            {
                 let rel_str = relation.as_deref().unwrap_or("relation");
                 let key = (entity.clone(), rel_str.to_string(), target.clone(), *layer);
                 if !seen.insert(key) {
@@ -980,19 +1481,17 @@ fn collect_memit_facts(
 
                 let rel_words = rel_str.replace(['-', '_'], " ");
                 let prompt = format!("The {rel_words} of {entity} is");
-                let encoding = tokenizer.encode(prompt.as_str(), true)
+                let encoding = tokenizer
+                    .encode(prompt.as_str(), true)
                     .map_err(|e| crate::error::LqlError::exec("tokenize MEMIT prompt", e))?;
                 let prompt_tokens: Vec<u32> = encoding.ids.clone();
 
                 // Target: first token of " " + target (matches INSERT semantics)
                 let spaced = format!(" {target}");
-                let target_encoding = tokenizer.encode(spaced.as_str(), false)
+                let target_encoding = tokenizer
+                    .encode(spaced.as_str(), false)
                     .map_err(|e| crate::error::LqlError::exec("tokenize MEMIT target", e))?;
-                let target_token_id = target_encoding
-                    .ids
-                    .first()
-                    .copied()
-                    .unwrap_or(0);
+                let target_token_id = target_encoding.ids.first().copied().unwrap_or(0);
 
                 facts.push(larql_inference::MemitFact {
                     prompt_tokens,
@@ -1317,18 +1816,32 @@ fn patch_up_weights(
     // those layers is silently skipped.
     let mut layer_up_lookup: HashMap<usize, (String, u64, u64)> = HashMap::new();
     for entry in &entries {
-        let Some(key) = entry.get("key").and_then(|v| v.as_str()) else { continue };
+        let Some(key) = entry.get("key").and_then(|v| v.as_str()) else {
+            continue;
+        };
         if !key.contains("up_proj") {
             continue;
         }
-        let Some(file) = entry.get("file").and_then(|v| v.as_str()) else { continue };
-        let Some(offset) = entry.get("offset").and_then(|v| v.as_u64()) else { continue };
-        let Some(length) = entry.get("length").and_then(|v| v.as_u64()) else { continue };
+        let Some(file) = entry.get("file").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let Some(offset) = entry.get("offset").and_then(|v| v.as_u64()) else {
+            continue;
+        };
+        let Some(length) = entry.get("length").and_then(|v| v.as_u64()) else {
+            continue;
+        };
         // Extract the layer number from the key: the segment after
         // `layers.` and before the next `.`.
-        let Some(rest) = key.split("layers.").nth(1) else { continue };
-        let Some(layer_str) = rest.split('.').next() else { continue };
-        let Ok(layer) = layer_str.parse::<usize>() else { continue };
+        let Some(rest) = key.split("layers.").nth(1) else {
+            continue;
+        };
+        let Some(layer_str) = rest.split('.').next() else {
+            continue;
+        };
+        let Ok(layer) = layer_str.parse::<usize>() else {
+            continue;
+        };
         layer_up_lookup.insert(layer, (file.to_string(), offset, length));
     }
 
@@ -1453,8 +1966,8 @@ mod compile_into_vindex_tests {
     //!
     //! No real vindex required — these run in CI with no model on disk.
     use super::*;
-    use std::collections::HashMap;
     use larql_vindex::{PatchOp, VindexPatch};
+    use std::collections::HashMap;
 
     fn make_patch(ops: Vec<PatchOp>) -> VindexPatch {
         VindexPatch {
@@ -1503,17 +2016,18 @@ mod compile_into_vindex_tests {
 
     #[test]
     fn collisions_ignore_repeats_within_one_patch() {
-        let patches = vec![
-            make_patch(vec![insert_op(1, 10), insert_op(1, 10)]),
-        ];
+        let patches = vec![make_patch(vec![insert_op(1, 10), insert_op(1, 10)])];
         assert!(collect_compile_collisions(&patches).is_empty());
     }
-
 
     /// Build a minimal `VindexConfig` shaped for these tests.
     /// Only the dimensions matter for `patch_down_weights`; everything
     /// else is dummy.
-    fn mini_config(num_layers: usize, hidden: usize, intermediate: usize) -> larql_vindex::VindexConfig {
+    fn mini_config(
+        num_layers: usize,
+        hidden: usize,
+        intermediate: usize,
+    ) -> larql_vindex::VindexConfig {
         larql_vindex::VindexConfig {
             version: 1,
             model: "test".into(),
@@ -1587,7 +2101,9 @@ mod compile_into_vindex_tests {
         let mut out = Vec::with_capacity(hidden);
         for row in 0..hidden {
             let cell = (layer * layer_elems + row * intermediate + feature) * 4;
-            out.push(f32::from_le_bytes(bytes[cell..cell + 4].try_into().unwrap()));
+            out.push(f32::from_le_bytes(
+                bytes[cell..cell + 4].try_into().unwrap(),
+            ));
         }
         let _ = num_layers; // unused but documents the layout
         out
@@ -1653,8 +2169,9 @@ mod compile_into_vindex_tests {
         // Adjacent column at L2 F4 must be untouched.
         let neighbour = read_column_f32(&dst, layer, feature - 1, num_layers, hidden, intermediate);
         for (row, val) in neighbour.iter().enumerate() {
-            let expected =
-                ((layer * hidden * intermediate + row * intermediate + (feature - 1)) as f32) * 0.001;
+            let expected = ((layer * hidden * intermediate + row * intermediate + (feature - 1))
+                as f32)
+                * 0.001;
             assert!(
                 (val - expected).abs() < 1e-6,
                 "L2 F4 row {row}: got {val}, expected {expected}"

@@ -7,3 +7,16 @@ venv/
 dist/
 build/
 archive/
+CLAUDE.md
+
+.gemini/
+gha-creds-*.json
+node_modules/
+.git/
+.cursor/
+.windsurf/
+.codex
+larql-main/target/
+larql-main/output/
+nvme0n1-gpt-backup-*.bin
+Waightslander/

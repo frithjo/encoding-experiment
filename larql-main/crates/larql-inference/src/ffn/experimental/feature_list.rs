@@ -18,11 +18,7 @@ pub struct FeatureListFfn<'a> {
 
 impl<'a> FeatureListFfn<'a> {
     /// Calibrate: run a dense forward pass, capture which features the gate selects at each layer.
-    pub fn calibrate(
-        weights: &'a ModelWeights,
-        token_ids: &[u32],
-        top_k: usize,
-    ) -> Self {
+    pub fn calibrate(weights: &'a ModelWeights, token_ids: &[u32], top_k: usize) -> Self {
         use crate::ffn::WeightFfn;
 
         let num_layers = weights.num_layers;
@@ -33,7 +29,9 @@ impl<'a> FeatureListFfn<'a> {
         let mut h = ndarray::Array2::<f32>::zeros((seq_len, hidden));
         for (i, &tok_id) in token_ids.iter().enumerate() {
             let row = weights.embed.row(tok_id as usize);
-            for j in 0..hidden { h[[i, j]] = row[j] * embed_scale; }
+            for j in 0..hidden {
+                h[[i, j]] = row[j] * embed_scale;
+            }
         }
 
         let ffn = WeightFfn { weights };
@@ -44,7 +42,9 @@ impl<'a> FeatureListFfn<'a> {
             // Run attention
             let h_post_attn = match crate::forward::run_attention_public(weights, &h, layer) {
                 Some(ha) => ha,
-                None => { continue; }
+                None => {
+                    continue;
+                }
             };
 
             // Get the pre-FFN normed residual (what the gate matmul sees)
@@ -64,7 +64,10 @@ impl<'a> FeatureListFfn<'a> {
             let w_gate = weights.tensors.get(&arch.ffn_gate_key(layer)).unwrap();
             let last_row = h_ffn.row(seq_len - 1);
             let scores = w_gate.dot(&last_row);
-            let mut indexed: Vec<(usize, f32)> = scores.iter().copied().enumerate()
+            let mut indexed: Vec<(usize, f32)> = scores
+                .iter()
+                .copied()
+                .enumerate()
                 .map(|(i, v)| (i, v * sigmoid(v)))
                 .collect();
             let k = top_k.min(indexed.len());
@@ -89,7 +92,10 @@ impl<'a> FeatureListFfn<'a> {
             };
         }
 
-        FeatureListFfn { weights, feature_lists }
+        FeatureListFfn {
+            weights,
+            feature_lists,
+        }
     }
 
     /// Save feature lists to a compact binary file.
@@ -132,20 +138,31 @@ impl<'a> FeatureListFfn<'a> {
         for line in reader.lines() {
             let line = line?;
             let line = line.trim();
-            if line.is_empty() { continue; }
+            if line.is_empty() {
+                continue;
+            }
             let obj: serde_json::Value = serde_json::from_str(line)
                 .map_err(|e| crate::error::InferenceError::Parse(e.to_string()))?;
-            if obj.get("_type").is_some() { continue; }
+            if obj.get("_type").is_some() {
+                continue;
+            }
 
             let layer = obj["l"].as_u64().unwrap_or(0) as usize;
-            let feats: Vec<usize> = obj["f"].as_array().unwrap()
-                .iter().map(|v| v.as_u64().unwrap() as usize).collect();
+            let feats: Vec<usize> = obj["f"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_u64().unwrap() as usize)
+                .collect();
             if layer < num_layers {
                 feature_lists[layer] = feats;
             }
         }
 
-        Ok(FeatureListFfn { weights, feature_lists })
+        Ok(FeatureListFfn {
+            weights,
+            feature_lists,
+        })
     }
 
     pub fn total_features(&self) -> usize {
@@ -153,8 +170,14 @@ impl<'a> FeatureListFfn<'a> {
     }
 
     pub fn avg_features_per_layer(&self) -> f64 {
-        let active: Vec<_> = self.feature_lists.iter().filter(|f| !f.is_empty()).collect();
-        if active.is_empty() { 0.0 } else {
+        let active: Vec<_> = self
+            .feature_lists
+            .iter()
+            .filter(|f| !f.is_empty())
+            .collect();
+        if active.is_empty() {
+            0.0
+        } else {
             active.iter().map(|f| f.len()).sum::<usize>() as f64 / active.len() as f64
         }
     }
@@ -167,7 +190,9 @@ impl<'a> FfnBackend for FeatureListFfn<'a> {
     fn forward_with_activation(&self, layer: usize, x: &Array2<f32>) -> (Array2<f32>, Array2<f32>) {
         self.forward_inner(layer, x)
     }
-    fn name(&self) -> &str { "feature-list" }
+    fn name(&self) -> &str {
+        "feature-list"
+    }
 }
 
 impl<'a> FeatureListFfn<'a> {

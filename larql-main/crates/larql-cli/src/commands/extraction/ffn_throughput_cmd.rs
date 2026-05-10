@@ -1,9 +1,7 @@
 use std::time::Instant;
 
 use clap::Args;
-use larql_inference::{
-    CachedFfn, InferenceModel, FfnBackend,
-};
+use larql_inference::{CachedFfn, FfnBackend, InferenceModel};
 
 #[derive(Args)]
 pub struct FfnThroughputArgs {
@@ -27,7 +25,9 @@ pub fn run(args: FfnThroughputArgs) -> Result<(), Box<dyn std::error::Error>> {
     let num_layers = weights.num_layers;
     let hidden = weights.hidden_size;
 
-    let encoding = model.tokenizer().encode(args.prompt.as_str(), true)
+    let encoding = model
+        .tokenizer()
+        .encode(args.prompt.as_str(), true)
         .map_err(|e| format!("tokenize error: {e}"))?;
     let token_ids: Vec<u32> = encoding.ids.clone();
 
@@ -89,24 +89,59 @@ pub fn run(args: FfnThroughputArgs) -> Result<(), Box<dyn std::error::Error>> {
     let read_tok_s = args.tokens as f64 / (read_ms / 1000.0);
 
     println!();
-    println!("FFN Throughput — {} tokens, {} layers, hidden={}", args.tokens, num_layers, hidden);
+    println!(
+        "FFN Throughput — {} tokens, {} layers, hidden={}",
+        args.tokens, num_layers, hidden
+    );
     println!("{}", "=".repeat(65));
-    println!("{:>25} {:>10} {:>12} {:>12}", "Method", "Total ms", "us/tok", "tok/s");
+    println!(
+        "{:>25} {:>10} {:>12} {:>12}",
+        "Method", "Total ms", "us/tok", "tok/s"
+    );
     println!("{}", "-".repeat(65));
-    println!("{:>25} {:>10.1} {:>12.1} {:>12.0}",
-        "clone (current)", clone_ms, clone_ms * 1000.0 / args.tokens as f64, clone_tok_s);
-    println!("{:>25} {:>10.1} {:>12.1} {:>12.0}",
-        "memcpy (pre-alloc)", memcpy_ms, memcpy_ms * 1000.0 / args.tokens as f64, memcpy_tok_s);
-    println!("{:>25} {:>10.1} {:>12.1} {:>12.0}",
-        "arc clone (refcount)", arc_ms, arc_ms * 1000.0 / args.tokens as f64, arc_tok_s);
-    println!("{:>25} {:>10.1} {:>12.1} {:>12.0}",
-        "read-only (no copy)", read_ms, read_ms * 1000.0 / args.tokens as f64, read_tok_s);
+    println!(
+        "{:>25} {:>10.1} {:>12.1} {:>12.0}",
+        "clone (current)",
+        clone_ms,
+        clone_ms * 1000.0 / args.tokens as f64,
+        clone_tok_s
+    );
+    println!(
+        "{:>25} {:>10.1} {:>12.1} {:>12.0}",
+        "memcpy (pre-alloc)",
+        memcpy_ms,
+        memcpy_ms * 1000.0 / args.tokens as f64,
+        memcpy_tok_s
+    );
+    println!(
+        "{:>25} {:>10.1} {:>12.1} {:>12.0}",
+        "arc clone (refcount)",
+        arc_ms,
+        arc_ms * 1000.0 / args.tokens as f64,
+        arc_tok_s
+    );
+    println!(
+        "{:>25} {:>10.1} {:>12.1} {:>12.0}",
+        "read-only (no copy)",
+        read_ms,
+        read_ms * 1000.0 / args.tokens as f64,
+        read_tok_s
+    );
 
     println!();
     let bytes_per_tok = num_layers as f64 * hidden as f64 * 4.0;
-    println!("  Bytes/token: {:.0} ({} layers × {} × 4B)", bytes_per_tok, num_layers, hidden);
-    println!("  Bandwidth at 100K tok/s: {:.1} GB/s", bytes_per_tok * 100_000.0 / 1e9);
-    println!("  (checksum: {:.2} — prevents optimizer elimination)", checksum);
+    println!(
+        "  Bytes/token: {:.0} ({} layers × {} × 4B)",
+        bytes_per_tok, num_layers, hidden
+    );
+    println!(
+        "  Bandwidth at 100K tok/s: {:.1} GB/s",
+        bytes_per_tok * 100_000.0 / 1e9
+    );
+    println!(
+        "  (checksum: {:.2} — prevents optimizer elimination)",
+        checksum
+    );
 
     Ok(())
 }

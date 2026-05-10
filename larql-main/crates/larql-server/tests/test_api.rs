@@ -5,8 +5,8 @@
 
 use larql_vindex::ndarray::{Array1, Array2};
 use larql_vindex::{
-    FeatureMeta, PatchedVindex, VectorIndex, VindexConfig, VindexLayerInfo,
-    ExtractLevel, LayerBands,
+    ExtractLevel, FeatureMeta, LayerBands, PatchedVindex, VectorIndex, VindexConfig,
+    VindexLayerInfo,
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -90,8 +90,22 @@ fn test_config() -> VindexConfig {
             output: (1, 1),
         }),
         layers: vec![
-            VindexLayerInfo { layer: 0, num_features: 3, offset: 0, length: 48, num_experts: None, num_features_per_expert: None },
-            VindexLayerInfo { layer: 1, num_features: 3, offset: 48, length: 48, num_experts: None, num_features_per_expert: None },
+            VindexLayerInfo {
+                layer: 0,
+                num_features: 3,
+                offset: 0,
+                length: 48,
+                num_experts: None,
+                num_features_per_expert: None,
+            },
+            VindexLayerInfo {
+                layer: 1,
+                num_features: 3,
+                offset: 48,
+                length: 48,
+                num_experts: None,
+                num_features_per_expert: None,
+            },
         ],
         down_top_k: 5,
         has_model_weights: false,
@@ -212,7 +226,8 @@ fn test_relations_listing() {
     let patched = PatchedVindex::new(index);
 
     // Simulate SHOW RELATIONS: scan all layers, aggregate tokens
-    let mut token_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut token_counts: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
     for layer in patched.loaded_layers() {
         if let Some(metas) = patched.down_meta_at(layer) {
             for meta_opt in metas.iter() {
@@ -291,13 +306,11 @@ fn test_patch_count_tracking() {
         description: Some("test-patch".into()),
         author: None,
         tags: vec![],
-        operations: vec![
-            larql_vindex::PatchOp::Delete {
-                layer: 0,
-                feature: 0,
-                reason: Some("test".into()),
-            },
-        ],
+        operations: vec![larql_vindex::PatchOp::Delete {
+            layer: 0,
+            feature: 0,
+            reason: Some("test".into()),
+        }],
     };
 
     patched.apply_patch(patch);
@@ -318,13 +331,11 @@ fn test_remove_patch_restores_state() {
         description: Some("removable".into()),
         author: None,
         tags: vec![],
-        operations: vec![
-            larql_vindex::PatchOp::Delete {
-                layer: 0,
-                feature: 0,
-                reason: None,
-            },
-        ],
+        operations: vec![larql_vindex::PatchOp::Delete {
+            layer: 0,
+            feature: 0,
+            reason: None,
+        }],
     };
 
     patched.apply_patch(patch);
@@ -469,17 +480,23 @@ fn test_layer_band_filtering() {
 
     let all_layers = vec![0, 1];
 
-    let syntax: Vec<usize> = all_layers.iter().copied()
+    let syntax: Vec<usize> = all_layers
+        .iter()
+        .copied()
         .filter(|l| *l >= bands.syntax.0 && *l <= bands.syntax.1)
         .collect();
     assert_eq!(syntax, vec![0]);
 
-    let knowledge: Vec<usize> = all_layers.iter().copied()
+    let knowledge: Vec<usize> = all_layers
+        .iter()
+        .copied()
         .filter(|l| *l >= bands.knowledge.0 && *l <= bands.knowledge.1)
         .collect();
     assert_eq!(knowledge, vec![0, 1]);
 
-    let output: Vec<usize> = all_layers.iter().copied()
+    let output: Vec<usize> = all_layers
+        .iter()
+        .copied()
         .filter(|l| *l >= bands.output.0 && *l <= bands.output.1)
         .collect();
     assert_eq!(output, vec![1]);
@@ -561,7 +578,11 @@ fn test_single_model_returns_first() {
     let models = vec!["only-model"];
 
     // Single model mode: None → returns first
-    let result = if models.len() == 1 { models.first() } else { None };
+    let result = if models.len() == 1 {
+        models.first()
+    } else {
+        None
+    };
     assert_eq!(result, Some(&"only-model"));
 }
 
@@ -570,7 +591,11 @@ fn test_multi_model_none_returns_none() {
     let models = vec!["a", "b"];
 
     // Multi-model mode: None → returns None (must specify ID)
-    let result: Option<&&str> = if models.len() == 1 { models.first() } else { None };
+    let result: Option<&&str> = if models.len() == 1 {
+        models.first()
+    } else {
+        None
+    };
     assert_eq!(result, None);
 }
 
@@ -686,7 +711,9 @@ fn test_rate_limit_parse() {
 
 fn rate_limit_parse(spec: &str) -> Option<(f64, f64)> {
     let parts: Vec<&str> = spec.split('/').collect();
-    if parts.len() != 2 { return None; }
+    if parts.len() != 2 {
+        return None;
+    }
     let count: f64 = parts[0].trim().parse().ok()?;
     let per_sec = match parts[1].trim() {
         "sec" | "s" | "second" => count,
@@ -704,8 +731,10 @@ fn test_rate_limit_token_bucket() {
     let max_tokens: f64 = 2.0;
 
     // First two requests succeed
-    assert!(tokens >= 1.0); tokens -= 1.0;
-    assert!(tokens >= 1.0); tokens -= 1.0;
+    assert!(tokens >= 1.0);
+    tokens -= 1.0;
+    assert!(tokens >= 1.0);
+    tokens -= 1.0;
 
     // Third fails
     assert!(tokens < 1.0);
@@ -729,7 +758,7 @@ fn test_cache_key_format() {
 fn test_cache_disabled_when_ttl_zero() {
     // TTL=0 means cache is disabled
     let ttl = 0u64;
-    assert!(!( ttl > 0));
+    assert!(!(ttl > 0));
 }
 
 #[test]
@@ -771,7 +800,8 @@ fn test_select_with_relation_filter() {
         .enumerate()
         .filter_map(|(i, m)| m.as_ref().map(|m| (i, m.top_token.as_str())))
         .filter(|(i, _)| {
-            labels.get(&(0, *i))
+            labels
+                .get(&(0, *i))
                 .map(|r| r.to_lowercase().contains("capital"))
                 .unwrap_or(false)
         })
@@ -1128,7 +1158,10 @@ fn test_etag_format() {
     let s = body.to_string();
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     std::hash::Hash::hash(&s, &mut hasher);
-    let etag = format!("\"{}\"", format!("{:x}", std::hash::Hasher::finish(&hasher)));
+    let etag = format!(
+        "\"{}\"",
+        format!("{:x}", std::hash::Hasher::finish(&hasher))
+    );
     assert!(etag.starts_with('"'));
     assert!(etag.ends_with('"'));
     assert!(etag.len() > 4); // At least "xx"

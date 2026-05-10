@@ -18,13 +18,13 @@ use tokio::sync::RwLock;
 use tracing::{info, warn};
 
 use larql_vindex::{
-    PatchedVindex, SilentLoadCallbacks, VectorIndex,
-    load_vindex_config, load_vindex_embeddings, load_vindex_tokenizer,
+    load_vindex_config, load_vindex_embeddings, load_vindex_tokenizer, PatchedVindex,
+    SilentLoadCallbacks, VectorIndex,
 };
 
 use cache::DescribeCache;
 use session::SessionManager;
-use state::{AppState, LoadedModel, model_id_from_name, load_probe_labels};
+use state::{load_probe_labels, model_id_from_name, AppState, LoadedModel};
 
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
@@ -120,12 +120,18 @@ fn load_single_vindex(path_str: &str, no_infer: bool) -> Result<LoadedModel, Box
         Ok(()) => info!("  Down features: loaded (mmap walk enabled)"),
         Err(_) => info!("  Down features: not available"),
     }
-    if let Ok(()) = index.load_up_features(&path) { info!("  Up features: loaded (full mmap FFN)") }
+    if let Ok(()) = index.load_up_features(&path) {
+        info!("  Up features: loaded (full mmap FFN)")
+    }
     index.warmup();
     info!("  Warmup: done");
 
     let (embeddings, embed_scale) = load_vindex_embeddings(&path)?;
-    info!("  Embeddings: {}x{}", embeddings.shape()[0], embeddings.shape()[1]);
+    info!(
+        "  Embeddings: {}x{}",
+        embeddings.shape()[0],
+        embeddings.shape()[1]
+    );
 
     let tokenizer = load_vindex_tokenizer(&path)?;
     let patched = PatchedVindex::new(index);
@@ -176,7 +182,9 @@ async fn main() -> Result<(), BoxError> {
     // Accept both `larql-server <path>` and `larql-server serve <path>`.
     let args: Vec<String> = std::env::args().collect();
     let filtered: Vec<String> = if args.len() > 1 && args[1] == "serve" {
-        std::iter::once(args[0].clone()).chain(args[2..].iter().cloned()).collect()
+        std::iter::once(args[0].clone())
+            .chain(args[2..].iter().cloned())
+            .collect()
     } else {
         args
     };
@@ -217,18 +225,22 @@ async fn main() -> Result<(), BoxError> {
     }
 
     // Parse rate limiter if specified.
-    let rate_limiter = cli.rate_limit.as_ref().and_then(|spec| {
-        match ratelimit::RateLimiter::parse(spec) {
-            Some(rl) => {
-                info!("Rate limit: {}", spec);
-                Some(Arc::new(rl))
-            }
-            None => {
-                warn!("Invalid rate limit format: {} (expected e.g. '100/min')", spec);
-                None
-            }
-        }
-    });
+    let rate_limiter =
+        cli.rate_limit
+            .as_ref()
+            .and_then(|spec| match ratelimit::RateLimiter::parse(spec) {
+                Some(rl) => {
+                    info!("Rate limit: {}", spec);
+                    Some(Arc::new(rl))
+                }
+                None => {
+                    warn!(
+                        "Invalid rate limit format: {} (expected e.g. '100/min')",
+                        spec
+                    );
+                    None
+                }
+            });
 
     let state = Arc::new(AppState {
         models: models.clone(),
@@ -291,13 +303,15 @@ async fn main() -> Result<(), BoxError> {
 
     // TLS or plain HTTP.
     if let (Some(cert_path), Some(key_path)) = (&cli.tls_cert, &cli.tls_key) {
-        info!("TLS: enabled ({}, {})", cert_path.display(), key_path.display());
+        info!(
+            "TLS: enabled ({}, {})",
+            cert_path.display(),
+            key_path.display()
+        );
         info!("Listening: https://{}", addr);
 
-        let tls_config = axum_server::tls_rustls::RustlsConfig::from_pem_file(
-            cert_path, key_path,
-        )
-        .await?;
+        let tls_config =
+            axum_server::tls_rustls::RustlsConfig::from_pem_file(cert_path, key_path).await?;
 
         axum_server::bind_rustls(addr.parse()?, tls_config)
             .serve(app.into_make_service())

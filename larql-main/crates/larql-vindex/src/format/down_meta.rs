@@ -27,7 +27,15 @@ pub fn write_binary(
     top_k_count: usize,
 ) -> Result<usize, VindexError> {
     let path = dir.join("down_meta.bin");
-    let file = std::fs::File::create(&path)?;
+    write_binary_to_path(&path, down_meta, top_k_count)
+}
+
+pub(crate) fn write_binary_to_path(
+    path: &Path,
+    down_meta: &[Option<Vec<Option<FeatureMeta>>>],
+    top_k_count: usize,
+) -> Result<usize, VindexError> {
+    let file = std::fs::File::create(path)?;
     let mut w = BufWriter::new(file);
     let mut total = 0usize;
 
@@ -208,8 +216,11 @@ pub fn mmap_binary(
     let mut pos = 16usize; // after header
 
     for _ in 0..num_layers {
-        if pos + 4 > mmap.len() { break; }
-        let nf = u32::from_le_bytes([mmap[pos], mmap[pos+1], mmap[pos+2], mmap[pos+3]]) as usize;
+        if pos + 4 > mmap.len() {
+            break;
+        }
+        let nf =
+            u32::from_le_bytes([mmap[pos], mmap[pos + 1], mmap[pos + 2], mmap[pos + 3]]) as usize;
         pos += 4; // skip num_features u32
         layer_offsets.push(pos); // records start here
         layer_num_features.push(nf);

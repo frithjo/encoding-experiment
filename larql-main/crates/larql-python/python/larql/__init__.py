@@ -23,6 +23,8 @@ from larql._native import (
     ProbeRelation,
     Session,
     WalkModel,
+    BoundaryStore,
+    BoundaryWriter,
 
     # Graph types
     Edge,
@@ -121,6 +123,8 @@ __all__ = [
     "Relation",
     "ProbeRelation",
     "Session",
+    "BoundaryStore",
+    "BoundaryWriter",
 
     # Graph types
     "Edge",

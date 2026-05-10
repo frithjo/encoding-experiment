@@ -57,7 +57,9 @@ pub fn detect_from_json(config: &serde_json::Value) -> Box<dyn ModelArchitecture
         // Gemma family
         t if t.starts_with("gemma4") => Box::new(Gemma4Arch::from_config(model_config)),
         t if t.starts_with("gemma3") => Box::new(Gemma3Arch::from_config(model_config)),
-        t if t.starts_with("gemma2") || t == "gemma" => Box::new(Gemma2Arch::from_config(model_config)),
+        t if t.starts_with("gemma2") || t == "gemma" => {
+            Box::new(Gemma2Arch::from_config(model_config))
+        }
         // Llama family
         t if t.starts_with("llama") => Box::new(LlamaArch::from_config(model_config)),
         // Mistral (dense)
@@ -106,7 +108,11 @@ fn parse_model_config(config: &serde_json::Value) -> ModelConfig {
     let head_dim = text_config["head_dim"]
         .as_u64()
         .map(|v| v as usize)
-        .unwrap_or(if default_head_dim > 0 { default_head_dim } else { hidden_size / num_q_heads });
+        .unwrap_or(if default_head_dim > 0 {
+            default_head_dim
+        } else {
+            hidden_size.checked_div(num_q_heads).unwrap_or(0)
+        });
     let num_kv_heads = text_config["num_key_value_heads"].as_u64().unwrap_or(4) as usize;
     // RoPE base: check rope_parameters.full_attention.rope_theta (Gemma 4),
     // then top-level rope_theta, then default.
@@ -134,9 +140,7 @@ fn parse_model_config(config: &serde_json::Value) -> ModelConfig {
         .as_u64()
         .or_else(|| text_config["num_experts_per_token"].as_u64())
         .map(|v| v as usize);
-    let num_shared_experts = text_config["n_shared_experts"]
-        .as_u64()
-        .map(|v| v as usize);
+    let num_shared_experts = text_config["n_shared_experts"].as_u64().map(|v| v as usize);
 
     // MLA fields
     let kv_lora_rank = text_config["kv_lora_rank"].as_u64().map(|v| v as usize);
@@ -379,7 +383,7 @@ mod tests {
         assert_eq!(arch.config().hidden_size, 4096);
         assert_eq!(arch.config().num_q_heads, 32);
         assert_eq!(arch.config().num_kv_heads, 32); // no GQA in Llama 2
-        // head_dim computed: 4096 / 32 = 128
+                                                    // head_dim computed: 4096 / 32 = 128
         assert_eq!(arch.config().head_dim, 128);
         // rope_theta absent → defaults to 10000
         assert_eq!(arch.config().rope_base, 10_000.0);
@@ -1024,18 +1028,23 @@ mod tests {
     #[test]
     fn test_detect_gemma4_real_config() {
         // Test against the actual HuggingFace config.json if available
-        let config_path = std::env::var("HOME").ok()
-            .map(|h| std::path::PathBuf::from(h).join(".cache/huggingface/hub/models--google--gemma-4-31B-it"));
-        let config_path = match config_path {
-            Some(p) if p.exists() => {
-                // Find the snapshot
-                let snapshots = p.join("snapshots");
-                std::fs::read_dir(&snapshots).ok()
-                    .and_then(|mut entries| entries.next())
-                    .and_then(|e| e.ok())
-                    .map(|e| e.path().join("config.json"))
-            }
-            _ => None,
+        let home = std::env::var("LARQL_PATHS__HOME_DIR")
+            .or_else(|_| std::env::var("HOME"))
+            .expect("LARQL_PATHS__HOME_DIR or HOME must be set for this test");
+        let cache_dir = std::env::var("LARQL_HUGGINGFACE__CACHE_DIR")
+            .unwrap_or_else(|_| ".cache/huggingface/hub".to_string());
+        let config_path = std::path::PathBuf::from(home)
+            .join(format!("{cache_dir}/models--google--gemma-4-31B-it"));
+        let config_path = if config_path.exists() {
+            // Find the snapshot
+            let snapshots = config_path.join("snapshots");
+            std::fs::read_dir(&snapshots)
+                .ok()
+                .and_then(|mut entries| entries.next())
+                .and_then(|e| e.ok())
+                .map(|e| e.path().join("config.json"))
+        } else {
+            None
         };
         let config_path = match config_path {
             Some(p) if p.exists() => p,

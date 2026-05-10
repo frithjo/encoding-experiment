@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use axum::Json;
 use axum::extract::{Path, Query, State};
+use axum::Json;
 use serde::Deserialize;
 
 use crate::error::ServerError;
@@ -16,13 +16,29 @@ pub struct WalkParams {
     pub top: usize,
     #[serde(default)]
     pub layers: Option<String>,
+    #[serde(default)]
+    pub mode: Option<String>,
+    #[serde(default)]
+    pub compare: bool,
 }
 
-fn default_top() -> usize { 5 }
+fn default_top() -> usize {
+    5
+}
 
 // Maximum number of top features to return per layer to prevent
 // excessive memory usage and response size.
 const MAX_TOP: usize = 1000;
+
+fn validate_top(top: usize) -> Result<(), ServerError> {
+    if top > MAX_TOP {
+        return Err(ServerError::BadRequest(format!(
+            "top={} exceeds maximum allowed value {}",
+            top, MAX_TOP
+        )));
+    }
+    Ok(())
+}
 
 /// Parse a layer range string like "24-33" or "14,26,27".
 /// Returns only layers that exist in the provided `all` list.
@@ -30,7 +46,7 @@ const MAX_TOP: usize = 1000;
 fn parse_layers(s: &str, all: &[usize]) -> Vec<usize> {
     use std::collections::HashSet;
     let all_set: HashSet<usize> = all.iter().copied().collect();
-    
+
     if let Some((start, end)) = s.split_once('-') {
         if let (Ok(s), Ok(e)) = (start.parse::<usize>(), end.parse::<usize>()) {
             return all.iter().copied().filter(|l| *l >= s && *l <= e).collect();
@@ -42,11 +58,10 @@ fn parse_layers(s: &str, all: &[usize]) -> Vec<usize> {
         .collect()
 }
 
-fn walk_prompt(
-    model: &LoadedModel,
-    params: &WalkParams,
-) -> Result<serde_json::Value, ServerError> {
+fn walk_prompt(model: &LoadedModel, params: &WalkParams) -> Result<serde_json::Value, ServerError> {
     let start = std::time::Instant::now();
+
+    validate_top(params.top)?;
 
     let encoding = model
         .tokenizer
@@ -59,6 +74,11 @@ fn walk_prompt(
     }
 
     let last_tok = *token_ids.last().unwrap();
+    let token_str = model
+        .tokenizer
+        .decode(&[last_tok], true)
+        .unwrap_or_else(|_| format!("T{last_tok}"));
+
     let embed_row = model.embeddings.row(last_tok as usize);
     let query = embed_row.mapv(|v| v * model.embed_scale);
 
@@ -70,8 +90,7 @@ fn walk_prompt(
         None => all_layers,
     };
 
-    let top = params.top.min(MAX_TOP);
-    let trace = patched.walk(&query, &walk_layers, top);
+    let trace = patched.walk(&query, &walk_layers, params.top);
 
     let hits: Vec<serde_json::Value> = trace
         .layers
@@ -104,7 +123,11 @@ fn walk_prompt(
 
     Ok(serde_json::json!({
         "prompt": params.prompt,
+        "token": token_str.trim(),
         "hits": hits,
+        "mode": params.mode,
+        "compare": params.compare,
+        "layers_count": walk_layers.len(),
         "latency_ms": (latency_ms * 10.0).round() / 10.0,
     }))
 }
@@ -138,4 +161,23 @@ pub async fn handle_walk_multi(
         .await
         .map_err(|e| ServerError::Internal(e.to_string()))??;
     Ok(Json(result))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_layers, validate_top, MAX_TOP};
+    use crate::error::ServerError;
+
+    #[test]
+    fn parse_layers_filters_unknown_entries() {
+        let all = vec![0, 1, 2, 5, 7];
+        assert_eq!(parse_layers("1,2,9", &all), vec![1, 2]);
+        assert_eq!(parse_layers("1-5", &all), vec![1, 2, 5]);
+    }
+
+    #[test]
+    fn validate_top_rejects_oversized_requests() {
+        let err = validate_top(MAX_TOP + 1).unwrap_err();
+        assert!(matches!(err, ServerError::BadRequest(_)));
+    }
 }

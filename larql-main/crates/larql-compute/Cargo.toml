@@ -36,3 +36,9 @@ larql-core = { path = "../larql-core" }
 [[bench]]
 name = "matmul"
 harness = false
+
+[package.metadata.product]
+zone = "core"
+role = "hardware-compute-backends"
+release_impact = "high"
+stability_target = "managed"

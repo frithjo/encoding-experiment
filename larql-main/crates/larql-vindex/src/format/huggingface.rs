@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 use crate::error::VindexError;
 
 #[cfg(feature = "huggingface")]
-use larql_core::{Client as HttpClient, hf_hub};
+use larql_core::{hf_hub, Client as HttpClient};
 
 /// The files that make up a vindex, in priority order for lazy loading.
 #[cfg(feature = "huggingface")]
@@ -57,7 +57,8 @@ const VINDEX_WEIGHT_FILES: &[&str] = &[
 /// Only downloads files that don't already exist locally.
 #[cfg(feature = "huggingface")]
 pub fn resolve_hf_vindex(hf_path: &str) -> Result<PathBuf, VindexError> {
-    let path = hf_path.strip_prefix("hf://")
+    let path = hf_path
+        .strip_prefix("hf://")
         .ok_or_else(|| VindexError::Parse(format!("not an hf:// path: {hf_path}")))?;
 
     // Parse repo and optional revision
@@ -85,12 +86,15 @@ pub fn resolve_hf_vindex(hf_path: &str) -> Result<PathBuf, VindexError> {
     };
 
     // Download index.json first (small, tells us what we need)
-    let index_path = repo.get("index.json")
-        .map_err(|e| VindexError::Parse(format!(
-            "failed to download index.json from hf://{}: {e}", repo_id
-        )))?;
+    let index_path = repo.get("index.json").map_err(|e| {
+        VindexError::Parse(format!(
+            "failed to download index.json from hf://{}: {e}",
+            repo_id
+        ))
+    })?;
 
-    let vindex_dir = index_path.parent()
+    let vindex_dir = index_path
+        .parent()
         .ok_or_else(|| VindexError::Parse("cannot determine vindex directory".into()))?
         .to_path_buf();
 
@@ -109,7 +113,8 @@ pub fn resolve_hf_vindex(hf_path: &str) -> Result<PathBuf, VindexError> {
 /// Called lazily when INFER or COMPILE is first used.
 #[cfg(feature = "huggingface")]
 pub fn download_hf_weights(hf_path: &str) -> Result<(), VindexError> {
-    let path = hf_path.strip_prefix("hf://")
+    let path = hf_path
+        .strip_prefix("hf://")
         .ok_or_else(|| VindexError::Parse(format!("not an hf:// path: {hf_path}")))?;
 
     let (repo_id, revision) = if let Some((repo, rev)) = path.split_once('@') {
@@ -158,7 +163,8 @@ pub fn publish_vindex(
     let index_path = vindex_dir.join("index.json");
     if !index_path.exists() {
         return Err(VindexError::Parse(format!(
-            "not a vindex directory (no index.json): {}", vindex_dir.display()
+            "not a vindex directory (no index.json): {}",
+            vindex_dir.display()
         )));
     }
 
@@ -179,13 +185,12 @@ pub fn publish_vindex(
     files.sort();
 
     for file_path in &files {
-        let filename = file_path.file_name()
+        let filename = file_path
+            .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
 
-        let size = std::fs::metadata(file_path)
-            .map(|m| m.len())
-            .unwrap_or(0);
+        let size = std::fs::metadata(file_path).map(|m| m.len()).unwrap_or(0);
 
         callbacks.on_file_start(&filename, size);
 
@@ -221,29 +226,26 @@ impl PublishCallbacks for SilentPublishCallbacks {}
 
 #[cfg(feature = "huggingface")]
 fn get_hf_token() -> Result<String, VindexError> {
-    // Try environment variable first
-    if let Ok(token) = std::env::var("HF_TOKEN") {
-        return Ok(token);
-    }
+    // Require LARQL_HUGGINGFACE__TOKEN environment variable
+    let token = std::env::var("LARQL_HUGGINGFACE__TOKEN")
+        .map_err(|_| VindexError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "LARQL_HUGGINGFACE__TOKEN environment variable not set. Set it via config/local.toml, .env, or environment variable."
+        )))?;
 
-    // Try token file
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    let token_path = PathBuf::from(&home).join(".huggingface").join("token");
+    // Try token file as fallback
+    let home = std::env::var("LARQL_PATHS__HOME_DIR")
+        .map_err(|_| VindexError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "LARQL_PATHS__HOME_DIR environment variable not set. Set it via config/local.toml, .env, or environment variable."
+        )))?;
+    let token_path = PathBuf::from(home).join(".huggingface").join("token");
     if token_path.exists() {
-        let token = std::fs::read_to_string(&token_path)?;
-        return Ok(token.trim().to_string());
+        let file_token = std::fs::read_to_string(&token_path)?;
+        return Ok(file_token.trim().to_string());
     }
 
-    // Try newer cache location
-    let token_path = PathBuf::from(&home).join(".cache").join("huggingface").join("token");
-    if token_path.exists() {
-        let token = std::fs::read_to_string(&token_path)?;
-        return Ok(token.trim().to_string());
-    }
-
-    Err(VindexError::Parse(
-        "HuggingFace token not found. Set HF_TOKEN or run `huggingface-cli login`.".into()
-    ))
+    Ok(token)
 }
 
 #[cfg(feature = "huggingface")]
@@ -266,7 +268,9 @@ fn create_hf_dataset_repo(repo_id: &str, token: &str) -> Result<(), VindexError>
     } else {
         let status = resp.status();
         let body = resp.text().unwrap_or_default();
-        Err(VindexError::Parse(format!("HF repo create failed ({status}): {body}")))
+        Err(VindexError::Parse(format!(
+            "HF repo create failed ({status}): {body}"
+        )))
     }
 }
 
@@ -303,7 +307,8 @@ fn upload_file_to_hf(
         let status = resp.status();
         let body = resp.text().unwrap_or_default();
         Err(VindexError::Parse(format!(
-            "upload {} failed ({status}): {body}", remote_filename
+            "upload {} failed ({status}): {body}",
+            remote_filename
         )))
     }
 }
@@ -317,14 +322,15 @@ pub fn is_hf_path(path: &str) -> bool {
 #[cfg(not(feature = "huggingface"))]
 pub fn resolve_hf_vindex(_hf_path: &str) -> Result<std::path::PathBuf, crate::error::VindexError> {
     Err(crate::error::VindexError::Parse(
-        "hf:// paths require the 'huggingface' feature. Use local paths or enable the feature.".into()
+        "hf:// paths require the 'huggingface' feature. Use local paths or enable the feature."
+            .into(),
     ))
 }
 
 #[cfg(not(feature = "huggingface"))]
 pub fn download_hf_weights(_hf_path: &str) -> Result<(), crate::error::VindexError> {
     Err(crate::error::VindexError::Parse(
-        "hf:// paths require the 'huggingface' feature.".into()
+        "hf:// paths require the 'huggingface' feature.".into(),
     ))
 }
 
@@ -335,7 +341,7 @@ pub fn publish_vindex(
     _callbacks: &mut dyn PublishCallbacks,
 ) -> Result<String, crate::error::VindexError> {
     Err(crate::error::VindexError::Parse(
-        "HuggingFace publishing requires the 'huggingface' feature.".into()
+        "HuggingFace publishing requires the 'huggingface' feature.".into(),
     ))
 }
 

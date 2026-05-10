@@ -26,6 +26,18 @@ pub fn apply_rope_partial(
     rope_base: f64,
     fraction: f64,
 ) -> Array2<f32> {
+    apply_rope_partial_with_offset(x, num_heads, head_dim, rope_base, fraction, 0)
+}
+
+/// Apply RoPE with an explicit starting position offset.
+pub fn apply_rope_partial_with_offset(
+    x: &Array2<f32>,
+    num_heads: usize,
+    head_dim: usize,
+    rope_base: f64,
+    fraction: f64,
+    start_pos: usize,
+) -> Array2<f32> {
     let seq_len = x.shape()[0];
     let mut out = x.clone();
 
@@ -36,10 +48,11 @@ pub fn apply_rope_partial(
         .collect();
 
     for pos in 0..seq_len {
+        let absolute_pos = start_pos + pos;
         for h in 0..num_heads {
             let offset = h * head_dim;
             for i in 0..half_rotary {
-                let theta = pos as f64 * inv_freq[i];
+                let theta = absolute_pos as f64 * inv_freq[i];
                 let cos_t = theta.cos() as f32;
                 let sin_t = theta.sin() as f32;
 

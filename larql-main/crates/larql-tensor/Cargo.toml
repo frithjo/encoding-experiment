@@ -22,3 +22,9 @@ blas-src = { version = "0.10", features = ["accelerate"], optional = true }
 default = []
 # BLAS-backed matmul via ndarray. Off by default; enable for peak perf when OpenBLAS/Accelerate available.
 blas = ["ndarray/blas", "dep:blas-src", "dep:openblas-src"]
+
+[package.metadata.product]
+zone = "core"
+role = "tensor-facade-and-sgemm-utilities"
+release_impact = "medium"
+stability_target = "managed"

@@ -4,6 +4,7 @@ members = [
     "crates/larql-models",
     "crates/larql-compute",
     "crates/larql-core",
+    "crates/larql-governance",
     "crates/larql-tokenizer",
     "crates/larql-vindex",
     "crates/larql-inference",
@@ -12,26 +13,33 @@ members = [
     "crates/larql-server",
     "crates/larql-python",
     "crates/larql-terminal-browser",
-    "crates/kv-cache-benchmark",
+    "experiments/kv-cache-benchmark",
     "crates/larql-tensor",
+    "crates/larql-leptos",
+    "crates/larql-terminal-batch-dla",
+    "crates/larql-terminal-renderer",
+    "crates/larql-tty-io",
+    "crates/larql-workbench-core",
 ]
 default-members = [
     "crates/larql-models",
     "crates/larql-compute",
     "crates/larql-core",
+    "crates/larql-governance",
     "crates/larql-tokenizer",
     "crates/larql-vindex",
     "crates/larql-inference",
     "crates/larql-lql",
     "crates/larql-cli",
     "crates/larql-server",
-    "crates/kv-cache-benchmark",
+    "crates/larql-workbench-core",
+    "experiments/kv-cache-benchmark",
 ]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.88"
 authors = []
 license = "Apache-2.0"
 repository = "https://github.com/chrishayuk/chuk-larql-rs"
@@ -40,14 +48,6 @@ repository = "https://github.com/chrishayuk/chuk-larql-rs"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-
-[workspace.features]
-default = []
-# HTTP dependencies - enables network functionality across crates
-http = ["larql-core/http", "larql-lql/http", "larql-cli/http"]
-# Async HTTP for server use cases
-http-async = ["larql-core/http-async", "larql-server/http-async"]
-# HuggingFace integration - consolidated in larql-core
-huggingface = ["larql-core/huggingface", "larql-vindex/huggingface", "larql-server/huggingface"]
-# Metal GPU backend (Apple Silicon)
-metal = ["larql-compute/metal", "larql-inference/metal", "larql-vindex/metal"]
+anyhow = "1"
+ndarray = "0.16"
+larql-core = { path = "crates/larql-core" }

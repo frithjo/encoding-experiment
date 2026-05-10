@@ -1,0 +1,25 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "LARQL Workbench",
+  "version": "0.1.0",
+  "identifier": "com.larql.workbench",
+  "build": {
+    "beforeDevCommand": "bash ../../scripts/build-leptos-tauri.sh",
+    "beforeBuildCommand": "bash ../../scripts/build-leptos-tauri.sh",
+    "frontendDist": "../../../crates/larql-leptos/dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "LARQL Workbench",
+        "width": 1280,
+        "height": 800,
+        "resizable": true
+      }
+    ]
+  },
+  "bundle": {
+    "active": false
+  }
+}

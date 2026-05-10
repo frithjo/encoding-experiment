@@ -37,19 +37,25 @@ impl BufferCache {
     pub fn get_f32(&self, data: &[f32]) -> Buffer {
         let key: CacheKey = (data.as_ptr() as usize, data.len());
         let mut cache = self.cache.lock().unwrap();
-        if let Some(buf) = cache.get(&key) { return buf.clone(); }
+        if let Some(buf) = cache.get(&key) {
+            return buf.clone();
+        }
 
         let bytes = data.len() * 4;
         let ptr = data.as_ptr() as *const c_void;
 
         let buf = if Self::is_page_aligned(ptr, bytes) {
             self.device.new_buffer_with_bytes_no_copy(
-                ptr as *mut c_void, bytes as u64,
-                MTLResourceOptions::StorageModeShared, None,
+                ptr as *mut c_void,
+                bytes as u64,
+                MTLResourceOptions::StorageModeShared,
+                None,
             )
         } else {
             self.device.new_buffer_with_data(
-                ptr, bytes as u64, MTLResourceOptions::StorageModeShared,
+                ptr,
+                bytes as u64,
+                MTLResourceOptions::StorageModeShared,
             )
         };
 
@@ -62,19 +68,25 @@ impl BufferCache {
     pub fn get_bytes(&self, data: &[u8]) -> Buffer {
         let key: CacheKey = (data.as_ptr() as usize, data.len());
         let mut cache = self.cache.lock().unwrap();
-        if let Some(buf) = cache.get(&key) { return buf.clone(); }
+        if let Some(buf) = cache.get(&key) {
+            return buf.clone();
+        }
 
         let ptr = data.as_ptr() as *const c_void;
         let bytes = data.len();
 
         let buf = if Self::is_page_aligned(ptr, bytes) {
             self.device.new_buffer_with_bytes_no_copy(
-                ptr as *mut c_void, bytes as u64,
-                MTLResourceOptions::StorageModeShared, None,
+                ptr as *mut c_void,
+                bytes as u64,
+                MTLResourceOptions::StorageModeShared,
+                None,
             )
         } else {
             self.device.new_buffer_with_data(
-                ptr, bytes as u64, MTLResourceOptions::StorageModeShared,
+                ptr,
+                bytes as u64,
+                MTLResourceOptions::StorageModeShared,
             )
         };
 
@@ -103,7 +115,8 @@ impl BufferCache {
 
     /// Create an empty output buffer of given byte size.
     pub fn output(&self, bytes: u64) -> Buffer {
-        self.device.new_buffer(bytes, MTLResourceOptions::StorageModeShared)
+        self.device
+            .new_buffer(bytes, MTLResourceOptions::StorageModeShared)
     }
 
     /// Number of cached buffers (for diagnostics).

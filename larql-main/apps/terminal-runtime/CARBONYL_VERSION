@@ -1,0 +1,6 @@
+# Carbonyl version pin for Linux x86_64
+# Format: VERSION <TAB> SHA256
+# Update this when upgrading Carbonyl
+# Get SHA256 from: sha256sum carbonyl.linux-amd64.zip
+
+0.0.3	46a902ea29bb32f773fb4ee341423705b92345a810422b8df93eaea6a1ec7ad2

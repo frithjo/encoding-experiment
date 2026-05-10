@@ -36,7 +36,7 @@ pub struct VectorRecord {
 }
 
 /// A top-k token entry with logit score.
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct TopKEntry {
     pub token: String,
     pub token_id: u32,

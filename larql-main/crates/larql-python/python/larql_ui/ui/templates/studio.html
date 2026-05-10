@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="page-title">Studio</h1>
+
+<form id="studio-form" method="post" class="task-form">
+  <label for="engine">Engine</label>
+  <select id="engine" name="engine">
+    <option value="describe" {% if form_data.engine == 'describe' %}selected{% endif %}>describe</option>
+    <option value="lql" {% if form_data.engine == 'lql' %}selected{% endif %}>lql</option>
+    <option value="infer" {% if form_data.engine == 'infer' %}selected{% endif %} {% if not supports_infer %}disabled{% endif %}>infer</option>
+    <option value="walk_model" {% if form_data.engine == 'walk_model' %}selected{% endif %} {% if not supports_walk_model %}disabled{% endif %}>walk_model</option>
+  </select>
+
+  <label for="inline_template">Subject</label>
+  <textarea id="inline_template" name="inline_template" rows="3" placeholder="Enter subject or template...">{{ form_data.inline_template }}</textarea>
+
+  <div class="form-row">
+    <div class="form-col">
+      <label for="band">Band</label>
+      <select id="band" name="band">
+        {% for band_name in ["knowledge", "syntax", "output", "all"] %}
+        <option value="{{ band_name }}" {% if form_data.band == band_name %}selected{% endif %}>{{ band_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-col">
+      <label for="infer_top_k_predictions">Top-k</label>
+      <input id="infer_top_k_predictions" name="infer_top_k_predictions" type="number" min="1" value="{{ form_data.infer_top_k_predictions }}">
+    </div>
+
+    <div class="form-col checkbox-col">
+      <div class="checkbox-row">
+        <input type="checkbox" id="studio_verbose" name="verbose" {% if form_data.verbose %}checked{% endif %}>
+        <label for="studio_verbose">Verbose</label>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="studio_async_background" name="async_background" {% if form_data.async_background %}checked{% endif %}>
+        <label for="studio_async_background">Background run</label>
+      </div>
+    </div>
+  </div>
+
+  <button type="submit" class="submit-button">Run <kbd>Ctrl+Enter</kbd></button>
+</form>
+
+<section class="panel result-panel" id="studio-async-panel" {% if not studio_async_poll_id %}hidden{% endif %}>
+  <h2>Background Result</h2>
+  <p class="muted" id="studio-async-status">Waiting...</p>
+  <div id="studio-async-result"></div>
+</section>
+
+{% include "partials/studio_result.html" %}
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const form = document.getElementById('studio-form');
+    const asyncCheckbox = document.getElementById('studio_async_background');
+    const panel = document.getElementById('studio-async-panel');
+    const statusEl = document.getElementById('studio-async-status');
+    const resultEl = document.getElementById('studio-async-result');
+    const initialRunId = "{{ studio_async_poll_id or '' }}";
+
+    function asyncClient() {
+      return window.LarqlAsyncRuns || null;
+    }
+
+    function renderMissingClientError() {
+      if (!panel || !statusEl || !resultEl) return;
+      panel.hidden = false;
+      statusEl.textContent = "Background run unavailable.";
+      resultEl.innerHTML = '<p class="banner error" role="alert">Async client failed to load.</p>';
+    }
+
+    function pollExistingRun(runId) {
+      const client = asyncClient();
+      if (!client) {
+        renderMissingClientError();
+        return;
+      }
+      client.pollRun({
+        scope: "studio-page",
+        runId,
+        panel,
+        statusEl,
+        resultEl,
+        resultUrlBuilder: function (rid) {
+          return "/partials/studio-result?run_id=" + encodeURIComponent(rid);
+        }
+      });
+    }
+
+    if (initialRunId) {
+      pollExistingRun(initialRunId);
+    }
+
+    if (!form || !asyncCheckbox) return;
+    form.addEventListener('submit', function (event) {
+      if (!asyncCheckbox.checked) return;
+      const client = asyncClient();
+      if (!client) {
+        event.preventDefault();
+        renderMissingClientError();
+        return;
+      }
+      event.preventDefault();
+      const fd = new FormData(form);
+      client.submitAndPoll({
+        scope: "studio-page",
+        url: "/api/runs",
+        body: {
+          async: true,
+          engine: String(fd.get("engine") || "describe"),
+          rendered: String(fd.get("inline_template") || ""),
+          title: "Studio",
+          band: String(fd.get("band") || "knowledge"),
+          verbose: fd.get("verbose") === "on",
+          infer_top_k_predictions: Number(fd.get("infer_top_k_predictions") || 5),
+          walk_top_k: Number(fd.get("walk_top_k") || 8192)
+        },
+        panel,
+        statusEl,
+        resultEl,
+        resultUrlBuilder: function (rid) {
+          return "/partials/studio-result?run_id=" + encodeURIComponent(rid);
+        }
+      });
+    });
+  });
+</script>
+{% endblock %}
