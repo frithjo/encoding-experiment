@@ -2,6 +2,16 @@ use leptos::*;
 use leptos_meta::*;
 use leptos_router::*;
 use serde::{Deserialize, Serialize};
+use wasm_bindgen::JsValue;
+
+#[cfg(target_arch = "wasm32")]
+use gloo_net::http::Request;
+#[cfg(target_arch = "wasm32")]
+use js_sys::{Function, Object, Promise, Reflect};
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsCast;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen_futures::JsFuture;
 
 #[derive(Clone, Serialize, Deserialize)]
 struct AttentionData {
@@ -9,16 +19,157 @@ struct AttentionData {
     heads: Vec<Vec<f32>>,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+struct LqlRunRequest {
+    workspace_path: String,
+    query: String,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct LqlRunResponse {
+    lines: Vec<String>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct DescribeRunRequest {
+    workspace_path: String,
+    entity: String,
+    band: Option<String>,
+    verbose: bool,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct DescribeRunResponse {
+    lines: Vec<String>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct AnalyzeInferRequest {
+    server_url: String,
+    prompt: String,
+    top_k: usize,
+    mode: String,
+    truth_spans: Vec<String>,
+    materially_false_spans: Vec<String>,
+    coherence_markers: Vec<String>,
+    max_generated_tokens: Option<usize>,
+    ridge_dead_zone: Option<f32>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct AnalyzeHeadContribution {
+    layer: usize,
+    head: usize,
+    source_token: usize,
+    contribution: f64,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct AnalyzeStepTopHeadSummary {
+    false_content: Vec<AnalyzeHeadContribution>,
+    material_coherence: Vec<AnalyzeHeadContribution>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct AnalyzeGeneratedStep {
+    position: usize,
+    token_id: u32,
+    token: String,
+    probability: f64,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct AnalyzeTokenAnalysis {
+    position: usize,
+    token_id: u32,
+    token: String,
+    probability: f64,
+    label: String,
+    truth_mass: f64,
+    false_mass: f64,
+    coherence_mass: f64,
+    ridge: f64,
+    top_heads: AnalyzeStepTopHeadSummary,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct AnalyzeFirstFalseOrigin {
+    position: usize,
+    token_id: u32,
+    token: String,
+    layer: usize,
+    head: usize,
+    source_token: usize,
+    contribution: f64,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct AnalyzeSummary {
+    first_false_position: Option<usize>,
+    first_false_token: Option<String>,
+    first_false_origin: Option<AnalyzeFirstFalseOrigin>,
+    top_coherence_heads: Vec<AnalyzeHeadContribution>,
+    top_false_content_heads: Vec<AnalyzeHeadContribution>,
+    materially_false_detected: bool,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct AnalyzeLayerRidge {
+    layer: usize,
+    ridge: f64,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct AnalyzeAttentionLayer {
+    layer: usize,
+    heads: Vec<Vec<f32>>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct AnalyzeLogitLensLayer {
+    layer: usize,
+    predictions: Vec<(String, f64)>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct AnalyzeHeadDlaLayer {
+    layer: usize,
+    heads: Vec<Vec<f32>>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct AnalyzeInferResponse {
+    attention: Vec<AnalyzeAttentionLayer>,
+    logit_lens: Vec<AnalyzeLogitLensLayer>,
+    head_dla: Vec<AnalyzeHeadDlaLayer>,
+    num_layers: usize,
+    seq_len: usize,
+    tokens: Vec<u32>,
+    strings: Vec<String>,
+    predictions: Vec<(String, f64)>,
+    generation_trace: Vec<AnalyzeGeneratedStep>,
+    token_analysis: Vec<AnalyzeTokenAnalysis>,
+    analysis_summary: Option<AnalyzeSummary>,
+    ridge_by_layer: Vec<AnalyzeLayerRidge>,
+}
+
 #[component]
 pub fn App() -> impl IntoView {
     provide_meta_context();
 
     view! {
-        <Title text="LARQL Leptos - Batch DLA Scan"/>
+        <Title text="LARQL Workbench (Rust/WASM)"/>
         <Router>
             <main class="container">
+                <nav class="top-nav">
+                    <A href="/">"LQL"</A>
+                    <A href="/explorer">"Explorer"</A>
+                    <A href="/batch-dla">"Batch DLA"</A>
+                </nav>
                 <Routes>
-                    <Route path="/" view=BatchDlaScan/>
+                    <Route path="/" view=LqlConsole/>
+                    <Route path="/explorer" view=ExplorerDescribe/>
+                    <Route path="/batch-dla" view=BatchDlaScan/>
                 </Routes>
             </main>
         </Router>
@@ -32,100 +183,323 @@ pub fn main() {
 }
 
 #[component]
+fn LqlConsole() -> impl IntoView {
+    let (workspace_path, set_workspace_path) = create_signal(String::new());
+    let (query, set_query) = create_signal("STATS".to_string());
+    let (loading, set_loading) = create_signal(false);
+    let (error, set_error) = create_signal(None::<String>);
+    let (lines, set_lines) = create_signal(Vec::<String>::new());
+
+    let run = move |_| {
+        let workspace = workspace_path.get().trim().to_string();
+        let statement = query.get().trim().to_string();
+
+        set_loading.set(true);
+        set_error.set(None);
+        set_lines.set(Vec::new());
+
+        wasm_bindgen_futures::spawn_local(async move {
+            let req = LqlRunRequest {
+                workspace_path: workspace,
+                query: statement,
+            };
+            match invoke_tauri_lql(req).await {
+                Ok(resp) => {
+                    set_lines.set(resp.lines);
+                    set_loading.set(false);
+                }
+                Err(e) => {
+                    set_error.set(Some(e));
+                    set_loading.set(false);
+                }
+            }
+        });
+    };
+
+    view! {
+        <div class="batch-dla-scan">
+            <h1>"LQL Console"</h1>
+
+            <div class="input-section">
+                <label>"Workspace (.vindex path):"</label>
+                <input
+                    type="text"
+                    prop:value=workspace_path
+                    on:input=move |e| set_workspace_path.set(event_target_value(&e))
+                    placeholder="/path/to/model.vindex"
+                />
+
+                <label style="margin-top: 12px;">"Query:"</label>
+                <textarea
+                    prop:value=query
+                    on:input=move |e| set_query.set(event_target_value(&e))
+                    rows="6"
+                />
+                <button
+                    on:click=run
+                    disabled=loading
+                >
+                    {move || if loading.get() { "Running..." } else { "Run query" }}
+                </button>
+            </div>
+
+            {move || {
+                if let Some(err) = error.get() {
+                    view! { <div class="error">{err}</div> }.into_view()
+                } else {
+                    view! {}.into_view()
+                }
+            }}
+
+            {move || {
+                let current = lines.get();
+                if current.is_empty() {
+                    view! {}.into_view()
+                } else {
+                    view! {
+                        <div class="results">
+                            <h2>"Result"</h2>
+                            <pre style="white-space: pre-wrap;">{current.join("\n")}</pre>
+                        </div>
+                    }
+                    .into_view()
+                }
+            }}
+        </div>
+    }
+}
+
+#[component]
+fn ExplorerDescribe() -> impl IntoView {
+    let (workspace_path, set_workspace_path) = create_signal(String::new());
+    let (entity, set_entity) = create_signal(String::new());
+    let (band, set_band) = create_signal("knowledge".to_string());
+    let (verbose, set_verbose) = create_signal(false);
+    let (loading, set_loading) = create_signal(false);
+    let (error, set_error) = create_signal(None::<String>);
+    let (lines, set_lines) = create_signal(Vec::<String>::new());
+
+    let run = move |_| {
+        let workspace = workspace_path.get().trim().to_string();
+        let describe_entity = entity.get().trim().to_string();
+        let band_value = band.get();
+        let include_verbose = verbose.get();
+
+        set_loading.set(true);
+        set_error.set(None);
+        set_lines.set(Vec::new());
+
+        wasm_bindgen_futures::spawn_local(async move {
+            let req = DescribeRunRequest {
+                workspace_path: workspace,
+                entity: describe_entity,
+                band: if band_value == "none" {
+                    None
+                } else {
+                    Some(band_value)
+                },
+                verbose: include_verbose,
+            };
+            match invoke_tauri_describe(req).await {
+                Ok(resp) => {
+                    set_lines.set(resp.lines);
+                    set_loading.set(false);
+                }
+                Err(e) => {
+                    set_error.set(Some(e));
+                    set_loading.set(false);
+                }
+            }
+        });
+    };
+
+    view! {
+        <div class="batch-dla-scan">
+            <h1>"Explorer Describe"</h1>
+
+            <div class="input-section">
+                <label>"Workspace (.vindex path):"</label>
+                <input
+                    type="text"
+                    prop:value=workspace_path
+                    on:input=move |e| set_workspace_path.set(event_target_value(&e))
+                    placeholder="/path/to/model.vindex"
+                />
+
+                <label style="margin-top: 12px;">"Entity:"</label>
+                <input
+                    type="text"
+                    prop:value=entity
+                    on:input=move |e| set_entity.set(event_target_value(&e))
+                    placeholder="France"
+                />
+
+                <label style="margin-top: 12px;">"Band:"</label>
+                <select
+                    prop:value=band
+                    on:change=move |e| set_band.set(event_target_value(&e))
+                >
+                    <option value="knowledge">"knowledge"</option>
+                    <option value="all">"all"</option>
+                    <option value="syntax">"syntax"</option>
+                    <option value="output">"output"</option>
+                    <option value="none">"none"</option>
+                </select>
+
+                <label style="margin-top: 12px;">
+                    <input
+                        type="checkbox"
+                        prop:checked=verbose
+                        on:change=move |e| set_verbose.set(event_target_checked(&e))
+                    />
+                    " Verbose"
+                </label>
+
+                <button
+                    on:click=run
+                    disabled=loading
+                >
+                    {move || if loading.get() { "Running..." } else { "Describe" }}
+                </button>
+            </div>
+
+            {move || {
+                if let Some(err) = error.get() {
+                    view! { <div class="error">{err}</div> }.into_view()
+                } else {
+                    view! {}.into_view()
+                }
+            }}
+
+            {move || {
+                let current = lines.get();
+                if current.is_empty() {
+                    view! {}.into_view()
+                } else {
+                    view! {
+                        <div class="results">
+                            <h2>"Result"</h2>
+                            <pre style="white-space: pre-wrap;">{current.join("\n")}</pre>
+                        </div>
+                    }
+                    .into_view()
+                }
+            }}
+        </div>
+    }
+}
+
+#[component]
 fn BatchDlaScan() -> impl IntoView {
+    let (server_url, set_server_url) = create_signal("http://127.0.0.1:8080".to_string());
     let (prompt, set_prompt) = create_signal("".to_string());
+    let (mode, set_mode) = create_signal("fact_probe".to_string());
+    let (truth_spans_raw, set_truth_spans_raw) = create_signal(String::new());
+    let (false_spans_raw, set_false_spans_raw) = create_signal(String::new());
+    let (coherence_markers_raw, set_coherence_markers_raw) = create_signal(String::new());
+    let (max_generated_tokens_raw, set_max_generated_tokens_raw) = create_signal("1".to_string());
+    let (ridge_dead_zone_raw, set_ridge_dead_zone_raw) = create_signal("0.05".to_string());
     let (loading, set_loading) = create_signal(false);
     let (error, set_error) = create_signal(None::<String>);
     let (attention_data, set_attention_data) = create_signal(None::<Vec<AttentionData>>);
     let (num_layers, set_num_layers) = create_signal(0usize);
     let (tokens, set_tokens) = create_signal(Vec::<usize>::new());
+    let (analysis_dump, set_analysis_dump) = create_signal(String::new());
+
+    let parse_csv = |raw: &str| {
+        raw.split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+    };
 
     let run_scan = move |_| {
-        let prompt_val = prompt.get();
+        let server_url_val = server_url.get().trim().to_string();
+        let prompt_val = prompt.get().trim().to_string();
+        let mode_val = mode.get().trim().to_ascii_lowercase();
+        let truth_spans = parse_csv(&truth_spans_raw.get());
+        let materially_false_spans = parse_csv(&false_spans_raw.get());
+        let coherence_markers = parse_csv(&coherence_markers_raw.get());
+        let max_generated_tokens = max_generated_tokens_raw.get().trim().parse::<usize>().ok();
+        let ridge_dead_zone = ridge_dead_zone_raw.get().trim().parse::<f32>().ok();
+
         if prompt_val.is_empty() {
             set_error.set(Some("Please enter a prompt".to_string()));
+            return;
+        }
+        if mode_val != "fact_probe" && mode_val != "workflow_probe" {
+            set_error.set(Some(
+                "Mode must be fact_probe or workflow_probe".to_string(),
+            ));
+            return;
+        }
+        if mode_val == "fact_probe" && truth_spans.is_empty() && materially_false_spans.is_empty() {
+            set_error.set(Some(
+                "FACT_PROBE requires at least one TRUTH_SPAN or FALSE_SPAN".to_string(),
+            ));
+            return;
+        }
+        if mode_val == "workflow_probe" && materially_false_spans.is_empty() {
+            set_error.set(Some("WORKFLOW_PROBE requires FALSE_SPANS".to_string()));
             return;
         }
 
         set_loading.set(true);
         set_error.set(None);
+        set_analysis_dump.set(String::new());
+        set_attention_data.set(None);
+        set_tokens.set(Vec::new());
+        set_num_layers.set(0);
 
+        let server_url_clone = server_url_val.clone();
         let prompt_clone = prompt_val.clone();
+        let mode_clone = mode_val.clone();
+        let truth_spans_clone = truth_spans.clone();
+        let false_spans_clone = materially_false_spans.clone();
+        let coherence_markers_clone = coherence_markers.clone();
+        let max_generated_tokens_clone = max_generated_tokens;
+        let ridge_dead_zone_clone = ridge_dead_zone;
 
-        // Call larql-server /v1/analyze-infer endpoint (canonical path)
         wasm_bindgen_futures::spawn_local(async move {
-            let request = serde_json::json!({
-                "prompt": prompt_clone,
-                "top_k": 5,
-                "mode": "fact_probe",
-                "truth_spans": [],
-                "materially_false_spans": [],
-                "coherence_markers": [],
-                "max_generated_tokens": serde_json::Value::Null,
-                "ridge_dead_zone": serde_json::Value::Null
-            });
+            let request = AnalyzeInferRequest {
+                server_url: server_url_clone,
+                prompt: prompt_clone,
+                top_k: 5,
+                mode: mode_clone,
+                truth_spans: truth_spans_clone,
+                materially_false_spans: false_spans_clone,
+                coherence_markers: coherence_markers_clone,
+                max_generated_tokens: max_generated_tokens_clone,
+                ridge_dead_zone: ridge_dead_zone_clone,
+            };
 
-            match gloo_net::http::Request::post("http://localhost:8080/v1/analyze-infer")
-                .json(&request)
-            {
-                Ok(req) => {
-                    match req.send().await {
-                        Ok(response) => {
-                            if response.ok() {
-                                match response.json::<serde_json::Value>().await {
-                                    Ok(result) => {
-                                        // Parse the attention data from the response
-                                        if let Some(attention) =
-                                            result.get("attention").and_then(|v| v.as_array())
-                                        {
-                                            let parsed_attention: Vec<AttentionData> = attention
-                                                .iter()
-                                                .filter_map(|v| {
-                                                    serde_json::from_value(v.clone()).ok()
-                                                })
-                                                .collect();
-
-                                            set_attention_data.set(Some(parsed_attention));
-
-                                            if let Some(layers) =
-                                                result.get("num_layers").and_then(|v| v.as_u64())
-                                            {
-                                                set_num_layers.set(layers as usize);
-                                            }
-
-                                            if let Some(tokens_array) =
-                                                result.get("tokens").and_then(|v| v.as_array())
-                                            {
-                                                let parsed_tokens: Vec<usize> = tokens_array
-                                                    .iter()
-                                                    .filter_map(|v| v.as_u64().map(|u| u as usize))
-                                                    .collect();
-                                                set_tokens.set(parsed_tokens);
-                                            }
-                                        }
-                                        set_loading.set(false);
-                                    }
-                                    Err(e) => {
-                                        set_loading.set(false);
-                                        set_error
-                                            .set(Some(format!("Failed to parse response: {}", e)));
-                                    }
-                                }
-                            } else {
-                                set_loading.set(false);
-                                set_error
-                                    .set(Some(format!("Server error: {}", response.status_text())));
-                            }
-                        }
-                        Err(e) => {
-                            set_loading.set(false);
-                            set_error.set(Some(format!("Request failed: {}", e)));
-                        }
-                    }
+            match invoke_tauri_analyze_infer(request).await {
+                Ok(result) => {
+                    let dump =
+                        serde_json::to_string_pretty(&result).unwrap_or_else(|_| "{}".to_string());
+                    set_analysis_dump.set(dump);
+                    let parsed_attention: Vec<AttentionData> = result
+                        .attention
+                        .into_iter()
+                        .map(|layer| AttentionData {
+                            layer: layer.layer,
+                            heads: layer.heads,
+                        })
+                        .collect();
+                    set_attention_data.set(Some(parsed_attention));
+                    set_num_layers.set(result.num_layers);
+                    let parsed_tokens: Vec<usize> = result
+                        .tokens
+                        .into_iter()
+                        .map(|token| token as usize)
+                        .collect();
+                    set_tokens.set(parsed_tokens);
+                    set_loading.set(false);
                 }
                 Err(e) => {
                     set_loading.set(false);
-                    set_error.set(Some(format!("Failed to create request: {}", e)));
+                    set_error.set(Some(e));
                 }
             }
         });
@@ -136,12 +510,69 @@ fn BatchDlaScan() -> impl IntoView {
             <h1>"Batch DLA Scan"</h1>
 
             <div class="input-section">
+                <label>"Server URL:"</label>
+                <input
+                    type="text"
+                    prop:value=server_url
+                    on:input=move |e| set_server_url.set(event_target_value(&e))
+                    placeholder="http://127.0.0.1:8080"
+                />
+
                 <label>"Prompt:"</label>
                 <textarea
                     prop:value=prompt
                     on:input=move |e| set_prompt.set(event_target_value(&e))
                     placeholder="Enter text to analyze..."
                     rows="4"
+                />
+
+                <label style="margin-top: 12px;">"Mode:"</label>
+                <select
+                    prop:value=mode
+                    on:change=move |e| set_mode.set(event_target_value(&e))
+                >
+                    <option value="fact_probe">"fact_probe"</option>
+                    <option value="workflow_probe">"workflow_probe"</option>
+                </select>
+
+                <label style="margin-top: 12px;">"Truth Spans (comma-separated):"</label>
+                <input
+                    type="text"
+                    prop:value=truth_spans_raw
+                    on:input=move |e| set_truth_spans_raw.set(event_target_value(&e))
+                    placeholder="Markov"
+                />
+
+                <label style="margin-top: 12px;">"False Spans (comma-separated):"</label>
+                <input
+                    type="text"
+                    prop:value=false_spans_raw
+                    on:input=move |e| set_false_spans_raw.set(event_target_value(&e))
+                    placeholder="Paris, London"
+                />
+
+                <label style="margin-top: 12px;">"Coherence Markers (comma-separated):"</label>
+                <input
+                    type="text"
+                    prop:value=coherence_markers_raw
+                    on:input=move |e| set_coherence_markers_raw.set(event_target_value(&e))
+                    placeholder="capital, is"
+                />
+
+                <label style="margin-top: 12px;">"Max Generated Tokens:"</label>
+                <input
+                    type="number"
+                    min="1"
+                    prop:value=max_generated_tokens_raw
+                    on:input=move |e| set_max_generated_tokens_raw.set(event_target_value(&e))
+                />
+
+                <label style="margin-top: 12px;">"Ridge Dead Zone:"</label>
+                <input
+                    type="text"
+                    prop:value=ridge_dead_zone_raw
+                    on:input=move |e| set_ridge_dead_zone_raw.set(event_target_value(&e))
+                    placeholder="0.05"
                 />
                 <button
                     on:click=run_scan
@@ -155,7 +586,8 @@ fn BatchDlaScan() -> impl IntoView {
                 if let Some(err) = error.get() {
                     view! {
                         <div class="error">{err}</div>
-                    }.into_view()
+                    }
+                    .into_view()
                 } else {
                     view! {}.into_view()
                 }
@@ -183,12 +615,245 @@ fn BatchDlaScan() -> impl IntoView {
                                     }
                                 }).collect_view()}
                             </div>
+                            <details style="margin-top: 16px;">
+                                <summary>"Full Analysis JSON"</summary>
+                                <pre style="white-space: pre-wrap; margin-top: 12px;">{move || analysis_dump.get()}</pre>
+                            </details>
                         </div>
-                    }.into_view()
+                    }
+                    .into_view()
                 } else {
                     view! {}.into_view()
                 }
             }}
         </div>
+    }
+}
+
+async fn invoke_tauri_lql(request: LqlRunRequest) -> Result<LqlRunResponse, String> {
+    if !has_tauri_runtime() {
+        return invoke_http_lql(request).await;
+    }
+    let request_js = serde_wasm_bindgen::to_value(&request).map_err(|e| e.to_string())?;
+    let result = invoke_tauri_command("run_lql_query_command", request_js).await?;
+    serde_wasm_bindgen::from_value(result).map_err(|e| e.to_string())
+}
+
+async fn invoke_tauri_describe(request: DescribeRunRequest) -> Result<DescribeRunResponse, String> {
+    if !has_tauri_runtime() {
+        return invoke_http_describe(request).await;
+    }
+    let request_js = serde_wasm_bindgen::to_value(&request).map_err(|e| e.to_string())?;
+    let result = invoke_tauri_command("run_describe_command", request_js).await?;
+    serde_wasm_bindgen::from_value(result).map_err(|e| e.to_string())
+}
+
+async fn invoke_tauri_analyze_infer(
+    request: AnalyzeInferRequest,
+) -> Result<AnalyzeInferResponse, String> {
+    if !has_tauri_runtime() {
+        return invoke_http_analyze_infer(request).await;
+    }
+    let request_js = serde_wasm_bindgen::to_value(&request).map_err(|e| e.to_string())?;
+    let result = invoke_tauri_command("run_analyze_infer_command", request_js).await?;
+    serde_wasm_bindgen::from_value(result).map_err(|e| e.to_string())
+}
+
+#[cfg(target_arch = "wasm32")]
+fn has_tauri_runtime() -> bool {
+    let Some(window) = web_sys::window() else {
+        return false;
+    };
+    let Ok(tauri_obj) = Reflect::get(&window, &JsValue::from_str("__TAURI__")) else {
+        return false;
+    };
+    !(tauri_obj.is_undefined() || tauri_obj.is_null())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn has_tauri_runtime() -> bool {
+    false
+}
+
+#[cfg(target_arch = "wasm32")]
+fn trim_trailing_slashes(raw: &str) -> String {
+    raw.trim_end_matches('/').to_string()
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn invoke_http_lql(request: LqlRunRequest) -> Result<LqlRunResponse, String> {
+    let payload = serde_json::json!({
+        "query": request.query,
+        "workspace_path": request.workspace_path,
+    });
+    let response = Request::post("/api/lql/query")
+        .json(&payload)
+        .map_err(|e| format!("failed to create LQL request: {e}"))?
+        .send()
+        .await
+        .map_err(|e| format!("LQL request failed: {e}"))?;
+
+    if !response.ok() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("LQL request failed ({status}): {body}"));
+    }
+
+    let payload: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("failed to parse LQL response: {e}"))?;
+
+    if let Some(lines) = payload
+        .get("run")
+        .and_then(|run| run.get("raw"))
+        .and_then(|raw| raw.get("lines"))
+        .and_then(|lines| lines.as_array())
+    {
+        let parsed_lines = lines
+            .iter()
+            .map(|line| line.as_str().unwrap_or("").to_string())
+            .collect::<Vec<_>>();
+        return Ok(LqlRunResponse { lines: parsed_lines });
+    }
+
+    if let Some(err) = payload.get("error").and_then(|e| e.as_str()) {
+        return Err(err.to_string());
+    }
+
+    Err("unexpected LQL response shape from /api/lql/query".to_string())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+async fn invoke_http_lql(_request: LqlRunRequest) -> Result<LqlRunResponse, String> {
+    Err("HTTP LQL fallback is only available in wasm32 builds".to_string())
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn invoke_http_describe(request: DescribeRunRequest) -> Result<DescribeRunResponse, String> {
+    let payload = serde_json::json!({
+        "entity": request.entity,
+        "band": request.band.unwrap_or_else(|| "knowledge".to_string()),
+        "verbose": request.verbose,
+        "workspace_path": request.workspace_path,
+    });
+    let response = Request::post("/api/explorer/describe")
+        .json(&payload)
+        .map_err(|e| format!("failed to create describe request: {e}"))?
+        .send()
+        .await
+        .map_err(|e| format!("describe request failed: {e}"))?;
+
+    if !response.ok() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("describe request failed ({status}): {body}"));
+    }
+
+    let payload: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("failed to parse describe response: {e}"))?;
+
+    if let Some(edges) = payload
+        .get("run")
+        .and_then(|run| run.get("raw"))
+        .and_then(|raw| raw.get("edges"))
+        .and_then(|edges| edges.as_array())
+    {
+        let lines = edges
+            .iter()
+            .map(|edge| serde_json::to_string_pretty(edge).unwrap_or_else(|_| edge.to_string()))
+            .collect::<Vec<_>>();
+        return Ok(DescribeRunResponse { lines });
+    }
+
+    if let Some(err) = payload.get("error").and_then(|e| e.as_str()) {
+        return Err(err.to_string());
+    }
+
+    Err("unexpected describe response shape from /api/explorer/describe".to_string())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+async fn invoke_http_describe(_request: DescribeRunRequest) -> Result<DescribeRunResponse, String> {
+    Err("HTTP describe fallback is only available in wasm32 builds".to_string())
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn invoke_http_analyze_infer(
+    request: AnalyzeInferRequest,
+) -> Result<AnalyzeInferResponse, String> {
+    let base = trim_trailing_slashes(&request.server_url);
+    let url = format!("{base}/v1/analyze-infer");
+    let response = Request::post(&url)
+        .json(&request)
+        .map_err(|e| format!("failed to create analyze request: {e}"))?
+        .send()
+        .await
+        .map_err(|e| format!("analyze request failed: {e}"))?;
+
+    if !response.ok() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("analyze request failed ({status}): {body}"));
+    }
+
+    response
+        .json::<AnalyzeInferResponse>()
+        .await
+        .map_err(|e| format!("failed to parse analyze response: {e}"))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+async fn invoke_http_analyze_infer(
+    _request: AnalyzeInferRequest,
+) -> Result<AnalyzeInferResponse, String> {
+    Err("HTTP analyze fallback is only available in wasm32 builds".to_string())
+}
+
+async fn invoke_tauri_command(command: &str, payload: JsValue) -> Result<JsValue, String> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = (command, payload);
+        Err("Tauri invoke is only available in wasm32 builds".to_string())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        let window = web_sys::window().ok_or_else(|| "window not available".to_string())?;
+        let tauri_obj =
+            Reflect::get(&window, &JsValue::from_str("__TAURI__")).map_err(|e| format!("{e:?}"))?;
+
+        if tauri_obj.is_undefined() || tauri_obj.is_null() {
+            return Err("Tauri runtime not detected (window.__TAURI__ missing)".to_string());
+        }
+
+        let core_obj =
+            Reflect::get(&tauri_obj, &JsValue::from_str("core")).unwrap_or(JsValue::UNDEFINED);
+        let holder = if core_obj.is_undefined() || core_obj.is_null() {
+            tauri_obj.clone()
+        } else {
+            core_obj
+        };
+
+        let invoke_fn = Reflect::get(&holder, &JsValue::from_str("invoke"))
+            .map_err(|e| format!("{e:?}"))?
+            .dyn_into::<Function>()
+            .map_err(|_| "tauri invoke function missing".to_string())?;
+
+        let args = Object::new();
+        Reflect::set(&args, &JsValue::from_str("request"), &payload)
+            .map_err(|e| format!("{e:?}"))?;
+
+        let promise_val = invoke_fn
+            .call2(&holder, &JsValue::from_str(command), &JsValue::from(args))
+            .map_err(|e| format!("{e:?}"))?;
+        let promise = promise_val
+            .dyn_into::<Promise>()
+            .map_err(|_| "tauri invoke did not return Promise".to_string())?;
+        JsFuture::from(promise)
+            .await
+            .map_err(|e| format!("invoke failed: {e:?}"))
     }
 }
