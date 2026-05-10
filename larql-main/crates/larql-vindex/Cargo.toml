@@ -28,6 +28,7 @@ sha2 = "0.10"
 # System
 libc = "0.2"
 dirs = "5.0"
+time = { version = "0.3", features = ["formatting"] }
 
 # HuggingFace Hub integration (optional - knowledge format is HF-agnostic)
 [features]

@@ -94,7 +94,8 @@ impl RouterIndex {
         let cpu = larql_compute::cpu_backend();
         #[allow(unused_imports)]
         use larql_compute::ComputeBackend;
-        let proj = cpu.matmul(x, self.weights[layer].view()); // [1, num_classes]
+        // weights[layer] is shaped [num_experts, hidden_size]; routing scores are x @ W^T.
+        let proj = cpu.matmul_transb(x, self.weights[layer].view()); // [1, num_experts]
         let scores_1d = ndarray::Array1::from_vec(proj.into_raw_vec_and_offset().0);
         let scores_raw = scores_1d + &self.biases[layer];
 

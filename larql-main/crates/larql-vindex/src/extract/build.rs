@@ -22,28 +22,9 @@ fn write_floats(w: &mut impl Write, data: &[f32], dtype: StorageDtype) -> Result
 
 /// Simple ISO 8601 timestamp without chrono dependency.
 pub(crate) fn chrono_now() -> String {
-    let d = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = d.as_secs();
-    // Rough UTC timestamp — good enough for provenance
-    let days = secs / 86400;
-    let years_approx = 1970 + days / 365;
-    let remainder_days = days % 365;
-    let months = remainder_days / 30 + 1;
-    let day = remainder_days % 30 + 1;
-    let hour = (secs % 86400) / 3600;
-    let min = (secs % 3600) / 60;
-    let sec = secs % 60;
-    format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-        years_approx,
-        months.min(12),
-        day.min(31),
-        hour,
-        min,
-        sec
-    )
+    time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string())
 }
 
 /// Collected data for relation clustering.
