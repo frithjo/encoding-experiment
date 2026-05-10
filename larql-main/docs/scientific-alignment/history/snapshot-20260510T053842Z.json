@@ -1,0 +1,70 @@
+{
+  "generated_at_utc": "2026-05-10T05:38:42.483917+00:00",
+  "lql_first_path": {
+    "use_remote_present": true,
+    "analyze_infer_statement_present": true,
+    "direct_http_analyze_in_core": false
+  },
+  "strict_contract": {
+    "guards_present": {
+      "MissingAnalysisMode": true,
+      "InvalidAnalysisMode": true,
+      "MissingFactProbeSpans": true,
+      "MissingWorkflowProbeFalseSpans": true,
+      "InvalidTopK": true
+    },
+    "guard_count": 5,
+    "analyze_infer_guard_tests": 7
+  },
+  "response_surface": {
+    "analysis_result_full_fields_present": {
+      "attention": true,
+      "logit_lens": true,
+      "head_dla": true,
+      "num_layers": true,
+      "seq_len": true,
+      "tokens": true,
+      "strings": true,
+      "predictions": true,
+      "generation_trace": true,
+      "token_analysis": true,
+      "analysis_summary": true,
+      "ridge_by_layer": true
+    },
+    "analysis_result_field_count": 12,
+    "leptos_struct_field_count": 12
+  },
+  "historical_docs": {
+    "migration_guide_historical_flag": true,
+    "migration_guide_historical_note": true,
+    "ui_invariant_present": true
+  },
+  "ui_test_payload": {
+    "strict_payload_present": true,
+    "mode": "fact_probe",
+    "truth_spans_count": 1,
+    "false_spans_count": 2,
+    "coherence_markers_count": 2,
+    "max_generated_tokens": 1
+  },
+  "storage_footprint": {
+    "tracked_dir_bytes": {
+      "apps": 5736224212,
+      "target": 4990737884,
+      "data": 2553859628,
+      "attention-decoupling-proof": 1308408155,
+      "docs/scientific-alignment/history": 9352
+    },
+    "tracked_dir_gib": {
+      "apps": 5.342,
+      "target": 4.648,
+      "data": 2.378,
+      "attention-decoupling-proof": 1.219,
+      "docs/scientific-alignment/history": 0.0
+    },
+    "tracked_total_bytes": 14589239231,
+    "tracked_total_gib": 13.587,
+    "largest_tracked_dir": "apps",
+    "largest_tracked_dir_bytes": 5736224212
+  }
+}
